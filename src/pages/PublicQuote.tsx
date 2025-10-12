@@ -510,8 +510,8 @@ const PublicQuote = () => {
             )}
 
             {/* Summary */}
-            <div className="bg-primary/5 rounded-lg p-6">
-              <h3 className="font-semibold text-lg mb-4">Sammanfattning</h3>
+            <div className="bg-secondary/5 rounded-lg p-6 border border-secondary/10">
+              <h3 className="font-semibold text-lg mb-4 text-secondary">Sammanfattning</h3>
               <div className="space-y-2">
                 <div className="flex justify-between text-sm">
                   <span>Arbetskostnad</span>

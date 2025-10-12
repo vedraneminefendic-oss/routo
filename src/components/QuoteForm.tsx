@@ -23,9 +23,9 @@ const QuoteForm = ({ onGenerate, isGenerating }: QuoteFormProps) => {
   const exampleText = "Renovering av badrum, cirka 8 kvadratmeter med nytt kakel, golvvärme och mellanprisnivå på material.";
 
   return (
-    <Card className="border-2">
+    <Card className="border-2 border-border bg-card shadow-sm">
       <CardHeader>
-        <CardTitle className="flex items-center gap-2">
+        <CardTitle className="flex items-center gap-2 text-secondary">
           <Sparkles className="h-5 w-5 text-primary" />
           Skapa ny offert
         </CardTitle>
@@ -51,7 +51,7 @@ const QuoteForm = ({ onGenerate, isGenerating }: QuoteFormProps) => {
           </div>
           <Button 
             type="submit" 
-            className="w-full" 
+            className="w-full bg-primary hover:bg-primary/90" 
             size="lg"
             disabled={isGenerating || !description.trim()}
           >

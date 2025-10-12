@@ -192,6 +192,18 @@ const QuoteDisplay = ({
     const contentWidth = pageWidth - leftMargin - rightMargin;
     let y = 20;
 
+    // Definiera färger i RGB (konverterade från HSL)
+    const PRIMARY_BLUE = [58, 68, 204] as const; // #3A44CC
+    const SECONDARY_GREEN = [74, 113, 81] as const; // #4A7151
+    const ACCENT_GOLD = [210, 153, 78] as const; // #D2994E
+    const BG_WARM = [246, 240, 230] as const; // #F6F0E6
+    const TEXT_DARK = [27, 27, 27] as const; // #1B1B1B
+    const LIGHT_GRAY = [227, 227, 227] as const; // Kanter
+
+    // Sätt bakgrundsfärg för sidan
+    doc.setFillColor(BG_WARM[0], BG_WARM[1], BG_WARM[2]);
+    doc.rect(0, 0, pageWidth, pageHeight, 'F');
+
     // Company information header with logo
     if (companySettings) {
       // Add logo if available
@@ -250,6 +262,7 @@ const QuoteDisplay = ({
     y = checkPageBreak(doc, y, 15);
     doc.setFontSize(20);
     doc.setFont('helvetica', 'bold');
+    doc.setTextColor(SECONDARY_GREEN[0], SECONDARY_GREEN[1], SECONDARY_GREEN[2]); // Grön rubrik
     doc.text(quote.title, leftMargin, y);
     y += 15;
 
@@ -257,10 +270,12 @@ const QuoteDisplay = ({
     y = checkPageBreak(doc, y, 20);
     doc.setFontSize(14);
     doc.setFont('helvetica', 'bold');
+    doc.setTextColor(SECONDARY_GREEN[0], SECONDARY_GREEN[1], SECONDARY_GREEN[2]); // Grön rubrik
     doc.text('Arbetsmoment', leftMargin, y);
     y += 10;
 
     doc.setFontSize(10);
+    doc.setTextColor(TEXT_DARK[0], TEXT_DARK[1], TEXT_DARK[2]); // Återgå till mörk text
     quote.workItems.forEach((item, index) => {
       // Check if we need a new page for this item (name + description + hours = ~25mm)
       y = checkPageBreak(doc, y, 25);
@@ -298,10 +313,12 @@ const QuoteDisplay = ({
       y = checkPageBreak(doc, y, 20);
       doc.setFontSize(14);
       doc.setFont('helvetica', 'bold');
+      doc.setTextColor(SECONDARY_GREEN[0], SECONDARY_GREEN[1], SECONDARY_GREEN[2]); // Grön rubrik
       doc.text('Material', leftMargin, y);
       y += 10;
 
       doc.setFontSize(10);
+      doc.setTextColor(TEXT_DARK[0], TEXT_DARK[1], TEXT_DARK[2]);
       quote.materials.forEach((item, index) => {
         y = checkPageBreak(doc, y, 18);
         

@@ -22,32 +22,32 @@ const STATUS_CONFIG = {
   draft: {
     label: "Utkast",
     icon: FileText,
-    color: "bg-gray-500",
+    color: "bg-accent text-white",
   },
   sent: {
     label: "Skickad",
     icon: Send,
-    color: "bg-blue-500",
+    color: "bg-primary text-white",
   },
   viewed: {
     label: "Visad",
     icon: Eye,
-    color: "bg-sky-400",
+    color: "bg-secondary/70 text-white",
   },
   accepted: {
     label: "Accepterad",
     icon: CheckCircle,
-    color: "bg-green-500",
+    color: "bg-secondary text-white",
   },
   rejected: {
     label: "Avvisad",
     icon: XCircle,
-    color: "bg-red-500",
+    color: "bg-destructive text-white",
   },
   completed: {
     label: "Slutförd",
     icon: Check,
-    color: "bg-emerald-700",
+    color: "bg-secondary/90 text-white",
   },
 };
 
@@ -88,7 +88,7 @@ const QuoteList = ({ quotes, onQuoteClick }: QuoteListProps) => {
         return (
           <Card 
             key={quote.id} 
-            className="cursor-pointer hover:bg-muted/50 transition-colors"
+            className="cursor-pointer hover:bg-muted/30 transition-colors border-border"
             onClick={() => onQuoteClick?.(quote)}
           >
             <CardContent className="p-4">
@@ -96,7 +96,7 @@ const QuoteList = ({ quotes, onQuoteClick }: QuoteListProps) => {
                 <div className="flex-1">
                   <div className="flex items-center gap-2 mb-1">
                     <FileText className="h-4 w-4 text-primary" />
-                    <h3 className="font-semibold">{quote.title}</h3>
+                    <h3 className="font-semibold text-foreground">{quote.title}</h3>
                   </div>
                   <div className="flex items-center gap-3 text-sm text-muted-foreground">
                     <span className="flex items-center gap-1">

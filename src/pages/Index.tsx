@@ -195,15 +195,15 @@ const Index = () => {
   return (
     <div className="min-h-screen bg-background">
       {/* Header */}
-      <header className="border-b bg-card">
+      <header className="border-b bg-card shadow-sm">
         <div className="container mx-auto px-4 py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <div className="p-2 bg-primary rounded-lg">
+              <div className="p-2 bg-primary rounded-lg shadow-md">
                 <Wrench className="h-6 w-6 text-primary-foreground" />
               </div>
               <div>
-                <h1 className="text-2xl font-bold">Offertverktyget</h1>
+                <h1 className="text-2xl font-bold text-secondary">Offertverktyget</h1>
                 <p className="text-sm text-muted-foreground">Smarta offerter på minuter</p>
               </div>
             </div>
@@ -222,7 +222,7 @@ const Index = () => {
       </header>
 
       {/* Main Content */}
-      <main className="container mx-auto px-4 py-8">
+      <main className="container mx-auto px-4 py-8 bg-background">
         <div className="grid lg:grid-cols-2 gap-6">
           {/* Left Column - Form & Generated Quote */}
           <div className="space-y-6">
