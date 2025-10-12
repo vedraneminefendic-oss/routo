@@ -133,8 +133,13 @@ serve(async (req: Request): Promise<Response> => {
     `;
 
     // Send email via Resend
+    // Always use Resend's verified domain for sending
+    const fromEmail = "onboarding@resend.dev";
+    const replyToEmail = companySettings?.email;
+    
     const { data: emailData, error: emailError } = await resend.emails.send({
-      from: companySettings?.email || "onboarding@resend.dev",
+      from: fromEmail,
+      replyTo: replyToEmail,
       to: [recipientEmail],
       subject: `Offert: ${quote.title}`,
       html: emailHtml,
