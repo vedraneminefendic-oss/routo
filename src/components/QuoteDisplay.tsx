@@ -99,168 +99,257 @@ const QuoteDisplay = ({ quote, onSave, onEdit, isSaving }: QuoteDisplayProps) =>
     }).format(amount);
   };
 
+  const checkPageBreak = (doc: jsPDF, currentY: number, requiredSpace: number): number => {
+    const pageHeight = doc.internal.pageSize.height;
+    const bottomMargin = 25; // Reserve space for footer
+    
+    if (currentY + requiredSpace > pageHeight - bottomMargin) {
+      doc.addPage();
+      return 20; // Reset to top margin
+    }
+    return currentY;
+  };
+
   const handleExport = () => {
     const doc = new jsPDF();
-    const lineHeight = 7;
+    const pageWidth = doc.internal.pageSize.width;
+    const pageHeight = doc.internal.pageSize.height;
+    const leftMargin = 20;
+    const rightMargin = 20;
+    const contentWidth = pageWidth - leftMargin - rightMargin;
     let y = 20;
 
-    // Company Header with Logo
-    if (logoImage) {
-      try {
-        doc.addImage(logoImage, 'PNG', 20, y, 40, 20);
-        y += 25;
-      } catch (error) {
-        console.error('Error adding logo to PDF:', error);
-      }
-    }
-
-    // Company Information
+    // Company information header with logo
     if (companySettings) {
-      doc.setFontSize(10);
+      // Add logo if available
+      if (logoImage) {
+        try {
+          doc.addImage(logoImage, 'PNG', leftMargin, y, 30, 30);
+        } catch (error) {
+          console.error('Error adding logo to PDF:', error);
+        }
+      }
+
+      // Company info next to logo
+      const companyX = logoImage ? 55 : leftMargin;
+      doc.setFontSize(12);
       doc.setFont('helvetica', 'bold');
-      doc.text(companySettings.company_name || '', 20, y);
-      y += 5;
+      doc.text(companySettings.company_name || '', companyX, y + 5);
+      
+      doc.setFontSize(9);
       doc.setFont('helvetica', 'normal');
+      let infoY = y + 10;
       
       if (companySettings.address) {
-        doc.text(companySettings.address, 20, y);
-        y += 5;
+        doc.text(companySettings.address, companyX, infoY);
+        infoY += 4;
       }
       if (companySettings.phone) {
-        doc.text(`Tel: ${companySettings.phone}`, 20, y);
-        y += 5;
+        doc.text(`Tel: ${companySettings.phone}`, companyX, infoY);
+        infoY += 4;
       }
       if (companySettings.email) {
-        doc.text(`E-post: ${companySettings.email}`, 20, y);
-        y += 5;
+        doc.text(`E-post: ${companySettings.email}`, companyX, infoY);
+        infoY += 4;
       }
       if (companySettings.org_number) {
-        doc.text(`Org.nr: ${companySettings.org_number}`, 20, y);
-        y += 5;
+        doc.text(`Org.nr: ${companySettings.org_number}`, companyX, infoY);
+        infoY += 4;
       }
       if (companySettings.vat_number) {
-        doc.text(`Momsreg.nr: ${companySettings.vat_number}`, 20, y);
-        y += 5;
+        doc.text(`Momsreg.nr: ${companySettings.vat_number}`, companyX, infoY);
+        infoY += 4;
       }
       if (companySettings.has_f_skatt) {
-        doc.text('F-skattsedel finns', 20, y);
-        y += 5;
+        doc.text('F-skattsedel finns', companyX, infoY);
+        infoY += 4;
       }
+
+      y = Math.max(y + 35, infoY + 5);
+      
+      // Separator line
+      doc.setDrawColor(200, 200, 200);
+      doc.line(leftMargin, y, pageWidth - rightMargin, y);
+      y += 12;
+    }
+
+    // Title
+    y = checkPageBreak(doc, y, 15);
+    doc.setFontSize(20);
+    doc.setFont('helvetica', 'bold');
+    doc.text(quote.title, leftMargin, y);
+    y += 15;
+
+    // Work Items Section
+    y = checkPageBreak(doc, y, 20);
+    doc.setFontSize(14);
+    doc.setFont('helvetica', 'bold');
+    doc.text('Arbetsmoment', leftMargin, y);
+    y += 10;
+
+    doc.setFontSize(10);
+    quote.workItems.forEach((item, index) => {
+      // Check if we need a new page for this item (name + description + hours = ~25mm)
+      y = checkPageBreak(doc, y, 25);
+      
+      // Light background for alternating items
+      if (index % 2 === 0) {
+        doc.setFillColor(245, 245, 245);
+        doc.rect(leftMargin, y - 4, contentWidth, 22, 'F');
+      }
+      
+      // Item name and price
+      doc.setFont('helvetica', 'bold');
+      doc.text(item.name, leftMargin + 3, y);
+      doc.text(formatCurrency(item.subtotal), pageWidth - rightMargin - 3, y, { align: 'right' });
+      y += 5;
+      
+      // Description
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(9);
+      const splitDesc = doc.splitTextToSize(item.description, contentWidth - 10);
+      doc.text(splitDesc, leftMargin + 3, y);
+      y += Math.min(splitDesc.length * 4, 8);
+      
+      // Hours and rate
+      doc.text(`${item.hours} timmar × ${formatCurrency(item.hourlyRate)}/tim`, leftMargin + 3, y);
+      y += 12;
+      
+      doc.setFontSize(10);
+    });
+
+    y += 5;
+
+    // Materials Section
+    if (quote.materials && quote.materials.length > 0) {
+      y = checkPageBreak(doc, y, 20);
+      doc.setFontSize(14);
+      doc.setFont('helvetica', 'bold');
+      doc.text('Material', leftMargin, y);
+      y += 10;
+
+      doc.setFontSize(10);
+      quote.materials.forEach((item, index) => {
+        y = checkPageBreak(doc, y, 18);
+        
+        if (index % 2 === 0) {
+          doc.setFillColor(245, 245, 245);
+          doc.rect(leftMargin, y - 4, contentWidth, 16, 'F');
+        }
+        
+        // Material name and price
+        doc.setFont('helvetica', 'bold');
+        doc.text(item.name, leftMargin + 3, y);
+        doc.text(formatCurrency(item.subtotal), pageWidth - rightMargin - 3, y, { align: 'right' });
+        y += 5;
+        
+        // Quantity and unit price
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(9);
+        doc.text(`${item.quantity} ${item.unit} × ${formatCurrency(item.pricePerUnit)}/${item.unit}`, leftMargin + 3, y);
+        y += 10;
+        
+        doc.setFontSize(10);
+      });
+
       y += 5;
     }
 
-    // Separator line
+    // Summary Section
+    y = checkPageBreak(doc, y, 65);
+    y += 5;
+    
+    // Summary box
     doc.setDrawColor(200, 200, 200);
-    doc.line(20, y, 190, y);
+    doc.setFillColor(250, 250, 250);
+    doc.setLineWidth(0.5);
+    doc.roundedRect(leftMargin, y - 5, contentWidth, 60, 2, 2, 'FD');
+    
+    doc.setFontSize(14);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(0, 0, 0);
+    doc.text('Sammanfattning', leftMargin + 5, y + 2);
     y += 10;
 
-    // Title
-    doc.setFontSize(18);
-    doc.text(quote.title, 20, y);
-    y += lineHeight * 2;
-
-    // Work Items
-    doc.setFontSize(14);
-    doc.text("Arbetsmoment", 20, y);
-    y += lineHeight;
     doc.setFontSize(10);
+    doc.setFont('helvetica', 'normal');
+    doc.text('Arbetskostnad', leftMargin + 5, y);
+    doc.text(formatCurrency(quote.summary.workCost), pageWidth - rightMargin - 5, y, { align: 'right' });
+    y += 6;
     
-    quote.workItems.forEach((item) => {
-      doc.text(item.name, 20, y);
-      doc.text(formatCurrency(item.subtotal), 180, y, { align: "right" });
-      y += lineHeight * 0.8;
-      doc.setFontSize(9);
-      doc.text(item.description, 25, y);
-      y += lineHeight * 0.8;
-      doc.text(`${item.hours} timmar × ${formatCurrency(item.hourlyRate)}/tim`, 25, y);
-      y += lineHeight * 1.5;
-      doc.setFontSize(10);
-    });
-
-    y += lineHeight;
-
-    // Materials
-    doc.setFontSize(14);
-    doc.text("Material", 20, y);
-    y += lineHeight;
-    doc.setFontSize(10);
+    doc.text('Materialkostnad', leftMargin + 5, y);
+    doc.text(formatCurrency(quote.summary.materialCost), pageWidth - rightMargin - 5, y, { align: 'right' });
+    y += 6;
     
-    quote.materials.forEach((material) => {
-      doc.text(material.name, 20, y);
-      doc.text(formatCurrency(material.subtotal), 180, y, { align: "right" });
-      y += lineHeight * 0.8;
-      doc.setFontSize(9);
-      doc.text(`${material.quantity} ${material.unit} × ${formatCurrency(material.pricePerUnit)}/${material.unit}`, 25, y);
-      y += lineHeight * 1.5;
-      doc.setFontSize(10);
-    });
-
-    y += lineHeight * 2;
-
-    // Summary
-    doc.setFontSize(14);
-    doc.text("Sammanfattning", 20, y);
-    y += lineHeight;
-    doc.setFontSize(10);
+    doc.setDrawColor(220, 220, 220);
+    doc.line(leftMargin + 5, y, pageWidth - rightMargin - 5, y);
+    y += 5;
     
-    doc.text("Arbetskostnad", 20, y);
-    doc.text(formatCurrency(quote.summary.workCost), 180, y, { align: "right" });
-    y += lineHeight;
+    doc.text('Summa exkl. moms', leftMargin + 5, y);
+    doc.text(formatCurrency(quote.summary.totalBeforeVAT), pageWidth - rightMargin - 5, y, { align: 'right' });
+    y += 6;
     
-    doc.text("Materialkostnad", 20, y);
-    doc.text(formatCurrency(quote.summary.materialCost), 180, y, { align: "right" });
-    y += lineHeight * 1.5;
+    doc.text('Moms (25%)', leftMargin + 5, y);
+    doc.text(formatCurrency(quote.summary.vat), pageWidth - rightMargin - 5, y, { align: 'right' });
+    y += 6;
     
-    doc.text("Summa exkl. moms", 20, y);
-    doc.text(formatCurrency(quote.summary.totalBeforeVAT), 180, y, { align: "right" });
-    y += lineHeight;
+    doc.setFont('helvetica', 'bold');
+    doc.text('Totalt inkl. moms', leftMargin + 5, y);
+    doc.text(formatCurrency(quote.summary.totalWithVAT), pageWidth - rightMargin - 5, y, { align: 'right' });
+    y += 8;
     
-    doc.text("Moms (25%)", 20, y);
-    doc.text(formatCurrency(quote.summary.vat), 180, y, { align: "right" });
-    y += lineHeight;
+    doc.setDrawColor(220, 220, 220);
+    doc.line(leftMargin + 5, y, pageWidth - rightMargin - 5, y);
+    y += 5;
     
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(34, 139, 34);
+    doc.text('ROT-avdrag (50%)', leftMargin + 5, y);
+    doc.text(`-${formatCurrency(quote.summary.rotDeduction)}`, pageWidth - rightMargin - 5, y, { align: 'right' });
+    y += 8;
+    
+    // Highlight final amount
+    doc.setFillColor(34, 197, 94, 20);
+    doc.roundedRect(leftMargin + 3, y - 5, contentWidth - 6, 10, 1, 1, 'F');
+    doc.setFont('helvetica', 'bold');
     doc.setFontSize(12);
-    doc.text("Totalt inkl. moms", 20, y);
-    doc.text(formatCurrency(quote.summary.totalWithVAT), 180, y, { align: "right" });
-    y += lineHeight * 1.5;
-    
-    doc.setFontSize(10);
-    doc.text("ROT-avdrag (50%)", 20, y);
-    doc.text(`-${formatCurrency(quote.summary.rotDeduction)}`, 180, y, { align: "right" });
-    y += lineHeight * 1.5;
-    
-    doc.setFontSize(14);
-    doc.text("Kund betalar", 20, y);
-    doc.text(formatCurrency(quote.summary.customerPays), 180, y, { align: "right" });
+    doc.setTextColor(0, 0, 0);
+    doc.text('Kund betalar', leftMargin + 5, y);
+    doc.text(formatCurrency(quote.summary.customerPays), pageWidth - rightMargin - 5, y, { align: 'right' });
+    y += 15;
 
-    // Notes
+    // Reset text color
+    doc.setTextColor(0, 0, 0);
+
+    // Notes Section
     if (quote.notes) {
-      y += lineHeight * 2;
+      const notesLines = doc.splitTextToSize(quote.notes, contentWidth - 10);
+      const notesHeight = notesLines.length * 4 + 15;
+      y = checkPageBreak(doc, y, notesHeight);
+      y += 5;
+      
       doc.setFontSize(12);
-      doc.text("Anteckningar", 20, y);
-      y += lineHeight;
+      doc.setFont('helvetica', 'bold');
+      doc.text('Anteckningar', leftMargin, y);
+      y += 8;
+
       doc.setFontSize(9);
-      const splitNotes = doc.splitTextToSize(quote.notes, 170);
-      doc.text(splitNotes, 20, y);
+      doc.setFont('helvetica', 'normal');
+      doc.text(notesLines, leftMargin + 3, y);
     }
 
-    // Footer
-    const pageCount = doc.getNumberOfPages();
-    for (let i = 1; i <= pageCount; i++) {
+    // Add footer to all pages
+    const totalPages = doc.getNumberOfPages();
+    for (let i = 1; i <= totalPages; i++) {
       doc.setPage(i);
       doc.setFontSize(8);
+      doc.setTextColor(128, 128, 128);
       doc.setFont('helvetica', 'normal');
-      doc.setTextColor(150, 150, 150);
       doc.text(
-        `Sida ${i} av ${pageCount}`,
-        doc.internal.pageSize.width / 2,
-        doc.internal.pageSize.height - 10,
+        `Sida ${i} av ${totalPages} | Genererad: ${new Date().toLocaleDateString('sv-SE')}`,
+        pageWidth / 2,
+        pageHeight - 10,
         { align: 'center' }
-      );
-      doc.text(
-        `Genererad: ${new Date().toLocaleDateString('sv-SE')}`,
-        20,
-        doc.internal.pageSize.height - 10
       );
     }
 
