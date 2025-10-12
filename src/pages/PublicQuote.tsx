@@ -12,6 +12,7 @@ import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { FileText, Building2, Mail, Phone, MapPin, CheckCircle2, XCircle, Loader2, Download } from "lucide-react";
 import jsPDF from "jspdf";
+import { z } from "zod";
 
 interface WorkItem {
   name: string;
@@ -79,6 +80,15 @@ const PublicQuote = () => {
   const [acceptTerms, setAcceptTerms] = useState(false);
   const [response, setResponse] = useState<"accepted" | "rejected" | null>(null);
 
+  // Input validation schema
+  const quoteResponseSchema = z.object({
+    signerName: z.string().trim().min(1, "Namn krävs").max(100, "Namn får vara max 100 tecken"),
+    signerEmail: z.string().trim().email("Ogiltig e-postadress").max(255, "E-post får vara max 255 tecken"),
+    signerPersonnummer: z.string().regex(/^\d{6,8}-?\d{4}$/, "Ogiltigt personnummer (ÅÅÅÅMMDD-XXXX)").optional().or(z.literal('')),
+    propertyDesignation: z.string().max(100, "Fastighetsbeteckning får vara max 100 tecken").optional().or(z.literal('')),
+    message: z.string().max(1000, "Meddelande får vara max 1000 tecken").optional().or(z.literal(''))
+  });
+
   useEffect(() => {
     if (token) {
       loadQuote();
@@ -132,8 +142,17 @@ const PublicQuote = () => {
   const handleSubmit = async () => {
     if (!quote) return;
 
-    if (!signerName || !signerEmail) {
-      toast.error("Vänligen fyll i ditt namn och e-postadress");
+    // Validate inputs with zod
+    const validation = quoteResponseSchema.safeParse({
+      signerName,
+      signerEmail,
+      signerPersonnummer,
+      propertyDesignation,
+      message
+    });
+
+    if (!validation.success) {
+      toast.error(validation.error.issues[0].message);
       return;
     }
 

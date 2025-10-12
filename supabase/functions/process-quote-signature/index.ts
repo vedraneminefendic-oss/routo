@@ -21,7 +21,15 @@ serve(async (req: Request): Promise<Response> => {
 
     if (!quoteId || !response) {
       return new Response(
-        JSON.stringify({ error: "Missing required fields" }),
+        JSON.stringify({ error: "Obligatoriska fält saknas" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // Validate response value
+    if (response !== "accepted" && response !== "rejected") {
+      return new Response(
+        JSON.stringify({ error: "Ogiltigt svar" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
@@ -36,8 +44,16 @@ serve(async (req: Request): Promise<Response> => {
     if (quoteError || !quote) {
       console.error("Error fetching quote:", quoteError);
       return new Response(
-        JSON.stringify({ error: "Quote not found" }),
+        JSON.stringify({ error: "Offerten kunde inte hittas" }),
         { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // Prevent changes to already processed quotes (rate limiting)
+    if (quote.status === "accepted" || quote.status === "rejected") {
+      return new Response(
+        JSON.stringify({ error: "Offerten har redan besvarats" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
@@ -56,7 +72,7 @@ serve(async (req: Request): Promise<Response> => {
     if (updateError) {
       console.error("Error updating quote:", updateError);
       return new Response(
-        JSON.stringify({ error: "Failed to update quote" }),
+        JSON.stringify({ error: "Ett fel uppstod vid uppdatering. Kontakta support om problemet kvarstår." }),
         { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
@@ -85,7 +101,7 @@ serve(async (req: Request): Promise<Response> => {
   } catch (error: any) {
     console.error("Error in process-quote-signature function:", error);
     return new Response(
-      JSON.stringify({ error: error.message }),
+      JSON.stringify({ error: "Ett fel uppstod. Kontakta support om problemet kvarstår." }),
       {
         status: 500,
         headers: { ...corsHeaders, "Content-Type": "application/json" },

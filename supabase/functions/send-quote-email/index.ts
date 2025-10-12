@@ -197,7 +197,7 @@ serve(async (req: Request): Promise<Response> => {
   } catch (error: any) {
     console.error("Error in send-quote-email function:", error);
     return new Response(
-      JSON.stringify({ error: error.message }),
+      JSON.stringify({ error: "Ett fel uppstod vid skickande av e-post. Kontakta support om problemet kvarstår." }),
       {
         status: 500,
         headers: { ...corsHeaders, "Content-Type": "application/json" },

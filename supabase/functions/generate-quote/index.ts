@@ -170,9 +170,8 @@ Viktig information:
 
   } catch (error) {
     console.error('Error in generate-quote:', error);
-    const errorMessage = error instanceof Error ? error.message : 'Ett fel uppstod vid generering av offerten';
     return new Response(
-      JSON.stringify({ error: errorMessage }),
+      JSON.stringify({ error: "Ett fel uppstod vid generering av offert. Kontakta support om problemet kvarstår." }),
       { 
         status: 500,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
