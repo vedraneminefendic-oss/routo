@@ -73,19 +73,17 @@ const QuoteDisplay = ({ quote, onSave, onEdit, isSaving }: QuoteDisplayProps) =>
 
       // Load logo if exists
       if (data?.logo_url) {
-        const { data: publicUrlData } = supabase.storage
-          .from('company-logos')
-          .getPublicUrl(data.logo_url);
-        
-        if (publicUrlData?.publicUrl) {
-          // Convert image to base64 for PDF
-          const response = await fetch(publicUrlData.publicUrl);
+        try {
+          // logo_url is already a full public URL, use it directly
+          const response = await fetch(data.logo_url);
           const blob = await response.blob();
           const reader = new FileReader();
           reader.onloadend = () => {
             setLogoImage(reader.result as string);
           };
           reader.readAsDataURL(blob);
+        } catch (error) {
+          console.error('Error loading logo:', error);
         }
       }
     } catch (error) {
