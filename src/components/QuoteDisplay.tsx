@@ -4,6 +4,8 @@ import { Separator } from "@/components/ui/separator";
 import { FileText, Download, Save, Edit } from "lucide-react";
 import { toast } from "sonner";
 import jsPDF from "jspdf";
+import { supabase } from "@/integrations/supabase/client";
+import { useEffect, useState } from "react";
 
 interface WorkItem {
   name: string;
@@ -47,6 +49,50 @@ interface QuoteDisplayProps {
 }
 
 const QuoteDisplay = ({ quote, onSave, onEdit, isSaving }: QuoteDisplayProps) => {
+  const [companySettings, setCompanySettings] = useState<any>(null);
+  const [logoImage, setLogoImage] = useState<string | null>(null);
+
+  useEffect(() => {
+    loadCompanySettings();
+  }, []);
+
+  const loadCompanySettings = async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const { data, error } = await supabase
+        .from('company_settings')
+        .select('*')
+        .eq('user_id', user.id)
+        .single();
+
+      if (error) throw error;
+      
+      setCompanySettings(data);
+
+      // Load logo if exists
+      if (data?.logo_url) {
+        const { data: publicUrlData } = supabase.storage
+          .from('company-logos')
+          .getPublicUrl(data.logo_url);
+        
+        if (publicUrlData?.publicUrl) {
+          // Convert image to base64 for PDF
+          const response = await fetch(publicUrlData.publicUrl);
+          const blob = await response.blob();
+          const reader = new FileReader();
+          reader.onloadend = () => {
+            setLogoImage(reader.result as string);
+          };
+          reader.readAsDataURL(blob);
+        }
+      }
+    } catch (error) {
+      console.error('Error loading company settings:', error);
+    }
+  };
+
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('sv-SE', {
       style: 'currency',
@@ -59,6 +105,56 @@ const QuoteDisplay = ({ quote, onSave, onEdit, isSaving }: QuoteDisplayProps) =>
     const doc = new jsPDF();
     const lineHeight = 7;
     let y = 20;
+
+    // Company Header with Logo
+    if (logoImage) {
+      try {
+        doc.addImage(logoImage, 'PNG', 20, y, 40, 20);
+        y += 25;
+      } catch (error) {
+        console.error('Error adding logo to PDF:', error);
+      }
+    }
+
+    // Company Information
+    if (companySettings) {
+      doc.setFontSize(10);
+      doc.setFont('helvetica', 'bold');
+      doc.text(companySettings.company_name || '', 20, y);
+      y += 5;
+      doc.setFont('helvetica', 'normal');
+      
+      if (companySettings.address) {
+        doc.text(companySettings.address, 20, y);
+        y += 5;
+      }
+      if (companySettings.phone) {
+        doc.text(`Tel: ${companySettings.phone}`, 20, y);
+        y += 5;
+      }
+      if (companySettings.email) {
+        doc.text(`E-post: ${companySettings.email}`, 20, y);
+        y += 5;
+      }
+      if (companySettings.org_number) {
+        doc.text(`Org.nr: ${companySettings.org_number}`, 20, y);
+        y += 5;
+      }
+      if (companySettings.vat_number) {
+        doc.text(`Momsreg.nr: ${companySettings.vat_number}`, 20, y);
+        y += 5;
+      }
+      if (companySettings.has_f_skatt) {
+        doc.text('F-skattsedel finns', 20, y);
+        y += 5;
+      }
+      y += 5;
+    }
+
+    // Separator line
+    doc.setDrawColor(200, 200, 200);
+    doc.line(20, y, 190, y);
+    y += 10;
 
     // Title
     doc.setFontSize(18);
@@ -148,6 +244,26 @@ const QuoteDisplay = ({ quote, onSave, onEdit, isSaving }: QuoteDisplayProps) =>
       doc.setFontSize(9);
       const splitNotes = doc.splitTextToSize(quote.notes, 170);
       doc.text(splitNotes, 20, y);
+    }
+
+    // Footer
+    const pageCount = doc.getNumberOfPages();
+    for (let i = 1; i <= pageCount; i++) {
+      doc.setPage(i);
+      doc.setFontSize(8);
+      doc.setFont('helvetica', 'normal');
+      doc.setTextColor(150, 150, 150);
+      doc.text(
+        `Sida ${i} av ${pageCount}`,
+        doc.internal.pageSize.width / 2,
+        doc.internal.pageSize.height - 10,
+        { align: 'center' }
+      );
+      doc.text(
+        `Genererad: ${new Date().toLocaleDateString('sv-SE')}`,
+        20,
+        doc.internal.pageSize.height - 10
+      );
     }
 
     doc.save(`${quote.title}.pdf`);
