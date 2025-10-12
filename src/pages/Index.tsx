@@ -254,12 +254,12 @@ const Index = () => {
           {/* Right Column - Quote List */}
           <div>
             <Card>
-              <CardHeader>
-                <CardTitle>Dina offerter</CardTitle>
-                <CardDescription>
-                  {quotes.length} {quotes.length === 1 ? 'offert' : 'offerter'} totalt
-                </CardDescription>
-              </CardHeader>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-lg text-secondary">Dina offerter</CardTitle>
+              <CardDescription className="text-xs">
+                {quotes.length} {quotes.length === 1 ? 'offert' : 'offerter'} totalt
+              </CardDescription>
+            </CardHeader>
               <CardContent>
                 <QuoteList quotes={quotes} onQuoteClick={handleQuoteClick} />
               </CardContent>

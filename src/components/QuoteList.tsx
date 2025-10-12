@@ -91,14 +91,14 @@ const QuoteList = ({ quotes, onQuoteClick }: QuoteListProps) => {
             className="cursor-pointer hover:bg-muted/30 transition-colors border-border"
             onClick={() => onQuoteClick?.(quote)}
           >
-            <CardContent className="p-4">
+            <CardContent className="p-3">
               <div className="flex items-start justify-between">
                 <div className="flex-1">
-                  <div className="flex items-center gap-2 mb-1">
-                    <FileText className="h-4 w-4 text-primary" />
-                    <h3 className="font-semibold text-foreground">{quote.title}</h3>
+                  <div className="flex items-center gap-2 mb-0.5">
+                    <FileText className="h-3.5 w-3.5 text-primary" />
+                    <h3 className="font-semibold text-sm text-foreground">{quote.title}</h3>
                   </div>
-                  <div className="flex items-center gap-3 text-sm text-muted-foreground">
+                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
                     <span className="flex items-center gap-1">
                       <Calendar className="h-3 w-3" />
                       {formatDistanceToNow(new Date(quote.created_at), { 
@@ -107,13 +107,13 @@ const QuoteList = ({ quotes, onQuoteClick }: QuoteListProps) => {
                       })}
                     </span>
                     {quote.generated_quote?.summary && (
-                      <span className="font-medium">
+                      <span className="font-medium text-primary">
                         {formatCurrency(quote.generated_quote.summary.customerPays)}
                       </span>
                     )}
                   </div>
                 </div>
-                <Badge className={`${statusConfig.color} text-white flex items-center gap-1`}>
+                <Badge className={`${statusConfig.color} text-white flex items-center gap-1 text-xs px-2 py-0.5`}>
                   <StatusIcon className="h-3 w-3" />
                   {statusConfig.label}
                 </Badge>
