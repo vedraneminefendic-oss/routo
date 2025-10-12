@@ -1,8 +1,9 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { FileText, Calendar } from "lucide-react";
+import { FileText, Calendar, Send, Eye, CheckCircle, XCircle, Check } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { sv } from "date-fns/locale";
+import { QuoteStatus } from "@/hooks/useQuoteStatus";
 
 interface Quote {
   id: string;
@@ -17,24 +18,46 @@ interface QuoteListProps {
   onQuoteClick?: (quote: Quote) => void;
 }
 
-const QuoteList = ({ quotes, onQuoteClick }: QuoteListProps) => {
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'sent': return 'bg-secondary text-secondary-foreground';
-      case 'accepted': return 'bg-accent text-accent-foreground';
-      case 'rejected': return 'bg-destructive text-destructive-foreground';
-      default: return 'bg-muted text-muted-foreground';
-    }
-  };
+const STATUS_CONFIG = {
+  draft: {
+    label: "Utkast",
+    icon: FileText,
+    color: "bg-gray-500",
+  },
+  sent: {
+    label: "Skickad",
+    icon: Send,
+    color: "bg-blue-500",
+  },
+  viewed: {
+    label: "Visad",
+    icon: Eye,
+    color: "bg-sky-400",
+  },
+  accepted: {
+    label: "Accepterad",
+    icon: CheckCircle,
+    color: "bg-green-500",
+  },
+  rejected: {
+    label: "Avvisad",
+    icon: XCircle,
+    color: "bg-red-500",
+  },
+  completed: {
+    label: "Slutförd",
+    icon: Check,
+    color: "bg-emerald-700",
+  },
+};
 
-  const getStatusText = (status: string) => {
-    switch (status) {
-      case 'draft': return 'Utkast';
-      case 'sent': return 'Skickad';
-      case 'accepted': return 'Accepterad';
-      case 'rejected': return 'Avböjd';
-      default: return status;
-    }
+const QuoteList = ({ quotes, onQuoteClick }: QuoteListProps) => {
+  const getStatusConfig = (status: string) => {
+    return STATUS_CONFIG[status as QuoteStatus] || {
+      label: status,
+      icon: FileText,
+      color: "bg-muted",
+    };
   };
 
   const formatCurrency = (amount: number) => {
@@ -58,41 +81,47 @@ const QuoteList = ({ quotes, onQuoteClick }: QuoteListProps) => {
 
   return (
     <div className="space-y-3">
-      {quotes.map((quote) => (
-        <Card 
-          key={quote.id} 
-          className="cursor-pointer hover:bg-muted/50 transition-colors"
-          onClick={() => onQuoteClick?.(quote)}
-        >
-          <CardContent className="p-4">
-            <div className="flex items-start justify-between">
-              <div className="flex-1">
-                <div className="flex items-center gap-2 mb-1">
-                  <FileText className="h-4 w-4 text-primary" />
-                  <h3 className="font-semibold">{quote.title}</h3>
-                </div>
-                <div className="flex items-center gap-3 text-sm text-muted-foreground">
-                  <span className="flex items-center gap-1">
-                    <Calendar className="h-3 w-3" />
-                    {formatDistanceToNow(new Date(quote.created_at), { 
-                      addSuffix: true, 
-                      locale: sv 
-                    })}
-                  </span>
-                  {quote.generated_quote?.summary && (
-                    <span className="font-medium">
-                      {formatCurrency(quote.generated_quote.summary.customerPays)}
+      {quotes.map((quote) => {
+        const statusConfig = getStatusConfig(quote.status);
+        const StatusIcon = statusConfig.icon;
+        
+        return (
+          <Card 
+            key={quote.id} 
+            className="cursor-pointer hover:bg-muted/50 transition-colors"
+            onClick={() => onQuoteClick?.(quote)}
+          >
+            <CardContent className="p-4">
+              <div className="flex items-start justify-between">
+                <div className="flex-1">
+                  <div className="flex items-center gap-2 mb-1">
+                    <FileText className="h-4 w-4 text-primary" />
+                    <h3 className="font-semibold">{quote.title}</h3>
+                  </div>
+                  <div className="flex items-center gap-3 text-sm text-muted-foreground">
+                    <span className="flex items-center gap-1">
+                      <Calendar className="h-3 w-3" />
+                      {formatDistanceToNow(new Date(quote.created_at), { 
+                        addSuffix: true, 
+                        locale: sv 
+                      })}
                     </span>
-                  )}
+                    {quote.generated_quote?.summary && (
+                      <span className="font-medium">
+                        {formatCurrency(quote.generated_quote.summary.customerPays)}
+                      </span>
+                    )}
+                  </div>
                 </div>
+                <Badge className={`${statusConfig.color} text-white flex items-center gap-1`}>
+                  <StatusIcon className="h-3 w-3" />
+                  {statusConfig.label}
+                </Badge>
               </div>
-              <Badge className={getStatusColor(quote.status)}>
-                {getStatusText(quote.status)}
-              </Badge>
-            </div>
-          </CardContent>
-        </Card>
-      ))}
+            </CardContent>
+          </Card>
+        );
+      })}
     </div>
   );
 };

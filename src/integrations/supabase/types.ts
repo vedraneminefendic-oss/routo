@@ -86,6 +86,47 @@ export type Database = {
         }
         Relationships: []
       }
+      quote_email_logs: {
+        Row: {
+          clicked_at: string | null
+          email_provider_id: string | null
+          email_type: string
+          id: string
+          opened_at: string | null
+          quote_id: string
+          recipient_email: string
+          sent_at: string
+        }
+        Insert: {
+          clicked_at?: string | null
+          email_provider_id?: string | null
+          email_type: string
+          id?: string
+          opened_at?: string | null
+          quote_id: string
+          recipient_email: string
+          sent_at?: string
+        }
+        Update: {
+          clicked_at?: string | null
+          email_provider_id?: string | null
+          email_type?: string
+          id?: string
+          opened_at?: string | null
+          quote_id?: string
+          recipient_email?: string
+          sent_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "quote_email_logs_quote_id_fkey"
+            columns: ["quote_id"]
+            isOneToOne: false
+            referencedRelation: "quotes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       quote_payments: {
         Row: {
           amount: number
@@ -218,6 +259,44 @@ export type Database = {
           },
         ]
       }
+      quote_status_history: {
+        Row: {
+          changed_at: string
+          changed_by: string | null
+          id: string
+          new_status: string
+          note: string | null
+          old_status: string | null
+          quote_id: string
+        }
+        Insert: {
+          changed_at?: string
+          changed_by?: string | null
+          id?: string
+          new_status: string
+          note?: string | null
+          old_status?: string | null
+          quote_id: string
+        }
+        Update: {
+          changed_at?: string
+          changed_by?: string | null
+          id?: string
+          new_status?: string
+          note?: string | null
+          old_status?: string | null
+          quote_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "quote_status_history_quote_id_fkey"
+            columns: ["quote_id"]
+            isOneToOne: false
+            referencedRelation: "quotes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       quote_views: {
         Row: {
           id: string
@@ -252,6 +331,7 @@ export type Database = {
       }
       quotes: {
         Row: {
+          completed_at: string | null
           created_at: string
           description: string
           edited_quote: Json | null
@@ -260,6 +340,7 @@ export type Database = {
           is_edited: boolean | null
           locked: boolean | null
           quote_status: Database["public"]["Enums"]["quote_status"] | null
+          responded_at: string | null
           sent_at: string | null
           signed_at: string | null
           status: string | null
@@ -267,8 +348,10 @@ export type Database = {
           unique_token: string | null
           updated_at: string
           user_id: string
+          viewed_at: string | null
         }
         Insert: {
+          completed_at?: string | null
           created_at?: string
           description: string
           edited_quote?: Json | null
@@ -277,6 +360,7 @@ export type Database = {
           is_edited?: boolean | null
           locked?: boolean | null
           quote_status?: Database["public"]["Enums"]["quote_status"] | null
+          responded_at?: string | null
           sent_at?: string | null
           signed_at?: string | null
           status?: string | null
@@ -284,8 +368,10 @@ export type Database = {
           unique_token?: string | null
           updated_at?: string
           user_id: string
+          viewed_at?: string | null
         }
         Update: {
+          completed_at?: string | null
           created_at?: string
           description?: string
           edited_quote?: Json | null
@@ -294,6 +380,7 @@ export type Database = {
           is_edited?: boolean | null
           locked?: boolean | null
           quote_status?: Database["public"]["Enums"]["quote_status"] | null
+          responded_at?: string | null
           sent_at?: string | null
           signed_at?: string | null
           status?: string | null
@@ -301,6 +388,7 @@ export type Database = {
           unique_token?: string | null
           updated_at?: string
           user_id?: string
+          viewed_at?: string | null
         }
         Relationships: []
       }

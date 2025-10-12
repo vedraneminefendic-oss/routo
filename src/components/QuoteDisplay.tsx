@@ -6,6 +6,11 @@ import { toast } from "sonner";
 import jsPDF from "jspdf";
 import { supabase } from "@/integrations/supabase/client";
 import { useEffect, useState } from "react";
+import { QuoteStatusManager } from "@/components/QuoteStatusManager";
+import { QuoteStatusTimeline } from "@/components/QuoteStatusTimeline";
+import { QuoteStatus } from "@/hooks/useQuoteStatus";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { ChevronDown } from "lucide-react";
 
 interface WorkItem {
   name: string;
@@ -47,11 +52,24 @@ interface QuoteDisplayProps {
   onEdit?: () => void;
   onClose?: () => void;
   isSaving: boolean;
+  quoteId?: string;
+  currentStatus?: QuoteStatus;
+  onStatusChanged?: () => void;
 }
 
-const QuoteDisplay = ({ quote, onSave, onEdit, onClose, isSaving }: QuoteDisplayProps) => {
+const QuoteDisplay = ({ 
+  quote, 
+  onSave, 
+  onEdit, 
+  onClose, 
+  isSaving, 
+  quoteId, 
+  currentStatus,
+  onStatusChanged 
+}: QuoteDisplayProps) => {
   const [companySettings, setCompanySettings] = useState<any>(null);
   const [logoImage, setLogoImage] = useState<string | null>(null);
+  const [showTimeline, setShowTimeline] = useState(false);
 
   useEffect(() => {
     loadCompanySettings();
@@ -362,7 +380,7 @@ const QuoteDisplay = ({ quote, onSave, onEdit, onClose, isSaving }: QuoteDisplay
     <Card className="border-2">
       <CardHeader>
         <div className="flex items-start justify-between">
-          <div>
+          <div className="flex-1">
             <CardTitle className="flex items-center gap-2">
               <FileText className="h-5 w-5 text-primary" />
               {quote.title}
@@ -370,6 +388,17 @@ const QuoteDisplay = ({ quote, onSave, onEdit, onClose, isSaving }: QuoteDisplay
             <CardDescription className="mt-1">
               Genererad offert - granska och spara
             </CardDescription>
+            
+            {/* Status Manager - only show if we have quoteId and currentStatus */}
+            {quoteId && currentStatus && (
+              <div className="mt-4">
+                <QuoteStatusManager
+                  quoteId={quoteId}
+                  currentStatus={currentStatus}
+                  onStatusChanged={onStatusChanged}
+                />
+              </div>
+            )}
           </div>
           <div className="flex gap-2">
             <Button variant="outline" size="sm" onClick={handleExport}>
@@ -494,6 +523,21 @@ const QuoteDisplay = ({ quote, onSave, onEdit, onClose, isSaving }: QuoteDisplay
           </>
         )}
       </CardContent>
+
+      {/* Status Timeline - only show if we have quoteId */}
+      {quoteId && (
+        <div className="px-6 pb-6">
+          <Collapsible open={showTimeline} onOpenChange={setShowTimeline}>
+            <CollapsibleTrigger className="flex items-center gap-2 text-sm font-medium hover:text-primary transition-colors">
+              <ChevronDown className={`h-4 w-4 transition-transform ${showTimeline ? 'rotate-180' : ''}`} />
+              Visa statushistorik
+            </CollapsibleTrigger>
+            <CollapsibleContent className="mt-4">
+              <QuoteStatusTimeline quoteId={quoteId} />
+            </CollapsibleContent>
+          </Collapsible>
+        </div>
+      )}
     </Card>
   );
 };

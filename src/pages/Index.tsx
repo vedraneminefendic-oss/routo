@@ -235,6 +235,9 @@ const Index = () => {
                 onEdit={handleEditQuote}
                 onClose={viewingQuote ? handleCloseQuote : undefined}
                 isSaving={isSaving}
+                quoteId={viewingQuote?.id}
+                currentStatus={viewingQuote?.status}
+                onStatusChanged={loadQuotes}
               />
             )}
 
