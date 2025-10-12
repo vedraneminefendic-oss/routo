@@ -397,7 +397,24 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      get_quote_by_token: {
+        Args: { token_param: string }
+        Returns: {
+          company_address: string
+          company_email: string
+          company_logo_url: string
+          company_name: string
+          company_phone: string
+          created_at: string
+          description: string
+          edited_quote: Json
+          generated_quote: Json
+          id: string
+          is_edited: boolean
+          status: string
+          title: string
+        }[]
+      }
     }
     Enums: {
       quote_status: "draft" | "sent" | "signed"

@@ -1,0 +1,719 @@
+import { useEffect, useState } from "react";
+import { useParams } from "react-router-dom";
+import { supabase } from "@/integrations/supabase/client";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Separator } from "@/components/ui/separator";
+import { Badge } from "@/components/ui/badge";
+import { toast } from "sonner";
+import { FileText, Building2, Mail, Phone, MapPin, CheckCircle2, XCircle, Loader2, Download } from "lucide-react";
+import jsPDF from "jspdf";
+
+interface WorkItem {
+  name: string;
+  description: string;
+  hours: number;
+  hourlyRate: number;
+  subtotal: number;
+}
+
+interface Material {
+  name: string;
+  quantity: number;
+  unit: string;
+  pricePerUnit: number;
+  subtotal: number;
+}
+
+interface Summary {
+  workCost: number;
+  materialCost: number;
+  totalBeforeVAT: number;
+  vat: number;
+  totalWithVAT: number;
+  rotDeduction: number;
+  customerPays: number;
+}
+
+interface QuoteData {
+  title: string;
+  workItems: WorkItem[];
+  materials: Material[];
+  summary: Summary;
+  notes?: string;
+}
+
+interface QuoteInfo {
+  id: string;
+  title: string;
+  description: string;
+  generated_quote: QuoteData;
+  edited_quote: QuoteData | null;
+  is_edited: boolean;
+  status: string;
+  created_at: string;
+  company_name: string;
+  company_email: string;
+  company_phone: string;
+  company_address: string;
+  company_logo_url: string;
+}
+
+const PublicQuote = () => {
+  const { token } = useParams<{ token: string }>();
+  const [quote, setQuote] = useState<QuoteInfo | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
+  const [hasViewed, setHasViewed] = useState(false);
+  
+  // Form state
+  const [signerName, setSignerName] = useState("");
+  const [signerEmail, setSignerEmail] = useState("");
+  const [signerPersonnummer, setSignerPersonnummer] = useState("");
+  const [propertyDesignation, setPropertyDesignation] = useState("");
+  const [message, setMessage] = useState("");
+  const [acceptTerms, setAcceptTerms] = useState(false);
+  const [response, setResponse] = useState<"accepted" | "rejected" | null>(null);
+
+  useEffect(() => {
+    if (token) {
+      loadQuote();
+    }
+  }, [token]);
+
+  const loadQuote = async () => {
+    try {
+      setLoading(true);
+
+      // Use the public function to get quote by token
+      const { data, error } = await supabase.rpc("get_quote_by_token", {
+        token_param: token,
+      });
+
+      if (error) throw error;
+
+      if (!data || data.length === 0) {
+        toast.error("Offerten kunde inte hittas");
+        return;
+      }
+
+      const quoteInfo = data[0] as unknown as QuoteInfo;
+      setQuote(quoteInfo);
+
+      // Log view if not already viewed
+      if (!hasViewed) {
+        await logView(quoteInfo.id);
+        setHasViewed(true);
+      }
+    } catch (error: any) {
+      console.error("Error loading quote:", error);
+      toast.error("Kunde inte ladda offerten");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const logView = async (quoteId: string) => {
+    try {
+      await supabase.from("quote_views").insert({
+        quote_id: quoteId,
+        ip_address: "unknown", // Could be enhanced with a service to get real IP
+        user_agent: navigator.userAgent,
+      });
+    } catch (error) {
+      console.error("Error logging view:", error);
+    }
+  };
+
+  const handleSubmit = async () => {
+    if (!quote) return;
+
+    if (!signerName || !signerEmail) {
+      toast.error("Vänligen fyll i ditt namn och e-postadress");
+      return;
+    }
+
+    if (!response) {
+      toast.error("Vänligen välj om du accepterar eller avvisar offerten");
+      return;
+    }
+
+    if (response === "accepted" && !acceptTerms) {
+      toast.error("Du måste acceptera villkoren för att fortsätta");
+      return;
+    }
+
+    setSubmitting(true);
+
+    try {
+      // Insert signature
+      const { error: signatureError } = await supabase.from("quote_signatures").insert({
+        quote_id: quote.id,
+        signer_name: signerName,
+        signer_email: signerEmail,
+        signer_personnummer: signerPersonnummer || null,
+        property_designation: propertyDesignation || null,
+        response: response,
+        ip_address: "unknown",
+        user_agent: navigator.userAgent,
+        message: message || null,
+      });
+
+      if (signatureError) throw signatureError;
+
+      // Update quote status via edge function
+      const { error: processError } = await supabase.functions.invoke("process-quote-signature", {
+        body: {
+          quoteId: quote.id,
+          response: response,
+        },
+      });
+
+      if (processError) {
+        console.error("Error processing signature:", processError);
+        // Don't fail the whole operation if status update fails
+      }
+
+      toast.success(
+        response === "accepted"
+          ? "Tack! Du har accepterat offerten"
+          : "Tack för ditt svar. Vi hör av oss inom kort."
+      );
+
+      // Clear form
+      setSignerName("");
+      setSignerEmail("");
+      setSignerPersonnummer("");
+      setPropertyDesignation("");
+      setMessage("");
+      setAcceptTerms(false);
+      setResponse(null);
+    } catch (error: any) {
+      console.error("Error submitting signature:", error);
+      toast.error("Kunde inte spara ditt svar. Försök igen.");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const formatCurrency = (amount: number) => {
+    return new Intl.NumberFormat("sv-SE", {
+      style: "currency",
+      currency: "SEK",
+      minimumFractionDigits: 0,
+    }).format(amount);
+  };
+
+  const handleDownloadPDF = () => {
+    if (!quote) return;
+
+    const quoteData = quote.edited_quote || quote.generated_quote;
+    const doc = new jsPDF();
+    const pageWidth = doc.internal.pageSize.width;
+    let y = 20;
+
+    // Company header
+    doc.setFontSize(16);
+    doc.setFont("helvetica", "bold");
+    doc.text(quote.company_name || "Offert", 20, y);
+    y += 10;
+
+    doc.setFontSize(10);
+    doc.setFont("helvetica", "normal");
+    if (quote.company_address) {
+      doc.text(quote.company_address, 20, y);
+      y += 5;
+    }
+    if (quote.company_phone) {
+      doc.text(`Tel: ${quote.company_phone}`, 20, y);
+      y += 5;
+    }
+    if (quote.company_email) {
+      doc.text(`E-post: ${quote.company_email}`, 20, y);
+      y += 5;
+    }
+
+    y += 10;
+
+    // Quote title
+    doc.setFontSize(18);
+    doc.setFont("helvetica", "bold");
+    doc.text(quoteData.title, 20, y);
+    y += 15;
+
+    // Work items
+    doc.setFontSize(14);
+    doc.text("Arbetsmoment", 20, y);
+    y += 10;
+
+    doc.setFontSize(10);
+    doc.setFont("helvetica", "normal");
+    quoteData.workItems.forEach((item) => {
+      doc.setFont("helvetica", "bold");
+      doc.text(item.name, 20, y);
+      doc.text(formatCurrency(item.subtotal), pageWidth - 40, y, { align: "right" });
+      y += 5;
+
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(9);
+      const descLines = doc.splitTextToSize(item.description, pageWidth - 50);
+      doc.text(descLines, 20, y);
+      y += descLines.length * 4;
+
+      doc.text(`${item.hours} timmar × ${formatCurrency(item.hourlyRate)}/tim`, 20, y);
+      y += 8;
+      doc.setFontSize(10);
+    });
+
+    y += 5;
+
+    // Materials
+    if (quoteData.materials && quoteData.materials.length > 0) {
+      doc.setFontSize(14);
+      doc.setFont("helvetica", "bold");
+      doc.text("Material", 20, y);
+      y += 10;
+
+      doc.setFontSize(10);
+      doc.setFont("helvetica", "normal");
+      quoteData.materials.forEach((material) => {
+        doc.setFont("helvetica", "bold");
+        doc.text(material.name, 20, y);
+        doc.text(formatCurrency(material.subtotal), pageWidth - 40, y, { align: "right" });
+        y += 5;
+
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(9);
+        doc.text(
+          `${material.quantity} ${material.unit} × ${formatCurrency(material.pricePerUnit)}/${material.unit}`,
+          20,
+          y
+        );
+        y += 8;
+        doc.setFontSize(10);
+      });
+
+      y += 5;
+    }
+
+    // Summary
+    doc.setFontSize(14);
+    doc.setFont("helvetica", "bold");
+    doc.text("Sammanfattning", 20, y);
+    y += 10;
+
+    doc.setFontSize(10);
+    doc.setFont("helvetica", "normal");
+    doc.text("Arbetskostnad", 20, y);
+    doc.text(formatCurrency(quoteData.summary.workCost), pageWidth - 40, y, { align: "right" });
+    y += 6;
+
+    doc.text("Materialkostnad", 20, y);
+    doc.text(formatCurrency(quoteData.summary.materialCost), pageWidth - 40, y, { align: "right" });
+    y += 6;
+
+    doc.text("Summa exkl. moms", 20, y);
+    doc.text(formatCurrency(quoteData.summary.totalBeforeVAT), pageWidth - 40, y, { align: "right" });
+    y += 6;
+
+    doc.text("Moms (25%)", 20, y);
+    doc.text(formatCurrency(quoteData.summary.vat), pageWidth - 40, y, { align: "right" });
+    y += 6;
+
+    doc.setFont("helvetica", "bold");
+    doc.text("Totalt inkl. moms", 20, y);
+    doc.text(formatCurrency(quoteData.summary.totalWithVAT), pageWidth - 40, y, { align: "right" });
+    y += 8;
+
+    doc.setFont("helvetica", "normal");
+    doc.setTextColor(34, 139, 34);
+    doc.text("ROT-avdrag (50%)", 20, y);
+    doc.text(`-${formatCurrency(quoteData.summary.rotDeduction)}`, pageWidth - 40, y, { align: "right" });
+    y += 8;
+
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(12);
+    doc.setTextColor(0, 0, 0);
+    doc.text("Kund betalar", 20, y);
+    doc.text(formatCurrency(quoteData.summary.customerPays), pageWidth - 40, y, { align: "right" });
+
+    doc.save(`${quoteData.title}.pdf`);
+    toast.success("PDF nedladdad!");
+  };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-muted/30">
+        <div className="text-center">
+          <Loader2 className="h-8 w-8 animate-spin mx-auto mb-4" />
+          <p className="text-muted-foreground">Laddar offert...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!quote) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-muted/30">
+        <Card className="max-w-md">
+          <CardHeader>
+            <CardTitle>Offert hittades inte</CardTitle>
+            <CardDescription>
+              Den här offerten finns inte eller har tagits bort.
+            </CardDescription>
+          </CardHeader>
+        </Card>
+      </div>
+    );
+  }
+
+  const quoteData = quote.edited_quote || quote.generated_quote;
+
+  return (
+    <div className="min-h-screen bg-muted/30 py-8 px-4">
+      <div className="max-w-4xl mx-auto space-y-6">
+        {/* Company Header */}
+        <Card>
+          <CardHeader>
+            <div className="flex items-start justify-between">
+              <div className="flex-1">
+                {quote.company_logo_url && (
+                  <img
+                    src={quote.company_logo_url}
+                    alt="Company logo"
+                    className="h-16 mb-4"
+                  />
+                )}
+                <CardTitle className="text-2xl">{quote.company_name}</CardTitle>
+                <CardDescription className="mt-2 space-y-1">
+                  {quote.company_address && (
+                    <div className="flex items-center gap-2">
+                      <MapPin className="h-4 w-4" />
+                      {quote.company_address}
+                    </div>
+                  )}
+                  {quote.company_phone && (
+                    <div className="flex items-center gap-2">
+                      <Phone className="h-4 w-4" />
+                      {quote.company_phone}
+                    </div>
+                  )}
+                  {quote.company_email && (
+                    <div className="flex items-center gap-2">
+                      <Mail className="h-4 w-4" />
+                      {quote.company_email}
+                    </div>
+                  )}
+                </CardDescription>
+              </div>
+              <Button onClick={handleDownloadPDF} variant="outline" size="sm">
+                <Download className="h-4 w-4 mr-2" />
+                Ladda ner PDF
+              </Button>
+            </div>
+          </CardHeader>
+        </Card>
+
+        {/* Quote Details */}
+        <Card>
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <div>
+                <CardTitle className="flex items-center gap-2">
+                  <FileText className="h-5 w-5" />
+                  {quoteData.title}
+                </CardTitle>
+                <CardDescription className="mt-1">
+                  Skapad {new Date(quote.created_at).toLocaleDateString("sv-SE")}
+                </CardDescription>
+              </div>
+              <Badge variant={quote.status === "sent" ? "default" : "secondary"}>
+                {quote.status}
+              </Badge>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            {/* Work Items */}
+            <div>
+              <h3 className="font-semibold text-lg mb-3">Arbetsmoment</h3>
+              <div className="space-y-3">
+                {quoteData.workItems.map((item, index) => (
+                  <div key={index} className="bg-muted/50 rounded-lg p-4">
+                    <div className="flex justify-between items-start mb-2">
+                      <div>
+                        <h4 className="font-medium">{item.name}</h4>
+                        <p className="text-sm text-muted-foreground">{item.description}</p>
+                      </div>
+                      <span className="font-semibold whitespace-nowrap ml-4">
+                        {formatCurrency(item.subtotal)}
+                      </span>
+                    </div>
+                    <p className="text-sm text-muted-foreground">
+                      {item.hours} timmar × {formatCurrency(item.hourlyRate)}/tim
+                    </p>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <Separator />
+
+            {/* Materials */}
+            {quoteData.materials && quoteData.materials.length > 0 && (
+              <>
+                <div>
+                  <h3 className="font-semibold text-lg mb-3">Material</h3>
+                  <div className="space-y-3">
+                    {quoteData.materials.map((material, index) => (
+                      <div key={index} className="bg-muted/50 rounded-lg p-4">
+                        <div className="flex justify-between items-start">
+                          <div>
+                            <h4 className="font-medium">{material.name}</h4>
+                            <p className="text-sm text-muted-foreground">
+                              {material.quantity} {material.unit} ×{" "}
+                              {formatCurrency(material.pricePerUnit)}/{material.unit}
+                            </p>
+                          </div>
+                          <span className="font-semibold whitespace-nowrap ml-4">
+                            {formatCurrency(material.subtotal)}
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                <Separator />
+              </>
+            )}
+
+            {/* Summary */}
+            <div className="bg-primary/5 rounded-lg p-6">
+              <h3 className="font-semibold text-lg mb-4">Sammanfattning</h3>
+              <div className="space-y-2">
+                <div className="flex justify-between text-sm">
+                  <span>Arbetskostnad</span>
+                  <span className="font-medium">{formatCurrency(quoteData.summary.workCost)}</span>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span>Materialkostnad</span>
+                  <span className="font-medium">{formatCurrency(quoteData.summary.materialCost)}</span>
+                </div>
+                <Separator className="my-2" />
+                <div className="flex justify-between text-sm">
+                  <span>Summa exkl. moms</span>
+                  <span className="font-medium">{formatCurrency(quoteData.summary.totalBeforeVAT)}</span>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span>Moms (25%)</span>
+                  <span className="font-medium">{formatCurrency(quoteData.summary.vat)}</span>
+                </div>
+                <div className="flex justify-between font-semibold">
+                  <span>Totalt inkl. moms</span>
+                  <span>{formatCurrency(quoteData.summary.totalWithVAT)}</span>
+                </div>
+                <Separator className="my-3" />
+                <div className="flex justify-between text-accent">
+                  <span className="font-medium">ROT-avdrag (50%)</span>
+                  <span className="font-semibold">-{formatCurrency(quoteData.summary.rotDeduction)}</span>
+                </div>
+                <div className="flex justify-between text-lg font-bold text-primary">
+                  <span>Kund betalar</span>
+                  <span>{formatCurrency(quoteData.summary.customerPays)}</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Notes */}
+            {quoteData.notes && (
+              <>
+                <Separator />
+                <div>
+                  <h3 className="font-semibold text-sm mb-2">Anteckningar</h3>
+                  <p className="text-sm text-muted-foreground">{quoteData.notes}</p>
+                </div>
+              </>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Response Form */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Svara på offerten</CardTitle>
+            <CardDescription>
+              Fyll i dina uppgifter och välj om du accepterar eller avvisar offerten
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="signerName">Namn *</Label>
+                <Input
+                  id="signerName"
+                  placeholder="För- och efternamn"
+                  value={signerName}
+                  onChange={(e) => setSignerName(e.target.value)}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="signerEmail">E-postadress *</Label>
+                <Input
+                  id="signerEmail"
+                  type="email"
+                  placeholder="din@email.com"
+                  value={signerEmail}
+                  onChange={(e) => setSignerEmail(e.target.value)}
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="signerPersonnummer">Personnummer (valfritt)</Label>
+                <Input
+                  id="signerPersonnummer"
+                  placeholder="ÅÅÅÅMMDD-XXXX"
+                  value={signerPersonnummer}
+                  onChange={(e) => setSignerPersonnummer(e.target.value)}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="propertyDesignation">Fastighetsbeteckning (valfritt)</Label>
+                <Input
+                  id="propertyDesignation"
+                  placeholder="T.ex. Uppsala 1:1"
+                  value={propertyDesignation}
+                  onChange={(e) => setPropertyDesignation(e.target.value)}
+                />
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="message">Meddelande (valfritt)</Label>
+              <Textarea
+                id="message"
+                placeholder="Eventuella kommentarer eller frågor..."
+                value={message}
+                onChange={(e) => setMessage(e.target.value)}
+                rows={3}
+              />
+            </div>
+
+            <Separator />
+
+            {/* Response Selection */}
+            <div className="space-y-4">
+              <Label className="text-base">Ditt svar</Label>
+              <div className="space-y-3">
+                <div
+                  className={`flex items-center space-x-3 p-4 rounded-lg border-2 cursor-pointer transition-colors ${
+                    response === "accepted"
+                      ? "border-green-500 bg-green-50 dark:bg-green-950"
+                      : "border-muted hover:border-green-300"
+                  }`}
+                  onClick={() => setResponse("accepted")}
+                >
+                  <Checkbox
+                    checked={response === "accepted"}
+                    onCheckedChange={(checked) => setResponse(checked ? "accepted" : null)}
+                  />
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2">
+                      <CheckCircle2 className="h-5 w-5 text-green-600" />
+                      <span className="font-semibold">Jag accepterar offerten</span>
+                    </div>
+                    <p className="text-sm text-muted-foreground mt-1">
+                      Jag godkänner villkoren och vill gå vidare med projektet
+                    </p>
+                  </div>
+                </div>
+
+                <div
+                  className={`flex items-center space-x-3 p-4 rounded-lg border-2 cursor-pointer transition-colors ${
+                    response === "rejected"
+                      ? "border-red-500 bg-red-50 dark:bg-red-950"
+                      : "border-muted hover:border-red-300"
+                  }`}
+                  onClick={() => setResponse("rejected")}
+                >
+                  <Checkbox
+                    checked={response === "rejected"}
+                    onCheckedChange={(checked) => setResponse(checked ? "rejected" : null)}
+                  />
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2">
+                      <XCircle className="h-5 w-5 text-red-600" />
+                      <span className="font-semibold">Jag avvisar offerten</span>
+                    </div>
+                    <p className="text-sm text-muted-foreground mt-1">
+                      Jag är inte intresserad av att gå vidare just nu
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Terms acceptance (only show when accepting) */}
+            {response === "accepted" && (
+              <div className="flex items-start space-x-3 p-4 bg-muted/50 rounded-lg">
+                <Checkbox
+                  id="acceptTerms"
+                  checked={acceptTerms}
+                  onCheckedChange={(checked) => setAcceptTerms(checked as boolean)}
+                />
+                <div className="grid gap-1.5 leading-none">
+                  <label
+                    htmlFor="acceptTerms"
+                    className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+                  >
+                    Jag accepterar villkoren
+                  </label>
+                  <p className="text-sm text-muted-foreground">
+                    Genom att acceptera bekräftar jag att jag har läst och förstått offerten
+                    och är överens om priset och villkoren.
+                  </p>
+                </div>
+              </div>
+            )}
+
+            <Button
+              onClick={handleSubmit}
+              disabled={submitting || !response}
+              className="w-full"
+              size="lg"
+            >
+              {submitting ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Skickar svar...
+                </>
+              ) : (
+                <>
+                  {response === "accepted" ? (
+                    <>
+                      <CheckCircle2 className="mr-2 h-4 w-4" />
+                      Acceptera offert
+                    </>
+                  ) : response === "rejected" ? (
+                    <>
+                      <XCircle className="mr-2 h-4 w-4" />
+                      Avvisa offert
+                    </>
+                  ) : (
+                    "Välj ett alternativ ovan"
+                  )}
+                </>
+              )}
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    </div>
+  );
+};
+
+export default PublicQuote;

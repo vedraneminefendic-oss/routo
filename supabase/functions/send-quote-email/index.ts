@@ -67,9 +67,9 @@ serve(async (req: Request): Promise<Response> => {
 
     const quoteData = quote.edited_quote || quote.generated_quote;
     
-    // Build the quote URL - use the current deployment URL
-    const deploymentUrl = Deno.env.get("DEPLOYMENT_URL") || supabaseUrl.replace('.supabase.co', '.lovable.app');
-    const quoteUrl = `${deploymentUrl}/quote/${uniqueToken}`;
+    // Build the quote URL - use the actual app URL
+    const appUrl = Deno.env.get("APP_URL") || supabaseUrl.replace('.supabase.co', '.lovableproject.com');
+    const quoteUrl = `${appUrl}/quote/${uniqueToken}`;
 
     // Create email HTML
     const emailHtml = `
