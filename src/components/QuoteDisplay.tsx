@@ -1,7 +1,7 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
-import { FileText, Download, Save } from "lucide-react";
+import { FileText, Download, Save, Edit } from "lucide-react";
 import { toast } from "sonner";
 import jsPDF from "jspdf";
 
@@ -42,10 +42,11 @@ interface Quote {
 interface QuoteDisplayProps {
   quote: Quote;
   onSave: () => void;
+  onEdit?: () => void;
   isSaving: boolean;
 }
 
-const QuoteDisplay = ({ quote, onSave, isSaving }: QuoteDisplayProps) => {
+const QuoteDisplay = ({ quote, onSave, onEdit, isSaving }: QuoteDisplayProps) => {
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('sv-SE', {
       style: 'currency',
@@ -171,6 +172,12 @@ const QuoteDisplay = ({ quote, onSave, isSaving }: QuoteDisplayProps) => {
               <Download className="h-4 w-4 mr-1" />
               PDF
             </Button>
+            {onEdit && (
+              <Button variant="outline" size="sm" onClick={onEdit}>
+                <Edit className="h-4 w-4 mr-1" />
+                Redigera
+              </Button>
+            )}
             <Button size="sm" onClick={onSave} disabled={isSaving}>
               <Save className="h-4 w-4 mr-1" />
               {isSaving ? "Sparar..." : "Spara"}

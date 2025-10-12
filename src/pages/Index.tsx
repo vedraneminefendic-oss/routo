@@ -7,6 +7,7 @@ import { Wrench, LogOut, Settings as SettingsIcon } from "lucide-react";
 import { toast } from "sonner";
 import QuoteForm from "@/components/QuoteForm";
 import QuoteDisplay from "@/components/QuoteDisplay";
+import QuoteEditor from "@/components/QuoteEditor";
 import QuoteList from "@/components/QuoteList";
 
 const Index = () => {
@@ -15,6 +16,7 @@ const Index = () => {
   const [loading, setLoading] = useState(true);
   const [isGenerating, setIsGenerating] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
   const [currentQuote, setCurrentQuote] = useState<any>(null);
   const [currentDescription, setCurrentDescription] = useState("");
   const [quotes, setQuotes] = useState<any[]>([]);
@@ -110,6 +112,7 @@ const Index = () => {
       toast.success("Offert sparad!");
       setCurrentQuote(null);
       setCurrentDescription("");
+      setIsEditing(false);
       await loadQuotes();
     } catch (error: any) {
       console.error('Error saving quote:', error);
@@ -117,6 +120,47 @@ const Index = () => {
     } finally {
       setIsSaving(false);
     }
+  };
+
+  const handleEditQuote = () => {
+    setIsEditing(true);
+  };
+
+  const handleSaveEdit = async (editedQuote: any) => {
+    if (!currentQuote || !user) return;
+
+    setIsSaving(true);
+    try {
+      // Save as new quote with edited data
+      const { error } = await supabase
+        .from('quotes')
+        .insert({
+          user_id: user.id,
+          title: editedQuote.title,
+          description: currentDescription,
+          generated_quote: currentQuote,
+          edited_quote: editedQuote,
+          is_edited: true,
+          status: 'draft'
+        });
+
+      if (error) throw error;
+
+      toast.success("Redigerad offert sparad!");
+      setCurrentQuote(null);
+      setCurrentDescription("");
+      setIsEditing(false);
+      await loadQuotes();
+    } catch (error: any) {
+      console.error('Error saving edited quote:', error);
+      toast.error(error.message || "Kunde inte spara redigerad offert");
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleCancelEdit = () => {
+    setIsEditing(false);
   };
 
   const handleLogout = async () => {
@@ -168,10 +212,20 @@ const Index = () => {
           <div className="space-y-6">
             <QuoteForm onGenerate={handleGenerateQuote} isGenerating={isGenerating} />
             
-            {currentQuote && (
+            {currentQuote && !isEditing && (
               <QuoteDisplay 
                 quote={currentQuote} 
                 onSave={handleSaveQuote}
+                onEdit={handleEditQuote}
+                isSaving={isSaving}
+              />
+            )}
+
+            {currentQuote && isEditing && (
+              <QuoteEditor
+                quote={currentQuote}
+                onSave={handleSaveEdit}
+                onCancel={handleCancelEdit}
                 isSaving={isSaving}
               />
             )}
