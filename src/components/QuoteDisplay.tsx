@@ -43,12 +43,13 @@ interface Quote {
 
 interface QuoteDisplayProps {
   quote: Quote;
-  onSave: () => void;
+  onSave?: () => void;
   onEdit?: () => void;
+  onClose?: () => void;
   isSaving: boolean;
 }
 
-const QuoteDisplay = ({ quote, onSave, onEdit, isSaving }: QuoteDisplayProps) => {
+const QuoteDisplay = ({ quote, onSave, onEdit, onClose, isSaving }: QuoteDisplayProps) => {
   const [companySettings, setCompanySettings] = useState<any>(null);
   const [logoImage, setLogoImage] = useState<string | null>(null);
 
@@ -381,10 +382,17 @@ const QuoteDisplay = ({ quote, onSave, onEdit, isSaving }: QuoteDisplayProps) =>
                 Redigera
               </Button>
             )}
-            <Button size="sm" onClick={onSave} disabled={isSaving}>
-              <Save className="h-4 w-4 mr-1" />
-              {isSaving ? "Sparar..." : "Spara"}
-            </Button>
+            {onSave && (
+              <Button size="sm" onClick={onSave} disabled={isSaving}>
+                <Save className="h-4 w-4 mr-1" />
+                {isSaving ? "Sparar..." : "Spara"}
+              </Button>
+            )}
+            {onClose && (
+              <Button variant="outline" size="sm" onClick={onClose}>
+                Stäng
+              </Button>
+            )}
           </div>
         </div>
       </CardHeader>

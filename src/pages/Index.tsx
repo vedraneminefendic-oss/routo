@@ -20,6 +20,7 @@ const Index = () => {
   const [currentQuote, setCurrentQuote] = useState<any>(null);
   const [currentDescription, setCurrentDescription] = useState("");
   const [quotes, setQuotes] = useState<any[]>([]);
+  const [viewingQuote, setViewingQuote] = useState<any>(null);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -163,6 +164,21 @@ const Index = () => {
     setIsEditing(false);
   };
 
+  const handleQuoteClick = (quote: any) => {
+    // Show the saved quote
+    const quoteToDisplay = quote.edited_quote || quote.generated_quote;
+    setViewingQuote(quote);
+    setCurrentQuote(quoteToDisplay);
+    setCurrentDescription(quote.description);
+  };
+
+  const handleCloseQuote = () => {
+    setViewingQuote(null);
+    setCurrentQuote(null);
+    setCurrentDescription("");
+    setIsEditing(false);
+  };
+
   const handleLogout = async () => {
     await supabase.auth.signOut();
     navigate("/auth");
@@ -215,8 +231,9 @@ const Index = () => {
             {currentQuote && !isEditing && (
               <QuoteDisplay 
                 quote={currentQuote} 
-                onSave={handleSaveQuote}
+                onSave={viewingQuote ? undefined : handleSaveQuote}
                 onEdit={handleEditQuote}
+                onClose={viewingQuote ? handleCloseQuote : undefined}
                 isSaving={isSaving}
               />
             )}
@@ -241,7 +258,7 @@ const Index = () => {
                 </CardDescription>
               </CardHeader>
               <CardContent>
-                <QuoteList quotes={quotes} />
+                <QuoteList quotes={quotes} onQuoteClick={handleQuoteClick} />
               </CardContent>
             </Card>
           </div>
