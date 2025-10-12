@@ -14,34 +14,291 @@ export type Database = {
   }
   public: {
     Tables: {
+      company_settings: {
+        Row: {
+          address: string | null
+          company_name: string
+          created_at: string | null
+          email: string | null
+          has_f_skatt: boolean | null
+          id: string
+          logo_url: string | null
+          org_number: string | null
+          phone: string | null
+          updated_at: string | null
+          user_id: string
+          vat_number: string | null
+        }
+        Insert: {
+          address?: string | null
+          company_name: string
+          created_at?: string | null
+          email?: string | null
+          has_f_skatt?: boolean | null
+          id?: string
+          logo_url?: string | null
+          org_number?: string | null
+          phone?: string | null
+          updated_at?: string | null
+          user_id: string
+          vat_number?: string | null
+        }
+        Update: {
+          address?: string | null
+          company_name?: string
+          created_at?: string | null
+          email?: string | null
+          has_f_skatt?: boolean | null
+          id?: string
+          logo_url?: string | null
+          org_number?: string | null
+          phone?: string | null
+          updated_at?: string | null
+          user_id?: string
+          vat_number?: string | null
+        }
+        Relationships: []
+      }
+      hourly_rates: {
+        Row: {
+          created_at: string | null
+          id: string
+          rate: number
+          updated_at: string | null
+          user_id: string
+          work_type: string
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          rate: number
+          updated_at?: string | null
+          user_id: string
+          work_type: string
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          rate?: number
+          updated_at?: string | null
+          user_id?: string
+          work_type?: string
+        }
+        Relationships: []
+      }
+      quote_payments: {
+        Row: {
+          amount: number
+          created_at: string | null
+          id: string
+          paid_at: string | null
+          quote_id: string
+          status: string
+          stripe_payment_id: string
+          user_id: string
+        }
+        Insert: {
+          amount: number
+          created_at?: string | null
+          id?: string
+          paid_at?: string | null
+          quote_id: string
+          status: string
+          stripe_payment_id: string
+          user_id: string
+        }
+        Update: {
+          amount?: number
+          created_at?: string | null
+          id?: string
+          paid_at?: string | null
+          quote_id?: string
+          status?: string
+          stripe_payment_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "quote_payments_quote_id_fkey"
+            columns: ["quote_id"]
+            isOneToOne: false
+            referencedRelation: "quotes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      quote_recipients: {
+        Row: {
+          created_at: string | null
+          customer_address: string | null
+          customer_email: string
+          customer_name: string
+          customer_personnummer: string | null
+          id: string
+          ownership_share: number | null
+          property_designation: string | null
+          quote_id: string
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          customer_address?: string | null
+          customer_email: string
+          customer_name: string
+          customer_personnummer?: string | null
+          id?: string
+          ownership_share?: number | null
+          property_designation?: string | null
+          quote_id: string
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          customer_address?: string | null
+          customer_email?: string
+          customer_name?: string
+          customer_personnummer?: string | null
+          id?: string
+          ownership_share?: number | null
+          property_designation?: string | null
+          quote_id?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "quote_recipients_quote_id_fkey"
+            columns: ["quote_id"]
+            isOneToOne: false
+            referencedRelation: "quotes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      quote_signatures: {
+        Row: {
+          id: string
+          ip_address: string
+          property_designation: string | null
+          quote_id: string
+          signed_at: string
+          signer_email: string
+          signer_name: string
+          signer_personnummer: string | null
+          user_agent: string | null
+        }
+        Insert: {
+          id?: string
+          ip_address: string
+          property_designation?: string | null
+          quote_id: string
+          signed_at?: string
+          signer_email: string
+          signer_name: string
+          signer_personnummer?: string | null
+          user_agent?: string | null
+        }
+        Update: {
+          id?: string
+          ip_address?: string
+          property_designation?: string | null
+          quote_id?: string
+          signed_at?: string
+          signer_email?: string
+          signer_name?: string
+          signer_personnummer?: string | null
+          user_agent?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "quote_signatures_quote_id_fkey"
+            columns: ["quote_id"]
+            isOneToOne: false
+            referencedRelation: "quotes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      quote_views: {
+        Row: {
+          id: string
+          ip_address: string | null
+          quote_id: string
+          user_agent: string | null
+          viewed_at: string | null
+        }
+        Insert: {
+          id?: string
+          ip_address?: string | null
+          quote_id: string
+          user_agent?: string | null
+          viewed_at?: string | null
+        }
+        Update: {
+          id?: string
+          ip_address?: string | null
+          quote_id?: string
+          user_agent?: string | null
+          viewed_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "quote_views_quote_id_fkey"
+            columns: ["quote_id"]
+            isOneToOne: false
+            referencedRelation: "quotes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       quotes: {
         Row: {
           created_at: string
           description: string
+          edited_quote: Json | null
           generated_quote: Json
           id: string
+          is_edited: boolean | null
+          locked: boolean | null
+          quote_status: Database["public"]["Enums"]["quote_status"] | null
+          sent_at: string | null
+          signed_at: string | null
           status: string | null
           title: string
+          unique_token: string | null
           updated_at: string
           user_id: string
         }
         Insert: {
           created_at?: string
           description: string
+          edited_quote?: Json | null
           generated_quote: Json
           id?: string
+          is_edited?: boolean | null
+          locked?: boolean | null
+          quote_status?: Database["public"]["Enums"]["quote_status"] | null
+          sent_at?: string | null
+          signed_at?: string | null
           status?: string | null
           title: string
+          unique_token?: string | null
           updated_at?: string
           user_id: string
         }
         Update: {
           created_at?: string
           description?: string
+          edited_quote?: Json | null
           generated_quote?: Json
           id?: string
+          is_edited?: boolean | null
+          locked?: boolean | null
+          quote_status?: Database["public"]["Enums"]["quote_status"] | null
+          sent_at?: string | null
+          signed_at?: string | null
           status?: string | null
           title?: string
+          unique_token?: string | null
           updated_at?: string
           user_id?: string
         }
@@ -55,7 +312,7 @@ export type Database = {
       [_ in never]: never
     }
     Enums: {
-      [_ in never]: never
+      quote_status: "draft" | "sent" | "signed"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -182,6 +439,8 @@ export type CompositeTypes<
 
 export const Constants = {
   public: {
-    Enums: {},
+    Enums: {
+      quote_status: ["draft", "sent", "signed"],
+    },
   },
 } as const
