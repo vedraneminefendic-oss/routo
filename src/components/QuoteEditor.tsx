@@ -116,11 +116,11 @@ const QuoteEditor = ({ quote, onSave, onCancel, isSaving }: QuoteEditorProps) =>
   };
 
   return (
-    <Card className="border-2 border-primary/20">
+    <Card className="border-2 border-border bg-card shadow-sm">
       <CardHeader>
         <div className="flex items-start justify-between">
           <div>
-            <CardTitle className="flex items-center gap-2">
+            <CardTitle className="flex items-center gap-2 text-secondary">
               <Edit className="h-5 w-5 text-primary" />
               Redigera offert
             </CardTitle>
@@ -156,7 +156,7 @@ const QuoteEditor = ({ quote, onSave, onCancel, isSaving }: QuoteEditorProps) =>
 
         {/* Work Items */}
         <div>
-          <h3 className="font-semibold text-lg mb-3">Arbetsmoment</h3>
+          <h3 className="font-semibold text-lg mb-3 text-secondary">Arbetsmoment</h3>
           <div className="space-y-4">
             {editedQuote.workItems.map((item, index) => (
               <div key={index} className="p-4 rounded-lg border bg-muted/30 space-y-3">
@@ -213,7 +213,7 @@ const QuoteEditor = ({ quote, onSave, onCancel, isSaving }: QuoteEditorProps) =>
 
         {/* Materials */}
         <div>
-          <h3 className="font-semibold text-lg mb-3">Material</h3>
+          <h3 className="font-semibold text-lg mb-3 text-secondary">Material</h3>
           <div className="space-y-4">
             {editedQuote.materials.map((material, index) => (
               <div key={index} className="p-4 rounded-lg border bg-muted/30 space-y-3">
@@ -268,8 +268,8 @@ const QuoteEditor = ({ quote, onSave, onCancel, isSaving }: QuoteEditorProps) =>
         <Separator />
 
         {/* Summary (Read-only, auto-calculated) */}
-        <div className="bg-primary/5 rounded-lg p-6">
-          <h3 className="font-semibold text-lg mb-4">Sammanfattning</h3>
+        <div className="bg-secondary/5 border border-secondary/10 rounded-lg p-6">
+          <h3 className="font-semibold text-lg mb-4 text-secondary">Sammanfattning</h3>
           <div className="space-y-2">
             <div className="flex justify-between text-sm">
               <span>Arbetskostnad</span>
@@ -293,7 +293,7 @@ const QuoteEditor = ({ quote, onSave, onCancel, isSaving }: QuoteEditorProps) =>
               <span>{formatCurrency(editedQuote.summary.totalWithVAT)}</span>
             </div>
             <Separator className="my-3" />
-            <div className="flex justify-between text-accent">
+            <div className="flex justify-between text-secondary">
               <span className="font-medium">ROT-avdrag (50%)</span>
               <span className="font-semibold">-{formatCurrency(editedQuote.summary.rotDeduction)}</span>
             </div>

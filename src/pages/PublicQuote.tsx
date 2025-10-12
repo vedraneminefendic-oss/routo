@@ -393,7 +393,7 @@ const PublicQuote = () => {
   const quoteData = quote.edited_quote || quote.generated_quote;
 
   return (
-    <div className="min-h-screen bg-muted/30 py-8 px-4">
+    <div className="min-h-screen bg-background py-8 px-4">
       <div className="max-w-4xl mx-auto space-y-6">
         {/* Company Header */}
         <Card>
@@ -407,7 +407,7 @@ const PublicQuote = () => {
                     className="h-16 mb-4"
                   />
                 )}
-                <CardTitle className="text-2xl">{quote.company_name}</CardTitle>
+                <CardTitle className="text-2xl text-secondary">{quote.company_name}</CardTitle>
                 <CardDescription className="mt-2 space-y-1">
                   {quote.company_address && (
                     <div className="flex items-center gap-2">
@@ -442,8 +442,8 @@ const PublicQuote = () => {
           <CardHeader>
             <div className="flex items-center justify-between">
               <div>
-                <CardTitle className="flex items-center gap-2">
-                  <FileText className="h-5 w-5" />
+                <CardTitle className="flex items-center gap-2 text-secondary">
+                  <FileText className="h-5 w-5 text-primary" />
                   {quoteData.title}
                 </CardTitle>
                 <CardDescription className="mt-1">
@@ -458,10 +458,10 @@ const PublicQuote = () => {
           <CardContent className="space-y-6">
             {/* Work Items */}
             <div>
-              <h3 className="font-semibold text-lg mb-3">Arbetsmoment</h3>
+              <h3 className="font-semibold text-lg mb-3 text-secondary">Arbetsmoment</h3>
               <div className="space-y-3">
                 {quoteData.workItems.map((item, index) => (
-                  <div key={index} className="bg-muted/50 rounded-lg p-4">
+                  <div key={index} className="bg-muted/30 border border-border rounded-lg p-4">
                     <div className="flex justify-between items-start mb-2">
                       <div>
                         <h4 className="font-medium">{item.name}</h4>
@@ -485,10 +485,10 @@ const PublicQuote = () => {
             {quoteData.materials && quoteData.materials.length > 0 && (
               <>
                 <div>
-                  <h3 className="font-semibold text-lg mb-3">Material</h3>
+                  <h3 className="font-semibold text-lg mb-3 text-secondary">Material</h3>
                   <div className="space-y-3">
                     {quoteData.materials.map((material, index) => (
-                      <div key={index} className="bg-muted/50 rounded-lg p-4">
+                      <div key={index} className="bg-muted/30 border border-border rounded-lg p-4">
                         <div className="flex justify-between items-start">
                           <div>
                             <h4 className="font-medium">{material.name}</h4>
@@ -562,7 +562,7 @@ const PublicQuote = () => {
         {/* Response Form */}
         <Card>
           <CardHeader>
-            <CardTitle>Svara på offerten</CardTitle>
+            <CardTitle className="text-secondary">Svara på offerten</CardTitle>
             <CardDescription>
               Fyll i dina uppgifter och välj om du accepterar eller avvisar offerten
             </CardDescription>
@@ -631,18 +631,19 @@ const PublicQuote = () => {
                 <div
                   className={`flex items-center space-x-3 p-4 rounded-lg border-2 cursor-pointer transition-colors ${
                     response === "accepted"
-                      ? "border-green-500 bg-green-50 dark:bg-green-950"
-                      : "border-muted hover:border-green-300"
+                      ? "border-secondary/20 bg-secondary/10"
+                      : "border-muted hover:border-secondary/40"
                   }`}
                   onClick={() => setResponse("accepted")}
                 >
                   <Checkbox
                     checked={response === "accepted"}
                     onCheckedChange={(checked) => setResponse(checked ? "accepted" : null)}
+                    className="data-[state=checked]:bg-secondary data-[state=checked]:border-secondary"
                   />
                   <div className="flex-1">
                     <div className="flex items-center gap-2">
-                      <CheckCircle2 className="h-5 w-5 text-green-600" />
+                      <CheckCircle2 className="h-5 w-5 text-secondary" />
                       <span className="font-semibold">Jag accepterar offerten</span>
                     </div>
                     <p className="text-sm text-muted-foreground mt-1">

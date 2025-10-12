@@ -250,7 +250,7 @@ const CompanySettings = ({ userId }: CompanySettingsProps) => {
             Visas på offerten om aktiverad
           </p>
         </div>
-        <Switch id="has_f_skatt" {...register("has_f_skatt")} />
+        <Switch id="has_f_skatt" {...register("has_f_skatt")} className="data-[state=checked]:bg-secondary" />
       </div>
 
       <Button type="submit" disabled={saving} className="w-full">

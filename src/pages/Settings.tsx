@@ -49,7 +49,7 @@ const Settings = () => {
               <ArrowLeft className="h-5 w-5" />
             </Button>
             <div>
-              <h1 className="text-2xl font-bold">Inställningar</h1>
+              <h1 className="text-2xl font-bold text-secondary">Inställningar</h1>
               <p className="text-sm text-muted-foreground">Anpassa ditt offertverktyg</p>
             </div>
           </div>
@@ -59,11 +59,11 @@ const Settings = () => {
       <main className="container mx-auto px-4 py-8">
         <Tabs defaultValue="company" className="space-y-6">
           <TabsList className="grid w-full max-w-md grid-cols-2">
-            <TabsTrigger value="company" className="flex items-center gap-2">
+            <TabsTrigger value="company" className="flex items-center gap-2 data-[state=active]:text-primary data-[state=active]:font-medium">
               <Building2 className="h-4 w-4" />
               Företag
             </TabsTrigger>
-            <TabsTrigger value="rates" className="flex items-center gap-2">
+            <TabsTrigger value="rates" className="flex items-center gap-2 data-[state=active]:text-primary data-[state=active]:font-medium">
               <Clock className="h-4 w-4" />
               Timpriser
             </TabsTrigger>
@@ -72,7 +72,7 @@ const Settings = () => {
           <TabsContent value="company">
             <Card>
               <CardHeader>
-                <CardTitle>Företagsinformation</CardTitle>
+                <CardTitle className="text-secondary">Företagsinformation</CardTitle>
                 <CardDescription>
                   Dessa uppgifter visas på alla dina offerter
                 </CardDescription>
@@ -86,7 +86,7 @@ const Settings = () => {
           <TabsContent value="rates">
             <Card>
               <CardHeader>
-                <CardTitle>Timpriser</CardTitle>
+                <CardTitle className="text-secondary">Timpriser</CardTitle>
                 <CardDescription>
                   Ange timpriser för olika typer av arbeten. AI:n använder dessa när den skapar offerter.
                 </CardDescription>
