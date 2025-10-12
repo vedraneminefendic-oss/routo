@@ -1,7 +1,7 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
-import { FileText, Download, Save, Edit } from "lucide-react";
+import { FileText, Download, Save, Edit, Send, ChevronDown } from "lucide-react";
 import { toast } from "sonner";
 import jsPDF from "jspdf";
 import { supabase } from "@/integrations/supabase/client";
@@ -10,7 +10,16 @@ import { QuoteStatusManager } from "@/components/QuoteStatusManager";
 import { QuoteStatusTimeline } from "@/components/QuoteStatusTimeline";
 import { QuoteStatus } from "@/hooks/useQuoteStatus";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { ChevronDown } from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 
 interface WorkItem {
   name: string;
@@ -70,6 +79,10 @@ const QuoteDisplay = ({
   const [companySettings, setCompanySettings] = useState<any>(null);
   const [logoImage, setLogoImage] = useState<string | null>(null);
   const [showTimeline, setShowTimeline] = useState(false);
+  const [showEmailDialog, setShowEmailDialog] = useState(false);
+  const [recipientEmail, setRecipientEmail] = useState("");
+  const [recipientName, setRecipientName] = useState("");
+  const [isSendingEmail, setIsSendingEmail] = useState(false);
 
   useEffect(() => {
     loadCompanySettings();
@@ -107,6 +120,47 @@ const QuoteDisplay = ({
       }
     } catch (error) {
       console.error('Error loading company settings:', error);
+    }
+  };
+
+  const handleSendEmail = async () => {
+    if (!recipientEmail || !recipientName) {
+      toast.error("Vänligen fyll i både namn och e-postadress");
+      return;
+    }
+
+    if (!quoteId) {
+      toast.error("Offerten måste sparas innan den kan skickas");
+      return;
+    }
+
+    setIsSendingEmail(true);
+
+    try {
+      const { data, error } = await supabase.functions.invoke("send-quote-email", {
+        body: {
+          quoteId,
+          recipientEmail,
+          recipientName,
+        },
+      });
+
+      if (error) throw error;
+
+      toast.success(`E-post skickad till ${recipientEmail}!`);
+      
+      setShowEmailDialog(false);
+      setRecipientEmail("");
+      setRecipientName("");
+      
+      if (onStatusChanged) {
+        onStatusChanged();
+      }
+    } catch (error: any) {
+      console.error("Error sending email:", error);
+      toast.error(error.message || "Kunde inte skicka e-post. Försök igen.");
+    } finally {
+      setIsSendingEmail(false);
     }
   };
 
@@ -401,6 +455,52 @@ const QuoteDisplay = ({
             )}
           </div>
           <div className="flex gap-2">
+            {quoteId && currentStatus && currentStatus !== "accepted" && currentStatus !== "rejected" && currentStatus !== "completed" && (
+              <Dialog open={showEmailDialog} onOpenChange={setShowEmailDialog}>
+                <DialogTrigger asChild>
+                  <Button variant="default" size="sm">
+                    <Send className="h-4 w-4 mr-1" />
+                    Skicka
+                  </Button>
+                </DialogTrigger>
+                <DialogContent>
+                  <DialogHeader>
+                    <DialogTitle>Skicka offert via e-post</DialogTitle>
+                    <DialogDescription>
+                      Ange mottagarens uppgifter för att skicka offerten.
+                    </DialogDescription>
+                  </DialogHeader>
+                  <div className="space-y-4 py-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="recipientName">Mottagarens namn</Label>
+                      <Input
+                        id="recipientName"
+                        placeholder="Johan Andersson"
+                        value={recipientName}
+                        onChange={(e) => setRecipientName(e.target.value)}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="recipientEmail">E-postadress</Label>
+                      <Input
+                        id="recipientEmail"
+                        type="email"
+                        placeholder="johan@example.com"
+                        value={recipientEmail}
+                        onChange={(e) => setRecipientEmail(e.target.value)}
+                      />
+                    </div>
+                    <Button 
+                      onClick={handleSendEmail} 
+                      className="w-full"
+                      disabled={isSendingEmail}
+                    >
+                      {isSendingEmail ? "Skickar..." : "Skicka e-post"}
+                    </Button>
+                  </div>
+                </DialogContent>
+              </Dialog>
+            )}
             <Button variant="outline" size="sm" onClick={handleExport}>
               <Download className="h-4 w-4 mr-1" />
               PDF
