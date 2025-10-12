@@ -1,0 +1,324 @@
+import { useState, useEffect } from "react";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Separator } from "@/components/ui/separator";
+import { Textarea } from "@/components/ui/textarea";
+import { Edit, Save, X } from "lucide-react";
+import { toast } from "sonner";
+
+interface WorkItem {
+  name: string;
+  description: string;
+  hours: number;
+  hourlyRate: number;
+  subtotal: number;
+}
+
+interface Material {
+  name: string;
+  quantity: number;
+  unit: string;
+  pricePerUnit: number;
+  subtotal: number;
+}
+
+interface Summary {
+  workCost: number;
+  materialCost: number;
+  totalBeforeVAT: number;
+  vat: number;
+  totalWithVAT: number;
+  rotDeduction: number;
+  customerPays: number;
+}
+
+interface Quote {
+  title: string;
+  workItems: WorkItem[];
+  materials: Material[];
+  summary: Summary;
+  notes?: string;
+}
+
+interface QuoteEditorProps {
+  quote: Quote;
+  onSave: (editedQuote: Quote) => void;
+  onCancel: () => void;
+  isSaving?: boolean;
+}
+
+const QuoteEditor = ({ quote, onSave, onCancel, isSaving }: QuoteEditorProps) => {
+  const [editedQuote, setEditedQuote] = useState<Quote>(JSON.parse(JSON.stringify(quote)));
+
+  const formatCurrency = (amount: number) => {
+    return new Intl.NumberFormat('sv-SE', {
+      style: 'currency',
+      currency: 'SEK',
+      minimumFractionDigits: 0,
+    }).format(amount);
+  };
+
+  const recalculate = (updated: Quote) => {
+    // Recalculate work items subtotals
+    const workItems = updated.workItems.map(item => ({
+      ...item,
+      subtotal: item.hours * item.hourlyRate,
+    }));
+
+    // Recalculate materials subtotals
+    const materials = updated.materials.map(material => ({
+      ...material,
+      subtotal: material.quantity * material.pricePerUnit,
+    }));
+
+    // Calculate summary
+    const workCost = workItems.reduce((sum, item) => sum + item.subtotal, 0);
+    const materialCost = materials.reduce((sum, material) => sum + material.subtotal, 0);
+    const totalBeforeVAT = workCost + materialCost;
+    const vat = totalBeforeVAT * 0.25;
+    const totalWithVAT = totalBeforeVAT + vat;
+    const rotDeduction = workCost * 0.5;
+    const customerPays = totalWithVAT - rotDeduction;
+
+    return {
+      ...updated,
+      workItems,
+      materials,
+      summary: {
+        workCost,
+        materialCost,
+        totalBeforeVAT,
+        vat,
+        totalWithVAT,
+        rotDeduction,
+        customerPays,
+      },
+    };
+  };
+
+  const updateWorkItem = (index: number, field: keyof WorkItem, value: any) => {
+    const updated = { ...editedQuote };
+    updated.workItems[index] = { ...updated.workItems[index], [field]: value };
+    setEditedQuote(recalculate(updated));
+  };
+
+  const updateMaterial = (index: number, field: keyof Material, value: any) => {
+    const updated = { ...editedQuote };
+    updated.materials[index] = { ...updated.materials[index], [field]: value };
+    setEditedQuote(recalculate(updated));
+  };
+
+  const handleSave = () => {
+    onSave(editedQuote);
+    toast.success("Ändringar sparade!");
+  };
+
+  return (
+    <Card className="border-2 border-primary/20">
+      <CardHeader>
+        <div className="flex items-start justify-between">
+          <div>
+            <CardTitle className="flex items-center gap-2">
+              <Edit className="h-5 w-5 text-primary" />
+              Redigera offert
+            </CardTitle>
+            <CardDescription className="mt-1">
+              Ändringar uppdateras automatiskt i realtid
+            </CardDescription>
+          </div>
+          <div className="flex gap-2">
+            <Button variant="outline" size="sm" onClick={onCancel}>
+              <X className="h-4 w-4 mr-1" />
+              Avbryt
+            </Button>
+            <Button size="sm" onClick={handleSave} disabled={isSaving}>
+              <Save className="h-4 w-4 mr-1" />
+              {isSaving ? "Sparar..." : "Spara"}
+            </Button>
+          </div>
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-6">
+        {/* Title */}
+        <div>
+          <Label htmlFor="title">Titel</Label>
+          <Input
+            id="title"
+            value={editedQuote.title}
+            onChange={(e) => setEditedQuote({ ...editedQuote, title: e.target.value })}
+            className="mt-1"
+          />
+        </div>
+
+        <Separator />
+
+        {/* Work Items */}
+        <div>
+          <h3 className="font-semibold text-lg mb-3">Arbetsmoment</h3>
+          <div className="space-y-4">
+            {editedQuote.workItems.map((item, index) => (
+              <div key={index} className="p-4 rounded-lg border bg-muted/30 space-y-3">
+                <div>
+                  <Label className="text-xs">Namn</Label>
+                  <Input
+                    value={item.name}
+                    onChange={(e) => updateWorkItem(index, 'name', e.target.value)}
+                    className="mt-1"
+                  />
+                </div>
+                <div>
+                  <Label className="text-xs">Beskrivning</Label>
+                  <Textarea
+                    value={item.description}
+                    onChange={(e) => updateWorkItem(index, 'description', e.target.value)}
+                    className="mt-1"
+                    rows={2}
+                  />
+                </div>
+                <div className="grid grid-cols-3 gap-3">
+                  <div>
+                    <Label className="text-xs">Timmar</Label>
+                    <Input
+                      type="number"
+                      value={item.hours}
+                      onChange={(e) => updateWorkItem(index, 'hours', parseFloat(e.target.value) || 0)}
+                      className="mt-1"
+                      step="0.5"
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-xs">Timpris (kr)</Label>
+                    <Input
+                      type="number"
+                      value={item.hourlyRate}
+                      onChange={(e) => updateWorkItem(index, 'hourlyRate', parseFloat(e.target.value) || 0)}
+                      className="mt-1"
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-xs">Summa</Label>
+                    <div className="mt-1 h-10 flex items-center px-3 rounded-md bg-muted font-semibold">
+                      {formatCurrency(item.subtotal)}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <Separator />
+
+        {/* Materials */}
+        <div>
+          <h3 className="font-semibold text-lg mb-3">Material</h3>
+          <div className="space-y-4">
+            {editedQuote.materials.map((material, index) => (
+              <div key={index} className="p-4 rounded-lg border bg-muted/30 space-y-3">
+                <div>
+                  <Label className="text-xs">Namn</Label>
+                  <Input
+                    value={material.name}
+                    onChange={(e) => updateMaterial(index, 'name', e.target.value)}
+                    className="mt-1"
+                  />
+                </div>
+                <div className="grid grid-cols-4 gap-3">
+                  <div>
+                    <Label className="text-xs">Antal</Label>
+                    <Input
+                      type="number"
+                      value={material.quantity}
+                      onChange={(e) => updateMaterial(index, 'quantity', parseFloat(e.target.value) || 0)}
+                      className="mt-1"
+                      step="0.1"
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-xs">Enhet</Label>
+                    <Input
+                      value={material.unit}
+                      onChange={(e) => updateMaterial(index, 'unit', e.target.value)}
+                      className="mt-1"
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-xs">Pris/enhet (kr)</Label>
+                    <Input
+                      type="number"
+                      value={material.pricePerUnit}
+                      onChange={(e) => updateMaterial(index, 'pricePerUnit', parseFloat(e.target.value) || 0)}
+                      className="mt-1"
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-xs">Summa</Label>
+                    <div className="mt-1 h-10 flex items-center px-3 rounded-md bg-muted font-semibold">
+                      {formatCurrency(material.subtotal)}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <Separator />
+
+        {/* Summary (Read-only, auto-calculated) */}
+        <div className="bg-primary/5 rounded-lg p-6">
+          <h3 className="font-semibold text-lg mb-4">Sammanfattning</h3>
+          <div className="space-y-2">
+            <div className="flex justify-between text-sm">
+              <span>Arbetskostnad</span>
+              <span className="font-medium">{formatCurrency(editedQuote.summary.workCost)}</span>
+            </div>
+            <div className="flex justify-between text-sm">
+              <span>Materialkostnad</span>
+              <span className="font-medium">{formatCurrency(editedQuote.summary.materialCost)}</span>
+            </div>
+            <Separator className="my-2" />
+            <div className="flex justify-between text-sm">
+              <span>Summa exkl. moms</span>
+              <span className="font-medium">{formatCurrency(editedQuote.summary.totalBeforeVAT)}</span>
+            </div>
+            <div className="flex justify-between text-sm">
+              <span>Moms (25%)</span>
+              <span className="font-medium">{formatCurrency(editedQuote.summary.vat)}</span>
+            </div>
+            <div className="flex justify-between font-semibold">
+              <span>Totalt inkl. moms</span>
+              <span>{formatCurrency(editedQuote.summary.totalWithVAT)}</span>
+            </div>
+            <Separator className="my-3" />
+            <div className="flex justify-between text-accent">
+              <span className="font-medium">ROT-avdrag (50%)</span>
+              <span className="font-semibold">-{formatCurrency(editedQuote.summary.rotDeduction)}</span>
+            </div>
+            <div className="flex justify-between text-lg font-bold text-primary">
+              <span>Kund betalar</span>
+              <span>{formatCurrency(editedQuote.summary.customerPays)}</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Notes */}
+        <div>
+          <Label htmlFor="notes">Anteckningar</Label>
+          <Textarea
+            id="notes"
+            value={editedQuote.notes || ""}
+            onChange={(e) => setEditedQuote({ ...editedQuote, notes: e.target.value })}
+            className="mt-1"
+            rows={3}
+            placeholder="Lägg till anteckningar..."
+          />
+        </div>
+      </CardContent>
+    </Card>
+  );
+};
+
+export default QuoteEditor;

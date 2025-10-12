@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Wrench, LogOut, Sparkles } from "lucide-react";
+import { Wrench, LogOut, Settings as SettingsIcon } from "lucide-react";
 import { toast } from "sonner";
 import QuoteForm from "@/components/QuoteForm";
 import QuoteDisplay from "@/components/QuoteDisplay";
@@ -138,10 +138,16 @@ const Index = () => {
                 <p className="text-sm text-muted-foreground">Smarta offerter på minuter</p>
               </div>
             </div>
-            <Button variant="outline" onClick={handleLogout}>
-              <LogOut className="h-4 w-4 mr-2" />
-              Logga ut
-            </Button>
+            <div className="flex gap-2">
+              <Button variant="outline" onClick={() => navigate("/settings")}>
+                <SettingsIcon className="h-4 w-4 mr-2" />
+                Inställningar
+              </Button>
+              <Button variant="outline" onClick={handleLogout}>
+                <LogOut className="h-4 w-4 mr-2" />
+                Logga ut
+              </Button>
+            </div>
           </div>
         </div>
       </header>
