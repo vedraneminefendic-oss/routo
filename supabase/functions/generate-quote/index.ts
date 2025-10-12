@@ -1,5 +1,6 @@
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.75.0';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -12,14 +13,46 @@ serve(async (req) => {
   }
 
   try {
-    const { description } = await req.json();
+    const { description, user_id } = await req.json();
     const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
+    const SUPABASE_URL = Deno.env.get('SUPABASE_URL');
+    const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
 
     if (!LOVABLE_API_KEY) {
       throw new Error('LOVABLE_API_KEY not configured');
     }
 
     console.log('Generating quote for:', description);
+
+    // Skapa Supabase-klient för att hämta timpriser
+    const supabaseClient = createClient(
+      SUPABASE_URL!,
+      SUPABASE_SERVICE_ROLE_KEY!
+    );
+
+    // Hämta användarens timpriser
+    const { data: hourlyRates, error: ratesError } = await supabaseClient
+      .from('hourly_rates')
+      .select('work_type, rate')
+      .eq('user_id', user_id);
+
+    if (ratesError) {
+      console.error('Error fetching hourly rates:', ratesError);
+    }
+
+    // Bygg rates-text för prompten
+    let ratesText = '';
+    let hasCustomRates = false;
+    
+    if (hourlyRates && hourlyRates.length > 0) {
+      ratesText = 'Använd EXAKT dessa timpriser som användaren har angivit:\n' + 
+                  hourlyRates.map(r => `- ${r.work_type}: ${r.rate} kr/h`).join('\n');
+      hasCustomRates = true;
+      console.log('Using custom hourly rates:', hourlyRates);
+    } else {
+      ratesText = 'Användaren har inte angivit specifika timpriser. Använd standardpris 650 kr/h.';
+      console.log('No custom rates found, using default 650 kr/h');
+    }
 
     const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
       method: 'POST',
@@ -33,6 +66,10 @@ serve(async (req) => {
           {
             role: 'system',
             content: `Du är en AI-assistent som hjälper hantverkare att skapa professionella offerter. 
+
+${ratesText}
+
+Matcha arbetstypen i offerten mot beskrivningen och använd korrekt timpris för varje workItem. Om beskrivningen innehåller flera typer av arbeten, använd det timpris som passar bäst för varje specifikt arbetsmoment.
             
 Baserat på uppdragsbeskrivningen ska du returnera en strukturerad offert i JSON-format med följande struktur:
 
@@ -70,7 +107,7 @@ Baserat på uppdragsbeskrivningen ska du returnera en strukturerad offert i JSON
 
 Viktig information:
 - Använd realistiska svenska priser (2025)
-- Timkostnad 600-750 kr beroende på kompetens
+- Använd de angivna timpriserna ovan för varje arbetsmoment
 - ROT-avdrag är 50% av arbetskostnaden (max 50 000 kr per person/år)
 - Inkludera moms (25%)
 - Specificera material och kvantiteter
@@ -112,7 +149,10 @@ Viktig information:
     console.log('Generated quote successfully');
 
     return new Response(
-      JSON.stringify({ quote: generatedQuote }),
+      JSON.stringify({ 
+        quote: generatedQuote,
+        hasCustomRates 
+      }),
       { 
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         status: 200 

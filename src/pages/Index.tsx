@@ -64,15 +64,24 @@ const Index = () => {
     
     try {
       const { data, error } = await supabase.functions.invoke('generate-quote', {
-        body: { description }
+        body: { 
+          description,
+          user_id: user?.id 
+        }
       });
 
       if (error) throw error;
-
-      if (data?.quote) {
-        setCurrentQuote(data.quote);
-        toast.success("Offert genererad!");
+      
+      setCurrentQuote(data.quote);
+      
+      // Visa varning om inga anpassade timpriser användes
+      if (!data.hasCustomRates) {
+        toast.warning("Du har inte lagt in några timpriser i inställningarna. Använder standardpris 650 kr/h.", {
+          duration: 5000
+        });
       }
+      
+      toast.success("Offert genererad!");
     } catch (error: any) {
       console.error('Error generating quote:', error);
       toast.error(error.message || "Kunde inte generera offert");
