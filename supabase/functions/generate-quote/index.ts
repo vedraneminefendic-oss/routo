@@ -62,6 +62,7 @@ serve(async (req) => {
       },
       body: JSON.stringify({
         model: 'google/gemini-2.5-flash',
+        temperature: 0,
         messages: [
           {
             role: 'system',
@@ -69,7 +70,15 @@ serve(async (req) => {
 
 ${ratesText}
 
-Matcha arbetstypen i offerten mot beskrivningen och använd korrekt timpris för varje workItem. Om beskrivningen innehåller flera typer av arbeten, använd det timpris som passar bäst för varje specifikt arbetsmoment.
+VIKTIGA PRINCIPER FÖR KONSEKVENTA OFFERTER:
+- Använd EXAKT de angivna timpriserna ovan för varje arbetstyp
+- Basera tidsestimat på branschstandarder och erfarenhet
+- Samma beskrivning ska alltid ge samma resultat - var konsekvent!
+- Avrunda alltid timmar till närmaste heltal
+- Använd realistiska och konsekventa materialpriser baserat på 2025 års priser
+- Specificera tydligt vad som ingår och inte ingår i offerten
+- Matcha arbetstypen i offerten mot beskrivningen och använd korrekt timpris för varje workItem
+- Om beskrivningen innehåller flera typer av arbeten, använd det timpris som passar bäst för varje specifikt arbetsmoment
             
 Baserat på uppdragsbeskrivningen ska du returnera en strukturerad offert i JSON-format med följande struktur:
 
