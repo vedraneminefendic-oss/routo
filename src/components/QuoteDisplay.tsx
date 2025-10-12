@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { FileText, Download, Save } from "lucide-react";
 import { toast } from "sonner";
+import jsPDF from "jspdf";
 
 interface WorkItem {
   name: string;
@@ -54,7 +55,102 @@ const QuoteDisplay = ({ quote, onSave, isSaving }: QuoteDisplayProps) => {
   };
 
   const handleExport = () => {
-    toast.info("PDF-export kommer snart!");
+    const doc = new jsPDF();
+    const lineHeight = 7;
+    let y = 20;
+
+    // Title
+    doc.setFontSize(18);
+    doc.text(quote.title, 20, y);
+    y += lineHeight * 2;
+
+    // Work Items
+    doc.setFontSize(14);
+    doc.text("Arbetsmoment", 20, y);
+    y += lineHeight;
+    doc.setFontSize(10);
+    
+    quote.workItems.forEach((item) => {
+      doc.text(item.name, 20, y);
+      doc.text(formatCurrency(item.subtotal), 180, y, { align: "right" });
+      y += lineHeight * 0.8;
+      doc.setFontSize(9);
+      doc.text(item.description, 25, y);
+      y += lineHeight * 0.8;
+      doc.text(`${item.hours} timmar × ${formatCurrency(item.hourlyRate)}/tim`, 25, y);
+      y += lineHeight * 1.5;
+      doc.setFontSize(10);
+    });
+
+    y += lineHeight;
+
+    // Materials
+    doc.setFontSize(14);
+    doc.text("Material", 20, y);
+    y += lineHeight;
+    doc.setFontSize(10);
+    
+    quote.materials.forEach((material) => {
+      doc.text(material.name, 20, y);
+      doc.text(formatCurrency(material.subtotal), 180, y, { align: "right" });
+      y += lineHeight * 0.8;
+      doc.setFontSize(9);
+      doc.text(`${material.quantity} ${material.unit} × ${formatCurrency(material.pricePerUnit)}/${material.unit}`, 25, y);
+      y += lineHeight * 1.5;
+      doc.setFontSize(10);
+    });
+
+    y += lineHeight * 2;
+
+    // Summary
+    doc.setFontSize(14);
+    doc.text("Sammanfattning", 20, y);
+    y += lineHeight;
+    doc.setFontSize(10);
+    
+    doc.text("Arbetskostnad", 20, y);
+    doc.text(formatCurrency(quote.summary.workCost), 180, y, { align: "right" });
+    y += lineHeight;
+    
+    doc.text("Materialkostnad", 20, y);
+    doc.text(formatCurrency(quote.summary.materialCost), 180, y, { align: "right" });
+    y += lineHeight * 1.5;
+    
+    doc.text("Summa exkl. moms", 20, y);
+    doc.text(formatCurrency(quote.summary.totalBeforeVAT), 180, y, { align: "right" });
+    y += lineHeight;
+    
+    doc.text("Moms (25%)", 20, y);
+    doc.text(formatCurrency(quote.summary.vat), 180, y, { align: "right" });
+    y += lineHeight;
+    
+    doc.setFontSize(12);
+    doc.text("Totalt inkl. moms", 20, y);
+    doc.text(formatCurrency(quote.summary.totalWithVAT), 180, y, { align: "right" });
+    y += lineHeight * 1.5;
+    
+    doc.setFontSize(10);
+    doc.text("ROT-avdrag (50%)", 20, y);
+    doc.text(`-${formatCurrency(quote.summary.rotDeduction)}`, 180, y, { align: "right" });
+    y += lineHeight * 1.5;
+    
+    doc.setFontSize(14);
+    doc.text("Kund betalar", 20, y);
+    doc.text(formatCurrency(quote.summary.customerPays), 180, y, { align: "right" });
+
+    // Notes
+    if (quote.notes) {
+      y += lineHeight * 2;
+      doc.setFontSize(12);
+      doc.text("Anteckningar", 20, y);
+      y += lineHeight;
+      doc.setFontSize(9);
+      const splitNotes = doc.splitTextToSize(quote.notes, 170);
+      doc.text(splitNotes, 20, y);
+    }
+
+    doc.save(`${quote.title}.pdf`);
+    toast.success("PDF exporterad!");
   };
 
   return (
