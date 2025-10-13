@@ -13,7 +13,7 @@ serve(async (req) => {
   }
 
   try {
-    const { description, user_id } = await req.json();
+    const { description, user_id, customer_id, detailLevel = 'standard' } = await req.json();
     const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
     const SUPABASE_URL = Deno.env.get('SUPABASE_URL');
     const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
@@ -48,6 +48,65 @@ serve(async (req) => {
 
     if (equipmentError) {
       console.error('Error fetching equipment rates:', equipmentError);
+    }
+
+    // Hämta kundspecifik historik (om customer_id finns)
+    let customerHistoryText = '';
+    if (customer_id) {
+      const { data: customerQuotes } = await supabaseClient
+        .from('quotes')
+        .select('title, generated_quote, edited_quote, status, created_at')
+        .eq('user_id', user_id)
+        .eq('customer_id', customer_id)
+        .order('created_at', { ascending: false })
+        .limit(5);
+      
+      if (customerQuotes && customerQuotes.length > 0) {
+        customerHistoryText = '\n\nTidigare offerter för denna kund:\n' +
+          customerQuotes.map(q => {
+            const quote = q.edited_quote || q.generated_quote;
+            const totalCost = quote?.summary?.totalWithVAT || 0;
+            return `- ${q.title}: ${totalCost} kr (Status: ${q.status}, ${new Date(q.created_at).toLocaleDateString('sv-SE')})`;
+          }).join('\n') +
+          '\n\nAnvänd denna historik för att matcha priser och nivå om liknande arbete.';
+      }
+    }
+
+    // Hämta prishistorik från alla användarens offerter
+    const { data: recentQuotes } = await supabaseClient
+      .from('quotes')
+      .select('generated_quote, edited_quote')
+      .eq('user_id', user_id)
+      .order('created_at', { ascending: false })
+      .limit(20);
+
+    let pricingHistoryText = '';
+    if (recentQuotes && recentQuotes.length > 0) {
+      const allWorkItems: any[] = [];
+      recentQuotes.forEach(q => {
+        const quote = q.edited_quote || q.generated_quote;
+        if (quote?.workItems) {
+          allWorkItems.push(...quote.workItems);
+        }
+      });
+      
+      const workTypeAverages = new Map();
+      allWorkItems.forEach(item => {
+        const name = item.name.toLowerCase();
+        if (!workTypeAverages.has(name)) {
+          workTypeAverages.set(name, []);
+        }
+        workTypeAverages.get(name).push(item.hourlyRate);
+      });
+      
+      if (workTypeAverages.size > 0) {
+        pricingHistoryText = '\n\nDina genomsnittliga priser från tidigare offerter:\n';
+        workTypeAverages.forEach((rates, workType) => {
+          const avg = rates.reduce((a: number, b: number) => a + b, 0) / rates.length;
+          pricingHistoryText += `- ${workType}: ~${Math.round(avg)} kr/h (baserat på ${rates.length} tidigare poster)\n`;
+        });
+        pricingHistoryText += '\nAnvänd dessa som referens för konsekvent prissättning.';
+      }
     }
 
     // Bygg rates-text för prompten
@@ -98,6 +157,8 @@ serve(async (req) => {
 
 ${ratesText}
 ${equipmentText}
+${customerHistoryText}
+${pricingHistoryText}
 
 VIKTIGA PRINCIPER FÖR KONSEKVENTA OFFERTER:
 - Använd EXAKT de angivna timpriserna ovan för varje arbetstyp
@@ -109,15 +170,13 @@ VIKTIGA PRINCIPER FÖR KONSEKVENTA OFFERTER:
 - Matcha arbetstypen i offerten mot beskrivningen och använd korrekt timpris för varje workItem
 - Om beskrivningen innehåller flera typer av arbeten, använd det timpris som passar bäst för varje specifikt arbetsmoment
 
-AUTOMATISK DETALJNIVÅ (anpassa innehåll efter uppskattat värde):
-1. Uppskatta först total kostnad (totalWithVAT)
-2. Anpassa sedan detaljnivån automatiskt:
-   - Under 15,000 kr: "Snabboffert" - grundläggande arbetsposter och material
-   - 15,000-50,000 kr: "Standard" - arbetsposter, material, grundläggande villkor
-   - 50,000-150,000 kr: "Detaljerad" - lägg till tidsplan och fasindelning i notes
-   - Över 150,000 kr: "Byggprojekt" - lägg till projektledning, försäkringar och besiktningar i notes
+DETALJNIVÅ (användarens val: ${detailLevel}):
+- "quick": Snabboffert - endast huvudmoment, grundläggande material, kortfattade beskrivningar
+- "standard": Normal detaljnivå - arbetsposter med beskrivningar, material, grundläggande notes
+- "detailed": Detaljerad offert - utförliga beskrivningar, tidsplan, fasindelning i notes
+- "construction": Byggprojekt - alla detaljer + projektledning, försäkringar, besiktningar i notes
 
-Anpassa mängden detaljer i beskrivningar och notes efter vald nivå.
+Anpassa innehåll och beskrivningar efter vald detaljnivå.
             
 Baserat på uppdragsbeskrivningen ska du returnera en strukturerad offert i JSON-format med följande struktur:
 
@@ -193,19 +252,6 @@ Viktig information:
 
     const data = await response.json();
     const generatedQuote = JSON.parse(data.choices[0].message.content);
-
-    // Beräkna detaljnivå baserat på total kostnad
-    const estimatedTotal = generatedQuote.summary?.totalWithVAT || 0;
-    let detailLevel = 'standard';
-    if (estimatedTotal < 15000) {
-      detailLevel = 'quick';
-    } else if (estimatedTotal < 50000) {
-      detailLevel = 'standard';
-    } else if (estimatedTotal < 150000) {
-      detailLevel = 'detailed';
-    } else {
-      detailLevel = 'construction';
-    }
 
     console.log('Generated quote successfully with detail level:', detailLevel);
 

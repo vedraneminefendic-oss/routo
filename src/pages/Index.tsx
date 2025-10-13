@@ -66,7 +66,7 @@ const Index = () => {
     }
   };
 
-  const handleGenerateQuote = async (description: string, customerId?: string) => {
+  const handleGenerateQuote = async (description: string, customerId?: string, detailLevel?: string) => {
     setIsGenerating(true);
     setCurrentDescription(description);
     setCurrentCustomerId(customerId);
@@ -76,7 +76,8 @@ const Index = () => {
         body: { 
           description,
           user_id: user?.id,
-          customer_id: customerId
+          customer_id: customerId,
+          detailLevel: detailLevel || 'standard'
         }
       });
 

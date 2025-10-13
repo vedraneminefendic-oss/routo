@@ -9,7 +9,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Customer } from "@/pages/Customers";
 
 interface QuoteFormProps {
-  onGenerate: (description: string, customerId?: string) => Promise<void>;
+  onGenerate: (description: string, customerId?: string, detailLevel?: string) => Promise<void>;
   isGenerating: boolean;
 }
 
@@ -26,6 +26,7 @@ const QuoteForm = ({ onGenerate, isGenerating }: QuoteFormProps) => {
   const [selectedCustomerId, setSelectedCustomerId] = useState<string>("");
   const [templates, setTemplates] = useState<Template[]>([]);
   const [selectedTemplateId, setSelectedTemplateId] = useState<string>("");
+  const [detailLevel, setDetailLevel] = useState<string>("standard");
 
   useEffect(() => {
     loadCustomers();
@@ -71,7 +72,7 @@ const QuoteForm = ({ onGenerate, isGenerating }: QuoteFormProps) => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (description.trim()) {
-      await onGenerate(description, selectedCustomerId || undefined);
+      await onGenerate(description, selectedCustomerId || undefined, detailLevel);
     }
   };
 
@@ -128,6 +129,44 @@ const QuoteForm = ({ onGenerate, isGenerating }: QuoteFormProps) => {
                 Inga mallar skapade. Gå till Inställningar → Mallar för att skapa din första mall.
               </p>
             )}
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="detailLevel">Detaljnivå</Label>
+            <Select value={detailLevel} onValueChange={setDetailLevel}>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="quick">
+                  <div className="flex flex-col items-start">
+                    <span className="font-medium">⚡ Snabboffert</span>
+                    <span className="text-xs text-muted-foreground">Grundläggande - perfekt för enkla uppdrag</span>
+                  </div>
+                </SelectItem>
+                <SelectItem value="standard">
+                  <div className="flex flex-col items-start">
+                    <span className="font-medium">📋 Standard</span>
+                    <span className="text-xs text-muted-foreground">Normal detaljnivå - rekommenderas för de flesta uppdrag</span>
+                  </div>
+                </SelectItem>
+                <SelectItem value="detailed">
+                  <div className="flex flex-col items-start">
+                    <span className="font-medium">📊 Detaljerad</span>
+                    <span className="text-xs text-muted-foreground">Utförlig - bra för större projekt</span>
+                  </div>
+                </SelectItem>
+                <SelectItem value="construction">
+                  <div className="flex flex-col items-start">
+                    <span className="font-medium">🏗️ Byggprojekt</span>
+                    <span className="text-xs text-muted-foreground">Mycket detaljerad - för stora byggprojekt</span>
+                  </div>
+                </SelectItem>
+              </SelectContent>
+            </Select>
+            <p className="text-sm text-muted-foreground">
+              Välj hur detaljerad offerten ska vara
+            </p>
           </div>
           
           <div className="space-y-2">
