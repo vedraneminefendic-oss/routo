@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Wrench, LogOut, Settings as SettingsIcon, BarChart3, Users, Search } from "lucide-react";
+import { Wrench, LogOut, Settings as SettingsIcon, BarChart3, Users, Search, AlertCircle } from "lucide-react";
 import { toast } from "sonner";
 import QuoteForm from "@/components/QuoteForm";
 import QuoteDisplay from "@/components/QuoteDisplay";
@@ -26,6 +26,7 @@ const Index = () => {
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [currentCustomerId, setCurrentCustomerId] = useState<string | undefined>(undefined);
+  const [pendingQuotesCount, setPendingQuotesCount] = useState(0);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -51,6 +52,25 @@ const Index = () => {
       loadQuotes();
     }
   }, [user]);
+
+  useEffect(() => {
+    if (quotes.length > 0) {
+      const now = new Date();
+      const threeDaysAgo = new Date(now.getTime() - 3 * 24 * 60 * 60 * 1000);
+      
+      const pending = quotes.filter(q => {
+        if (q.status === 'sent' && q.sent_at) {
+          return new Date(q.sent_at) < threeDaysAgo;
+        }
+        if (q.status === 'viewed' && q.viewed_at) {
+          return new Date(q.viewed_at) < threeDaysAgo;
+        }
+        return false;
+      });
+      
+      setPendingQuotesCount(pending.length);
+    }
+  }, [quotes]);
 
   const loadQuotes = async () => {
     try {
@@ -239,7 +259,19 @@ const Index = () => {
       quote.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
       quote.description?.toLowerCase().includes(searchTerm.toLowerCase());
     
-    const matchesStatus = statusFilter === "all" || quote.status === statusFilter;
+    let matchesStatus = true;
+    
+    if (statusFilter === "needs_followup") {
+      const now = new Date();
+      const threeDaysAgo = new Date(now.getTime() - 3 * 24 * 60 * 60 * 1000);
+      
+      matchesStatus = (
+        (quote.status === 'sent' && quote.sent_at && new Date(quote.sent_at) < threeDaysAgo) ||
+        (quote.status === 'viewed' && quote.viewed_at && new Date(quote.viewed_at) < threeDaysAgo)
+      );
+    } else if (statusFilter !== "all") {
+      matchesStatus = quote.status === statusFilter;
+    }
     
     return matchesSearch && matchesStatus;
   });
@@ -329,6 +361,28 @@ const Index = () => {
                 <CardDescription className="text-xs">
                   {quotes.length} {quotes.length === 1 ? 'offert' : 'offerter'} totalt
                 </CardDescription>
+
+                {pendingQuotesCount > 0 && (
+                  <div className="flex items-center gap-2 p-3 bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800 rounded-lg mt-3">
+                    <AlertCircle className="h-5 w-5 text-amber-600 dark:text-amber-500 shrink-0" />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-amber-900 dark:text-amber-100">
+                        {pendingQuotesCount} {pendingQuotesCount === 1 ? 'offert behöver' : 'offerter behöver'} uppföljning
+                      </p>
+                      <p className="text-xs text-amber-700 dark:text-amber-400">
+                        Skickade för mer än 3 dagar sedan utan svar
+                      </p>
+                    </div>
+                    <Button 
+                      size="sm" 
+                      variant="outline"
+                      onClick={() => setStatusFilter('needs_followup')}
+                      className="shrink-0 border-amber-300 dark:border-amber-700 text-amber-900 dark:text-amber-100 hover:bg-amber-100 dark:hover:bg-amber-900"
+                    >
+                      Visa
+                    </Button>
+                  </div>
+                )}
                 
                 <div className="flex gap-2 mt-4">
                   <div className="relative flex-1">
@@ -341,11 +395,17 @@ const Index = () => {
                     />
                   </div>
                   <Select value={statusFilter} onValueChange={setStatusFilter}>
-                    <SelectTrigger className="w-[140px]">
+                    <SelectTrigger className="w-[180px]">
                       <SelectValue placeholder="Status" />
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="all">Alla</SelectItem>
+                      <SelectItem value="needs_followup">
+                        <span className="flex items-center gap-2">
+                          <AlertCircle className="h-3 w-3 text-amber-600" />
+                          Behöver uppföljning
+                        </span>
+                      </SelectItem>
                       <SelectItem value="draft">Utkast</SelectItem>
                       <SelectItem value="sent">Skickad</SelectItem>
                       <SelectItem value="viewed">Visad</SelectItem>

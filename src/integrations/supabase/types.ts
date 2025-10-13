@@ -296,6 +296,41 @@ export type Database = {
           },
         ]
       }
+      quote_reminders: {
+        Row: {
+          email_sent: boolean | null
+          id: string
+          quote_id: string
+          reminder_type: string
+          sent_at: string | null
+          user_id: string
+        }
+        Insert: {
+          email_sent?: boolean | null
+          id?: string
+          quote_id: string
+          reminder_type: string
+          sent_at?: string | null
+          user_id: string
+        }
+        Update: {
+          email_sent?: boolean | null
+          id?: string
+          quote_id?: string
+          reminder_type?: string
+          sent_at?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "quote_reminders_quote_id_fkey"
+            columns: ["quote_id"]
+            isOneToOne: false
+            referencedRelation: "quotes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       quote_signatures: {
         Row: {
           id: string
