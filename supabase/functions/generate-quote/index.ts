@@ -170,13 +170,79 @@ VIKTIGA PRINCIPER FÖR KONSEKVENTA OFFERTER:
 - Matcha arbetstypen i offerten mot beskrivningen och använd korrekt timpris för varje workItem
 - Om beskrivningen innehåller flera typer av arbeten, använd det timpris som passar bäst för varje specifikt arbetsmoment
 
-DETALJNIVÅ (användarens val: ${detailLevel}):
-- "quick": Snabboffert - endast huvudmoment, grundläggande material, kortfattade beskrivningar
-- "standard": Normal detaljnivå - arbetsposter med beskrivningar, material, grundläggande notes
-- "detailed": Detaljerad offert - utförliga beskrivningar, tidsplan, fasindelning i notes
-- "construction": Byggprojekt - alla detaljer + projektledning, försäkringar, besiktningar i notes
+DETALJNIVÅ OCH INNEHÅLL (användarens val: ${detailLevel}):
 
-Anpassa innehåll och beskrivningar efter vald detaljnivå.
+**QUICK (Snabboffert - 5 min arbete):**
+- Maximalt 2-3 huvudarbetsmoment (ex: "Rivning", "Installation", "Slutstädning")
+- Inga detaljerade beskrivningar - endast arbetsmomentets namn
+- Maximalt 3-5 huvudmaterial (ex: "Kakel", "Lim och fog", "VVS-delar")
+- Notes: Max 2 korta meningar (ex: "Pris gäller i 30 dagar. Offererade material kan varieras efter önskemål.")
+- Total längd notes: Max 100 tecken
+
+**STANDARD (Normal offert - 15 min arbete):**
+- 4-6 arbetsposter med korta beskrivningar (1 mening per post)
+- Beskrivningar ska vara konkreta men kortfattade (ex: "Rivning av befintligt kakel, bortforsling av rivningsmaterial")
+- 5-10 material med kategorisering (ex: "Kakel Cementi Grå 30x60", "Weber Flex kakellim", etc.)
+- Notes: 3-5 meningar som täcker:
+  * Giltighetstid för offert
+  * Vad som ingår/inte ingår
+  * Betalningsvillkor
+  * Ev. ROT-info
+- Total längd notes: 200-300 tecken
+
+**DETAILED (Detaljerad offert - 30 min arbete):**
+- 6-10 arbetsposter med utförliga beskrivningar (2-3 meningar per post)
+- Beskrivningar ska inkludera metod och omfattning (ex: "Noggrann rivning av befintligt kakel med skonsam behandling av underliggande yta. Bortforsling av allt rivningsmaterial. Kontroll av väggars skick efter rivning.")
+- 10-15 material med fullständiga specifikationer
+- Fasindelning i notes med tidsplan:
+  * Fas 1: Förberedelser och rivning (Dag 1-2)
+  * Fas 2: Underarbeten (Dag 3-4)
+  * Fas 3: Installation (Dag 5-7)
+  * Fas 4: Slutarbete (Dag 8)
+- Notes ska även inkludera:
+  * Detaljerad arbetsgång
+  * Vad som ingår/inte ingår (punkt för punkt)
+  * Garantier och ansvarsområden
+  * Betalplan (ex: 30% vid start, 40% vid halvtid, 30% vid slutbesiktning)
+- Total längd notes: 500-800 tecken
+
+**CONSTRUCTION (Byggprojekt - 60 min arbete):**
+- 10-15 arbetsposter inklusive:
+  * Projektledning (timmar för planering, koordinering, möten)
+  * Alla underarbeten i detalj
+  * Huvudarbeten uppdelade i delfaser
+  * Kvalitetskontroller och besiktningar
+  * Slutstädning och överlämning
+- Varje arbetspost ska ha omfattande beskrivningar (3-5 meningar)
+- 15-25 material med fullständiga produktnamn, artikelnummer (om relevant), leverantör
+- Notes ska vara en komplett projektplan och inkludera:
+  * **Projektorganisation:** Ansvarig projektledare, underentreprenörer
+  * **Detaljerad tidsplan:** Fas 1-5 med veckoindelning
+  * **Bygglovsinfo:** Om bygglov krävs, vem ansvarar
+  * **Försäkringar:** Ansvarsförsäkring, allriskförsäkring
+  * **Besiktningar:** Kontrollplan med 3 besiktningar (start, mellan, slut)
+  * **Garantier:** 2-5 års garanti på arbete och material
+  * **Avtalspunkter:** Betalplan (5 delposter), ändringshantering, force majeure
+  * **Avvikelserapportering:** Hur avvikelser hanteras
+  * **Överlämning:** Slutdokumentation, bruksanvisningar, garantihandlingar
+  * **Kontaktuppgifter:** Projektledare, jour, kundtjänst
+- Total längd notes: 1200-2000 tecken
+
+**VIKTIGT FÖR ALLA NIVÅER:**
+- Använd ALLTID samma timpriser oavsett detaljnivå (baserat på angivna rates)
+- Använd ALLTID samma materialpriser oavsett detaljnivå
+- Samma uppdrag ska ge samma totalbelopp, oavsett detaljnivå
+- Skillnaden är ENDAST i detaljrikedom och dokumentation, INTE i pris
+
+**PRISKONSISTENS (KRITISKT):**
+För att garantera att samma uppdrag ger samma pris oavsett detaljnivå:
+1. Beräkna FÖRST den totala arbetstiden som uppdraget kräver (oberoende av detaljnivå)
+2. Beräkna FÖRST den totala materialkostnaden (oberoende av detaljnivå)
+3. Fördela sedan arbetstiden och materialen över fler eller färre poster beroende på detaljnivå
+4. Exempel:
+   - Quick: "Installation badrum 40h à 899 kr = 35 960 kr"
+   - Standard: "Rivning 8h, Underarbeten 12h, Kakelsättning 15h, VVS 5h = totalt 40h à olika priser"
+   - Samma totala arbetstid (40h), bara fördelat olika!
             
 Baserat på uppdragsbeskrivningen ska du returnera en strukturerad offert i JSON-format med följande struktur:
 
