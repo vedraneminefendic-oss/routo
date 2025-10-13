@@ -5,8 +5,10 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { toast } from "sonner";
 import { Wrench } from "lucide-react";
+import { PasswordReset } from "@/components/PasswordReset";
 
 const Auth = () => {
   const navigate = useNavigate();
@@ -96,6 +98,31 @@ const Auth = () => {
               {loading ? "Laddar..." : isLogin ? "Logga in" : "Skapa konto"}
             </Button>
           </form>
+          
+          {isLogin && (
+            <div className="mt-4 text-center">
+              <Dialog>
+                <DialogTrigger asChild>
+                  <button
+                    type="button"
+                    className="text-sm text-muted-foreground hover:text-primary hover:underline"
+                  >
+                    Glömt lösenord?
+                  </button>
+                </DialogTrigger>
+                <DialogContent>
+                  <DialogHeader>
+                    <DialogTitle>Återställ lösenord</DialogTitle>
+                    <DialogDescription>
+                      Ange din e-postadress så skickar vi en återställningslänk.
+                    </DialogDescription>
+                  </DialogHeader>
+                  <PasswordReset />
+                </DialogContent>
+              </Dialog>
+            </div>
+          )}
+          
           <div className="mt-4 text-center text-sm">
             <button
               type="button"
