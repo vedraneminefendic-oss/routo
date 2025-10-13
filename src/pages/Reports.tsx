@@ -1,12 +1,13 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, Download } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { StatisticsCards } from "@/components/reports/StatisticsCards";
 import { QuotesTable } from "@/components/reports/QuotesTable";
 import { TimeFilter } from "@/components/reports/TimeFilter";
 import { startOfWeek, startOfMonth, startOfQuarter, startOfYear, endOfDay } from "date-fns";
+import { toast } from "sonner";
 
 export type TimeFilterType = 'week' | 'month' | 'quarter' | 'year' | 'custom';
 
@@ -94,6 +95,28 @@ const Reports = () => {
     loadData();
   }, [timeFilter, dateRange]);
 
+  const exportToCSV = () => {
+    const headers = ["Titel", "Status", "Skapad", "Skickad", "Värde"];
+    const rows = quotes.map(q => [
+      q.title,
+      q.status,
+      new Date(q.created_at).toLocaleDateString('sv-SE'),
+      q.sent_at ? new Date(q.sent_at).toLocaleDateString('sv-SE') : '-',
+      (q.generated_quote?.summary?.customerPays || q.edited_quote?.summary?.customerPays || 0).toString()
+    ]);
+    
+    const csv = [headers, ...rows].map(row => row.join(";")).join("\n");
+    const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `offerter_${new Date().toISOString().split('T')[0]}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+    
+    toast.success("CSV exporterad!");
+  };
+
   return (
     <div className="min-h-screen bg-background">
       <header className="border-b bg-card">
@@ -106,12 +129,18 @@ const Reports = () => {
               </Button>
               <h1 className="text-2xl font-bold">Rapporter</h1>
             </div>
-            <TimeFilter 
+            <div className="flex gap-2">
+              <Button variant="outline" onClick={exportToCSV}>
+                <Download className="h-4 w-4 mr-2" />
+                Exportera CSV
+              </Button>
+              <TimeFilter
               value={timeFilter} 
               onChange={setTimeFilter}
               dateRange={dateRange}
               onDateRangeChange={setDateRange}
-            />
+              />
+            </div>
           </div>
         </div>
       </header>

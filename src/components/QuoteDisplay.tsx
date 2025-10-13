@@ -1,7 +1,7 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
-import { FileText, Download, Save, Edit, Send, ChevronDown, Trash2 } from "lucide-react";
+import { FileText, Download, Save, Edit, Send, ChevronDown, Trash2, Copy } from "lucide-react";
 import { toast } from "sonner";
 import jsPDF from "jspdf";
 import { supabase } from "@/integrations/supabase/client";
@@ -72,6 +72,7 @@ interface QuoteDisplayProps {
   onEdit?: () => void;
   onClose?: () => void;
   onDelete?: () => void;
+  onDuplicate?: () => void;
   isSaving: boolean;
   quoteId?: string;
   currentStatus?: QuoteStatus;
@@ -84,6 +85,7 @@ const QuoteDisplay = ({
   onEdit, 
   onClose, 
   onDelete,
+  onDuplicate,
   isSaving, 
   quoteId, 
   currentStatus,
@@ -560,6 +562,12 @@ const QuoteDisplay = ({
               <Download className="h-4 w-4 mr-1" />
               PDF
             </Button>
+            {onDuplicate && (
+              <Button variant="outline" size="sm" onClick={onDuplicate}>
+                <Copy className="h-4 w-4 mr-1" />
+                Duplicera
+              </Button>
+            )}
             {onEdit && (
               <Button variant="outline" size="sm" onClick={onEdit}>
                 <Edit className="h-4 w-4 mr-1" />

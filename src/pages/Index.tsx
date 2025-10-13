@@ -2,8 +2,10 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Wrench, LogOut, Settings as SettingsIcon, BarChart3 } from "lucide-react";
+import { Wrench, LogOut, Settings as SettingsIcon, BarChart3, Users, Search } from "lucide-react";
 import { toast } from "sonner";
 import QuoteForm from "@/components/QuoteForm";
 import QuoteDisplay from "@/components/QuoteDisplay";
@@ -21,6 +23,8 @@ const Index = () => {
   const [currentDescription, setCurrentDescription] = useState("");
   const [quotes, setQuotes] = useState<any[]>([]);
   const [viewingQuote, setViewingQuote] = useState<any>(null);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [statusFilter, setStatusFilter] = useState("all");
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -61,7 +65,7 @@ const Index = () => {
     }
   };
 
-  const handleGenerateQuote = async (description: string) => {
+  const handleGenerateQuote = async (description: string, customerId?: string) => {
     setIsGenerating(true);
     setCurrentDescription(description);
     
@@ -69,7 +73,8 @@ const Index = () => {
       const { data, error } = await supabase.functions.invoke('generate-quote', {
         body: { 
           description,
-          user_id: user?.id 
+          user_id: user?.id,
+          customer_id: customerId
         }
       });
 
@@ -184,10 +189,52 @@ const Index = () => {
     await loadQuotes();
   };
 
+  const handleDuplicateQuote = async () => {
+    if (!currentQuote || !user) return;
+
+    const title = prompt("Namn på duplicerad offert:", `${currentQuote.title} (kopia)`);
+    if (!title) return;
+
+    setIsSaving(true);
+    try {
+      const { error } = await supabase.from('quotes').insert([
+        {
+          user_id: user.id,
+          title,
+          description: currentDescription,
+          generated_quote: currentQuote,
+          status: 'draft',
+          customer_id: null,
+        },
+      ]);
+
+      if (error) throw error;
+
+      toast.success("Offert duplicerad!");
+      loadQuotes();
+      handleCloseQuote();
+    } catch (error) {
+      console.error('Error duplicating quote:', error);
+      toast.error("Kunde inte duplicera offert");
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
   const handleLogout = async () => {
     await supabase.auth.signOut();
     navigate("/auth");
   };
+
+  const filteredQuotes = quotes.filter((quote) => {
+    const matchesSearch = searchTerm === "" || 
+      quote.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      quote.description?.toLowerCase().includes(searchTerm.toLowerCase());
+    
+    const matchesStatus = statusFilter === "all" || quote.status === statusFilter;
+    
+    return matchesSearch && matchesStatus;
+  });
 
   if (loading) {
     return (
@@ -213,6 +260,10 @@ const Index = () => {
               </div>
             </div>
             <div className="flex gap-2">
+              <Button variant="outline" onClick={() => navigate("/customers")}>
+                <Users className="h-4 w-4 mr-2" />
+                Kunder
+              </Button>
               <Button variant="outline" onClick={() => navigate("/settings")}>
                 <SettingsIcon className="h-4 w-4 mr-2" />
                 Inställningar
@@ -244,6 +295,7 @@ const Index = () => {
                 onEdit={handleEditQuote}
                 onClose={viewingQuote ? handleCloseQuote : undefined}
                 onDelete={viewingQuote ? handleDeleteQuote : undefined}
+                onDuplicate={viewingQuote ? handleDuplicateQuote : undefined}
                 isSaving={isSaving}
                 quoteId={viewingQuote?.id}
                 currentStatus={viewingQuote?.status}
@@ -264,14 +316,40 @@ const Index = () => {
           {/* Right Column - Quote List */}
           <div>
             <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-lg text-secondary">Dina offerter</CardTitle>
-              <CardDescription className="text-xs">
-                {quotes.length} {quotes.length === 1 ? 'offert' : 'offerter'} totalt
-              </CardDescription>
-            </CardHeader>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-lg text-secondary">Dina offerter</CardTitle>
+                <CardDescription className="text-xs">
+                  {quotes.length} {quotes.length === 1 ? 'offert' : 'offerter'} totalt
+                </CardDescription>
+                
+                <div className="flex gap-2 mt-4">
+                  <div className="relative flex-1">
+                    <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                    <Input
+                      placeholder="Sök offerter..."
+                      value={searchTerm}
+                      onChange={(e) => setSearchTerm(e.target.value)}
+                      className="pl-10"
+                    />
+                  </div>
+                  <Select value={statusFilter} onValueChange={setStatusFilter}>
+                    <SelectTrigger className="w-[140px]">
+                      <SelectValue placeholder="Status" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Alla</SelectItem>
+                      <SelectItem value="draft">Utkast</SelectItem>
+                      <SelectItem value="sent">Skickad</SelectItem>
+                      <SelectItem value="viewed">Visad</SelectItem>
+                      <SelectItem value="accepted">Accepterad</SelectItem>
+                      <SelectItem value="rejected">Avvisad</SelectItem>
+                      <SelectItem value="completed">Slutförd</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </CardHeader>
               <CardContent>
-                <QuoteList quotes={quotes} onQuoteClick={handleQuoteClick} />
+                <QuoteList quotes={filteredQuotes} onQuoteClick={handleQuoteClick} />
               </CardContent>
             </Card>
           </div>

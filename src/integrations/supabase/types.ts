@@ -59,6 +59,48 @@ export type Database = {
         }
         Relationships: []
       }
+      customers: {
+        Row: {
+          address: string | null
+          created_at: string
+          email: string | null
+          id: string
+          name: string
+          notes: string | null
+          personnummer: string | null
+          phone: string | null
+          property_designation: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          address?: string | null
+          created_at?: string
+          email?: string | null
+          id?: string
+          name: string
+          notes?: string | null
+          personnummer?: string | null
+          phone?: string | null
+          property_designation?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          address?: string | null
+          created_at?: string
+          email?: string | null
+          id?: string
+          name?: string
+          notes?: string | null
+          personnummer?: string | null
+          phone?: string | null
+          property_designation?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       equipment_rates: {
         Row: {
           created_at: string
@@ -372,6 +414,7 @@ export type Database = {
         Row: {
           completed_at: string | null
           created_at: string
+          customer_id: string | null
           description: string
           detail_level: string | null
           edited_quote: Json | null
@@ -393,6 +436,7 @@ export type Database = {
         Insert: {
           completed_at?: string | null
           created_at?: string
+          customer_id?: string | null
           description: string
           detail_level?: string | null
           edited_quote?: Json | null
@@ -414,6 +458,7 @@ export type Database = {
         Update: {
           completed_at?: string | null
           created_at?: string
+          customer_id?: string | null
           description?: string
           detail_level?: string | null
           edited_quote?: Json | null
@@ -432,7 +477,15 @@ export type Database = {
           user_id?: string
           viewed_at?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "quotes_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "customers"
+            referencedColumns: ["id"]
+          },
+        ]
       }
     }
     Views: {
