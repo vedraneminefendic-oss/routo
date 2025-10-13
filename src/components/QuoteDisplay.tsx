@@ -1,7 +1,7 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
-import { FileText, Download, Save, Edit, Send, ChevronDown } from "lucide-react";
+import { FileText, Download, Save, Edit, Send, ChevronDown, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import jsPDF from "jspdf";
 import { supabase } from "@/integrations/supabase/client";
@@ -18,6 +18,17 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
@@ -60,6 +71,7 @@ interface QuoteDisplayProps {
   onSave?: () => void;
   onEdit?: () => void;
   onClose?: () => void;
+  onDelete?: () => void;
   isSaving: boolean;
   quoteId?: string;
   currentStatus?: QuoteStatus;
@@ -71,6 +83,7 @@ const QuoteDisplay = ({
   onSave, 
   onEdit, 
   onClose, 
+  onDelete,
   isSaving, 
   quoteId, 
   currentStatus,
@@ -83,6 +96,7 @@ const QuoteDisplay = ({
   const [recipientEmail, setRecipientEmail] = useState("");
   const [recipientName, setRecipientName] = useState("");
   const [isSendingEmail, setIsSendingEmail] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   useEffect(() => {
     loadCompanySettings();
@@ -161,6 +175,30 @@ const QuoteDisplay = ({
       toast.error(error.message || "Kunde inte skicka e-post. Försök igen.");
     } finally {
       setIsSendingEmail(false);
+    }
+  };
+
+  const handleDeleteQuote = async () => {
+    if (!quoteId) return;
+    
+    setIsDeleting(true);
+    try {
+      const { error } = await supabase
+        .from('quotes')
+        .delete()
+        .eq('id', quoteId);
+
+      if (error) throw error;
+
+      toast.success("Offert raderad!");
+      if (onDelete) {
+        onDelete();
+      }
+    } catch (error: any) {
+      console.error('Error deleting quote:', error);
+      toast.error("Kunde inte radera offert");
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -538,6 +576,35 @@ const QuoteDisplay = ({
               <Button variant="outline" size="sm" onClick={onClose}>
                 Stäng
               </Button>
+            )}
+            {quoteId && onDelete && (
+              <AlertDialog>
+                <AlertDialogTrigger asChild>
+                  <Button variant="destructive" size="sm">
+                    <Trash2 className="h-4 w-4 mr-1" />
+                    Radera
+                  </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>Är du säker?</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      Detta kommer att permanent radera offerten "{quote.title}". 
+                      Denna åtgärd kan inte ångras.
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>Avbryt</AlertDialogCancel>
+                    <AlertDialogAction 
+                      onClick={handleDeleteQuote}
+                      disabled={isDeleting}
+                      className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                    >
+                      {isDeleting ? "Raderar..." : "Radera offert"}
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
             )}
           </div>
         </div>

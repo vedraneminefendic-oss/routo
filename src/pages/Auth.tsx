@@ -1,14 +1,16 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "sonner";
 import { Wrench } from "lucide-react";
 import { PasswordReset } from "@/components/PasswordReset";
+import Footer from "@/components/Footer";
 
 const Auth = () => {
   const navigate = useNavigate();
@@ -16,9 +18,16 @@ const Auth = () => {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
+  const [acceptedTerms, setAcceptedTerms] = useState(false);
 
   const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    if (!isLogin && !acceptedTerms) {
+      toast.error("Du måste acceptera användarvillkoren för att skapa ett konto");
+      return;
+    }
+    
     setLoading(true);
 
     try {
@@ -52,8 +61,9 @@ const Auth = () => {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background p-4">
-      <Card className="w-full max-w-md">
+    <div className="min-h-screen flex flex-col bg-background">
+      <div className="flex-1 flex items-center justify-center p-4">
+        <Card className="w-full max-w-md">
         <CardHeader className="space-y-1 text-center">
           <div className="flex justify-center mb-4">
             <div className="p-3 bg-primary rounded-xl">
@@ -94,6 +104,30 @@ const Auth = () => {
                 minLength={6}
               />
             </div>
+            
+            {!isLogin && (
+              <div className="flex items-start space-x-2">
+                <Checkbox 
+                  id="terms" 
+                  checked={acceptedTerms}
+                  onCheckedChange={(checked) => setAcceptedTerms(checked as boolean)}
+                />
+                <label
+                  htmlFor="terms"
+                  className="text-sm text-muted-foreground leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+                >
+                  Jag accepterar{" "}
+                  <Link to="/terms" className="text-primary hover:underline" target="_blank">
+                    användarvillkoren
+                  </Link>
+                  {" "}och{" "}
+                  <Link to="/privacy" className="text-primary hover:underline" target="_blank">
+                    integritetspolicyn
+                  </Link>
+                </label>
+              </div>
+            )}
+            
             <Button type="submit" className="w-full" disabled={loading}>
               {loading ? "Laddar..." : isLogin ? "Logga in" : "Skapa konto"}
             </Button>
@@ -136,6 +170,8 @@ const Auth = () => {
           </div>
         </CardContent>
       </Card>
+      </div>
+      <Footer />
     </div>
   );
 };

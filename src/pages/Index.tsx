@@ -179,6 +179,11 @@ const Index = () => {
     setIsEditing(false);
   };
 
+  const handleDeleteQuote = async () => {
+    await handleCloseQuote();
+    await loadQuotes();
+  };
+
   const handleLogout = async () => {
     await supabase.auth.signOut();
     navigate("/auth");
@@ -238,6 +243,7 @@ const Index = () => {
                 onSave={viewingQuote ? undefined : handleSaveQuote}
                 onEdit={handleEditQuote}
                 onClose={viewingQuote ? handleCloseQuote : undefined}
+                onDelete={viewingQuote ? handleDeleteQuote : undefined}
                 isSaving={isSaving}
                 quoteId={viewingQuote?.id}
                 currentStatus={viewingQuote?.status}
