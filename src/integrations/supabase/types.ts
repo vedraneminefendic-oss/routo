@@ -378,6 +378,39 @@ export type Database = {
           },
         ]
       }
+      quote_templates: {
+        Row: {
+          category: string | null
+          created_at: string
+          description: string
+          id: string
+          name: string
+          template_data: Json
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          category?: string | null
+          created_at?: string
+          description: string
+          id?: string
+          name: string
+          template_data: Json
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          category?: string | null
+          created_at?: string
+          description?: string
+          id?: string
+          name?: string
+          template_data?: Json
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       quote_views: {
         Row: {
           id: string

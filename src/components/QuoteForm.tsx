@@ -13,13 +13,23 @@ interface QuoteFormProps {
   isGenerating: boolean;
 }
 
+interface Template {
+  id: string;
+  name: string;
+  description: string;
+  category: string | null;
+}
+
 const QuoteForm = ({ onGenerate, isGenerating }: QuoteFormProps) => {
   const [description, setDescription] = useState("");
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [selectedCustomerId, setSelectedCustomerId] = useState<string>("");
+  const [templates, setTemplates] = useState<Template[]>([]);
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string>("");
 
   useEffect(() => {
     loadCustomers();
+    loadTemplates();
   }, []);
 
   const loadCustomers = async () => {
@@ -30,6 +40,31 @@ const QuoteForm = ({ onGenerate, isGenerating }: QuoteFormProps) => {
     
     if (data) {
       setCustomers(data);
+    }
+  };
+
+  const loadTemplates = async () => {
+    const { data } = await supabase
+      .from('quote_templates')
+      .select('id, name, description, category')
+      .order('name');
+    
+    if (data) {
+      setTemplates(data);
+    }
+  };
+
+  const handleTemplateChange = (templateId: string) => {
+    setSelectedTemplateId(templateId);
+    
+    if (templateId === "none") {
+      setDescription("");
+      return;
+    }
+
+    const template = templates.find(t => t.id === templateId);
+    if (template) {
+      setDescription(template.description);
     }
   };
 
@@ -70,6 +105,29 @@ const QuoteForm = ({ onGenerate, isGenerating }: QuoteFormProps) => {
                 ))}
               </SelectContent>
             </Select>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="template">Mall (valfritt)</Label>
+            <Select value={selectedTemplateId} onValueChange={handleTemplateChange}>
+              <SelectTrigger>
+                <SelectValue placeholder="Välj mall eller skapa från grunden" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">Ingen mall</SelectItem>
+                {templates.map((template) => (
+                  <SelectItem key={template.id} value={template.id}>
+                    {template.name}
+                    {template.category && ` (${template.category})`}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {templates.length === 0 && (
+              <p className="text-xs text-muted-foreground">
+                Inga mallar skapade. Gå till Inställningar → Mallar för att skapa din första mall.
+              </p>
+            )}
           </div>
           
           <div className="space-y-2">

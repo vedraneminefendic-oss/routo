@@ -4,10 +4,11 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { ArrowLeft, Building2, Clock, Wrench } from "lucide-react";
+import { ArrowLeft, Building2, Clock, Wrench, FileText } from "lucide-react";
 import CompanySettings from "@/components/CompanySettings";
 import HourlyRatesManager from "@/components/HourlyRatesManager";
 import EquipmentRatesManager from "@/components/EquipmentRatesManager";
+import TemplatesManager from "@/components/TemplatesManager";
 
 const Settings = () => {
   const navigate = useNavigate();
@@ -59,7 +60,7 @@ const Settings = () => {
 
       <main className="container mx-auto px-4 py-8">
         <Tabs defaultValue="company" className="space-y-6">
-          <TabsList className="grid w-full max-w-md grid-cols-3">
+          <TabsList className="grid w-full max-w-2xl grid-cols-4">
             <TabsTrigger value="company" className="flex items-center gap-2 data-[state=active]:text-primary data-[state=active]:font-medium">
               <Building2 className="h-4 w-4" />
               Företag
@@ -71,6 +72,10 @@ const Settings = () => {
             <TabsTrigger value="equipment" className="flex items-center gap-2 data-[state=active]:text-primary data-[state=active]:font-medium">
               <Wrench className="h-4 w-4" />
               Maskiner
+            </TabsTrigger>
+            <TabsTrigger value="templates" className="flex items-center gap-2 data-[state=active]:text-primary data-[state=active]:font-medium">
+              <FileText className="h-4 w-4" />
+              Mallar
             </TabsTrigger>
           </TabsList>
 
@@ -112,6 +117,20 @@ const Settings = () => {
               </CardHeader>
               <CardContent>
                 <EquipmentRatesManager userId={user?.id} />
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="templates">
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-secondary">Offertmallar</CardTitle>
+                <CardDescription>
+                  Skapa återanvändbara mallar för vanliga typer av offerter. Spara tid genom att använda mallar när du skapar nya offerter.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <TemplatesManager userId={user?.id} />
               </CardContent>
             </Card>
           </TabsContent>
