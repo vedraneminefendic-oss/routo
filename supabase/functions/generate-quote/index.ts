@@ -7,6 +7,65 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+async function calculateBaseTotals(
+  description: string, 
+  apiKey: string,
+  hourlyRates: any[] | null,
+  equipmentRates: any[] | null
+) {
+  const ratesContext = hourlyRates && hourlyRates.length > 0
+    ? `Timpriserna är: ${hourlyRates.map(r => `${r.work_type}: ${r.rate} kr/h`).join(', ')}`
+    : 'Standardpris: 650 kr/h';
+
+  const equipmentContext = equipmentRates && equipmentRates.length > 0
+    ? `\n\nTillgänglig utrustning: ${equipmentRates.map(e => `${e.name} (${e.price_per_day || e.price_per_hour} kr/${e.price_per_day ? 'dag' : 'tim'})`).join(', ')}`
+    : '';
+
+  const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      model: 'google/gemini-2.5-flash',
+      temperature: 0,
+      messages: [
+        {
+          role: 'system',
+          content: `Du beräknar ENDAST total arbetstid och materialkostnad för byggprojekt. 
+${ratesContext}${equipmentContext}
+
+VIKTIGT: Beräkna realistiska totaler baserat på projektets verkliga omfattning.
+Returnera ENDAST JSON i detta format:
+{
+  "workHours": { "Snickare": 20, "VVS": 15 },
+  "materialCost": 18500,
+  "equipmentCost": 2600
+}
+
+Regler:
+- workHours: Total arbetstid per arbetstyp som projektet faktiskt kräver
+- materialCost: Total materialkostnad i kronor (realistiska 2025 priser)
+- equipmentCost: Total kostnad för maskiner/utrustning om projektet kräver det (annars 0)`
+        },
+        {
+          role: 'user',
+          content: `Beräkna totaler för: "${description}"`
+        }
+      ],
+      response_format: { type: "json_object" }
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Failed to calculate base totals: ${response.status}`);
+  }
+
+  const data = await response.json();
+  return JSON.parse(data.choices[0].message.content);
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -141,6 +200,11 @@ serve(async (req) => {
       console.log('Using equipment rates:', equipmentRates);
     }
 
+    // STEG 1: Beräkna bastotaler först (för priskonsistens)
+    console.log('Step 1: Calculating base totals for price consistency...');
+    const baseTotals = await calculateBaseTotals(description, LOVABLE_API_KEY!, hourlyRates, equipmentRates);
+    console.log('Base totals calculated:', baseTotals);
+
     const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
       method: 'POST',
       headers: {
@@ -170,79 +234,61 @@ VIKTIGA PRINCIPER FÖR KONSEKVENTA OFFERTER:
 - Matcha arbetstypen i offerten mot beskrivningen och använd korrekt timpris för varje workItem
 - Om beskrivningen innehåller flera typer av arbeten, använd det timpris som passar bäst för varje specifikt arbetsmoment
 
+**🔒 KRITISKT - LÅS DESSA FÖRUTBERÄKNADE TOTALER:**
+
+Du MÅSTE använda EXAKT dessa värden som redan beräknats för projektet:
+${JSON.stringify(baseTotals, null, 2)}
+
+**DU FÅR ABSOLUT INTE:**
+- Ändra totalsumman
+- Lägga till eller ta bort arbetstimmar
+- Ändra materialkostnaden
+- "Anpassa" priserna
+
+**DIN ENDA UPPGIFT:**
+Fördela dessa EXAKTA totaler över arbetsposter och material enligt detaljnivån nedan.
+
+---
+
 DETALJNIVÅ OCH INNEHÅLL (användarens val: ${detailLevel}):
 
 **QUICK (Snabboffert - 5 min arbete):**
-- Maximalt 2-3 huvudarbetsmoment (ex: "Rivning", "Installation", "Slutstädning")
-- Inga detaljerade beskrivningar - endast arbetsmomentets namn
-- Maximalt 3-5 huvudmaterial (ex: "Kakel", "Lim och fog", "VVS-delar")
-- Notes: Max 2 korta meningar (ex: "Pris gäller i 30 dagar. Offererade material kan varieras efter önskemål.")
+- Dela upp baseTotals.workHours över 2-3 huvudarbetsmoment
+  * Exempel: Om totalt 40h Snickare → skapa 2 poster à 20h vardera
+- Dela upp baseTotals.materialCost över 3-5 huvudmaterial
+  * Exempel: Om totalt 18 500 kr → fördela på "Kakel 8000 kr", "VVS-delar 7000 kr", "Övrigt 3500 kr"
+- Notes: Max 2 korta meningar
 - Total längd notes: Max 100 tecken
 
 **STANDARD (Normal offert - 15 min arbete):**
-- 4-6 arbetsposter med korta beskrivningar (1 mening per post)
-- Beskrivningar ska vara konkreta men kortfattade (ex: "Rivning av befintligt kakel, bortforsling av rivningsmaterial")
-- 5-10 material med kategorisering (ex: "Kakel Cementi Grå 30x60", "Weber Flex kakellim", etc.)
-- Notes: 3-5 meningar som täcker:
-  * Giltighetstid för offert
-  * Vad som ingår/inte ingår
-  * Betalningsvillkor
-  * Ev. ROT-info
+- Dela upp baseTotals.workHours över 4-6 arbetsposter med korta beskrivningar (1 mening per post)
+  * Exempel: Om totalt 40h Snickare → "Rivning 8h", "Underarbeten 12h", "Kakelsättning 15h", "Slutarbete 5h"
+- Dela upp baseTotals.materialCost över 5-10 material med kategorisering
+  * Exempel: Om totalt 18 500 kr → specificera "Kakel Cementi Grå 30x60: 8000 kr", "Weber Flex kakellim: 2500 kr", etc.
+- Notes: 3-5 meningar (giltighetstid, betalning, ROT-info)
 - Total längd notes: 200-300 tecken
 
 **DETAILED (Detaljerad offert - 30 min arbete):**
-- 6-10 arbetsposter med utförliga beskrivningar (2-3 meningar per post)
-- Beskrivningar ska inkludera metod och omfattning (ex: "Noggrann rivning av befintligt kakel med skonsam behandling av underliggande yta. Bortforsling av allt rivningsmaterial. Kontroll av väggars skick efter rivning.")
-- 10-15 material med fullständiga specifikationer
-- Fasindelning i notes med tidsplan:
-  * Fas 1: Förberedelser och rivning (Dag 1-2)
-  * Fas 2: Underarbeten (Dag 3-4)
-  * Fas 3: Installation (Dag 5-7)
-  * Fas 4: Slutarbete (Dag 8)
-- Notes ska även inkludera:
-  * Detaljerad arbetsgång
-  * Vad som ingår/inte ingår (punkt för punkt)
-  * Garantier och ansvarsområden
-  * Betalplan (ex: 30% vid start, 40% vid halvtid, 30% vid slutbesiktning)
+- Dela upp baseTotals.workHours över 6-10 arbetsposter med utförliga beskrivningar (2-3 meningar per post)
+  * Exempel: Om totalt 40h Snickare → dela upp i 8 poster med detaljerade beskrivningar av metod
+- Dela upp baseTotals.materialCost över 10-15 material med fullständiga specifikationer
+- Fasindelning i notes med tidsplan (Fas 1-4)
+- Notes ska inkludera: Arbetsgång, garantier, betalplan
 - Total längd notes: 500-800 tecken
 
 **CONSTRUCTION (Byggprojekt - 60 min arbete):**
-- 10-15 arbetsposter inklusive:
-  * Projektledning (timmar för planering, koordinering, möten)
-  * Alla underarbeten i detalj
-  * Huvudarbeten uppdelade i delfaser
-  * Kvalitetskontroller och besiktningar
-  * Slutstädning och överlämning
-- Varje arbetspost ska ha omfattande beskrivningar (3-5 meningar)
-- 15-25 material med fullständiga produktnamn, artikelnummer (om relevant), leverantör
-- Notes ska vara en komplett projektplan och inkludera:
-  * **Projektorganisation:** Ansvarig projektledare, underentreprenörer
-  * **Detaljerad tidsplan:** Fas 1-5 med veckoindelning
-  * **Bygglovsinfo:** Om bygglov krävs, vem ansvarar
-  * **Försäkringar:** Ansvarsförsäkring, allriskförsäkring
-  * **Besiktningar:** Kontrollplan med 3 besiktningar (start, mellan, slut)
-  * **Garantier:** 2-5 års garanti på arbete och material
-  * **Avtalspunkter:** Betalplan (5 delposter), ändringshantering, force majeure
-  * **Avvikelserapportering:** Hur avvikelser hanteras
-  * **Överlämning:** Slutdokumentation, bruksanvisningar, garantihandlingar
-  * **Kontaktuppgifter:** Projektledare, jour, kundtjänst
+- Dela upp baseTotals.workHours över 10-15 arbetsposter inklusive projektledning
+  * Exempel: Om totalt 40h Snickare → dela upp i 12-15 poster inkl. "Projektledning 8h", detaljerade delfaser
+- Dela upp baseTotals.materialCost över 15-25 material med artikelnummer och leverantör
+- Notes ska vara en komplett projektplan (1200-2000 tecken)
+  * Projektorganisation, tidsplan, bygglov, försäkringar, besiktningar, garantier, avtal, överlämning
 - Total längd notes: 1200-2000 tecken
 
-**VIKTIGT FÖR ALLA NIVÅER:**
-- Använd ALLTID samma timpriser oavsett detaljnivå (baserat på angivna rates)
-- Använd ALLTID samma materialpriser oavsett detaljnivå
-- Samma uppdrag ska ge samma totalbelopp, oavsett detaljnivå
-- Skillnaden är ENDAST i detaljrikedom och dokumentation, INTE i pris
-
-**PRISKONSISTENS (KRITISKT):**
-För att garantera att samma uppdrag ger samma pris oavsett detaljnivå:
-1. Beräkna FÖRST den totala arbetstiden som uppdraget kräver (oberoende av detaljnivå)
-2. Beräkna FÖRST den totala materialkostnaden (oberoende av detaljnivå)
-3. Fördela sedan arbetstiden och materialen över fler eller färre poster beroende på detaljnivå
-4. Exempel:
-   - Quick: "Installation badrum 40h à 899 kr = 35 960 kr"
-   - Standard: "Rivning 8h, Underarbeten 12h, Kakelsättning 15h, VVS 5h = totalt 40h à olika priser"
-   - Samma totala arbetstid (40h), bara fördelat olika!
+**🎯 ABSOLUT KRAV - MATEMATIK MÅSTE STÄMMA:**
+- Summan av alla workItems.hours PER arbetstyp MÅSTE exakt matcha baseTotals.workHours
+- Summan av alla materials.subtotal MÅSTE exakt matcha baseTotals.materialCost + baseTotals.equipmentCost
+- Om baseTotals säger "Snickare: 40h" → totalt i workItems för Snickare MÅSTE vara exakt 40h
+- Om baseTotals säger "materialCost: 18500" → totalt i materials MÅSTE vara exakt 18500 kr
             
 Baserat på uppdragsbeskrivningen ska du returnera en strukturerad offert i JSON-format med följande struktur:
 
