@@ -6,6 +6,10 @@ import { supabase } from "@/integrations/supabase/client";
 import { StatisticsCards } from "@/components/reports/StatisticsCards";
 import { QuotesTable } from "@/components/reports/QuotesTable";
 import { TimeFilter } from "@/components/reports/TimeFilter";
+import { QuotesByStatusChart } from "@/components/reports/QuotesByStatusChart";
+import { QuotesOverTimeChart } from "@/components/reports/QuotesOverTimeChart";
+import { AcceptanceRateChart } from "@/components/reports/AcceptanceRateChart";
+import { KeyPerformanceIndicators } from "@/components/reports/KeyPerformanceIndicators";
 import { startOfWeek, startOfMonth, startOfQuarter, startOfYear, endOfDay } from "date-fns";
 import { toast } from "sonner";
 
@@ -29,6 +33,7 @@ const Reports = () => {
   const [dateRange, setDateRange] = useState<{ from: Date; to: Date }>();
   const [statistics, setStatistics] = useState<Statistics | null>(null);
   const [quotes, setQuotes] = useState<any[]>([]);
+  const [timeSeriesData, setTimeSeriesData] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
   const getDateRangeFromFilter = (filter: TimeFilterType, customRange?: { from: Date; to: Date }) => {
@@ -67,6 +72,13 @@ const Reports = () => {
       setLoading(true);
       const { from, to } = getDateRangeFromFilter(timeFilter, dateRange);
       
+      // Determine interval type based on time filter
+      let intervalType = 'day';
+      if (timeFilter === 'month') intervalType = 'day';
+      else if (timeFilter === 'quarter') intervalType = 'week';
+      else if (timeFilter === 'year') intervalType = 'month';
+      else if (timeFilter === 'week') intervalType = 'day';
+      
       // Load statistics
       const { data: statsData, error: statsError } = await supabase.rpc('get_quote_statistics', {
         start_date: from.toISOString(),
@@ -75,6 +87,17 @@ const Reports = () => {
       
       if (!statsError && statsData && statsData.length > 0) {
         setStatistics(statsData[0]);
+      }
+      
+      // Load time series data for charts
+      const { data: timeSeriesResult, error: timeSeriesError } = await supabase.rpc('get_quotes_time_series', {
+        start_date: from.toISOString(),
+        end_date: to.toISOString(),
+        interval_type: intervalType
+      });
+      
+      if (!timeSeriesError && timeSeriesResult) {
+        setTimeSeriesData(timeSeriesResult);
       }
       
       // Load quotes for table
@@ -148,6 +171,31 @@ const Reports = () => {
       <main className="container mx-auto px-4 py-8">
         <div className="space-y-8">
           <StatisticsCards statistics={statistics} loading={loading} />
+          
+          <KeyPerformanceIndicators 
+            statistics={statistics} 
+            quotes={quotes} 
+            loading={loading} 
+          />
+          
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <QuotesOverTimeChart 
+              data={timeSeriesData} 
+              loading={loading} 
+              timeFilter={timeFilter}
+            />
+            
+            <QuotesByStatusChart 
+              statistics={statistics} 
+              loading={loading} 
+            />
+            
+            <AcceptanceRateChart 
+              data={timeSeriesData} 
+              loading={loading} 
+            />
+          </div>
+          
           <QuotesTable quotes={quotes} loading={loading} />
         </div>
       </main>

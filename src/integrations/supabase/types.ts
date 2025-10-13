@@ -599,6 +599,22 @@ export type Database = {
           viewed_count: number
         }[]
       }
+      get_quotes_time_series: {
+        Args: { end_date: string; interval_type?: string; start_date: string }
+        Returns: {
+          accepted_count: number
+          accepted_value: number
+          completed_count: number
+          draft_count: number
+          period_label: string
+          period_start: string
+          rejected_count: number
+          sent_count: number
+          total_quotes: number
+          total_value: number
+          viewed_count: number
+        }[]
+      }
     }
     Enums: {
       quote_status: "draft" | "sent" | "signed"
