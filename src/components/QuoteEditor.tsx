@@ -5,8 +5,19 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { Textarea } from "@/components/ui/textarea";
-import { Edit, Save, X } from "lucide-react";
+import { Edit, Save, X, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 
 interface WorkItem {
   name: string;
@@ -110,7 +121,51 @@ const QuoteEditor = ({ quote, onSave, onCancel, isSaving }: QuoteEditorProps) =>
     setEditedQuote(recalculate(updated));
   };
 
+  const removeWorkItem = (index: number) => {
+    const updated = { ...editedQuote };
+    updated.workItems.splice(index, 1);
+    setEditedQuote(recalculate(updated));
+    toast.success("Arbetsmoment borttaget");
+  };
+
+  const removeMaterial = (index: number) => {
+    const updated = { ...editedQuote };
+    updated.materials.splice(index, 1);
+    setEditedQuote(recalculate(updated));
+    toast.success("Material borttaget");
+  };
+
+  const addWorkItem = () => {
+    const updated = { ...editedQuote };
+    updated.workItems.push({
+      name: "",
+      description: "",
+      hours: 0,
+      hourlyRate: 0,
+      subtotal: 0,
+    });
+    setEditedQuote(recalculate(updated));
+    toast.success("Nytt arbetsmoment tillagt");
+  };
+
+  const addMaterial = () => {
+    const updated = { ...editedQuote };
+    updated.materials.push({
+      name: "",
+      quantity: 0,
+      unit: "st",
+      pricePerUnit: 0,
+      subtotal: 0,
+    });
+    setEditedQuote(recalculate(updated));
+    toast.success("Nytt material tillagt");
+  };
+
   const handleSave = () => {
+    if (editedQuote.workItems.length === 0 && editedQuote.materials.length === 0) {
+      toast.error("Du måste ha minst ett arbetsmoment eller material");
+      return;
+    }
     onSave(editedQuote);
     toast.success("Ändringar sparade!");
   };
@@ -157,56 +212,100 @@ const QuoteEditor = ({ quote, onSave, onCancel, isSaving }: QuoteEditorProps) =>
         {/* Work Items */}
         <div>
           <h3 className="font-semibold text-lg mb-3 text-secondary">Arbetsmoment</h3>
-          <div className="space-y-4">
-            {editedQuote.workItems.map((item, index) => (
-              <div key={index} className="p-4 rounded-lg border bg-muted/30 space-y-3">
-                <div>
-                  <Label className="text-xs">Namn</Label>
-                  <Input
-                    value={item.name}
-                    onChange={(e) => updateWorkItem(index, 'name', e.target.value)}
-                    className="mt-1"
-                  />
-                </div>
-                <div>
-                  <Label className="text-xs">Beskrivning</Label>
-                  <Textarea
-                    value={item.description}
-                    onChange={(e) => updateWorkItem(index, 'description', e.target.value)}
-                    className="mt-1"
-                    rows={2}
-                  />
-                </div>
-                <div className="grid grid-cols-3 gap-3">
+          {editedQuote.workItems.length === 0 ? (
+            <div className="p-6 text-center border border-dashed rounded-lg bg-muted/20">
+              <p className="text-muted-foreground mb-3">Inga arbetsmoment ännu. Lägg till ett!</p>
+              <Button variant="outline" onClick={addWorkItem}>
+                <Plus className="h-4 w-4 mr-2" />
+                Lägg till arbetsmoment
+              </Button>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {editedQuote.workItems.map((item, index) => (
+                <div key={index} className="p-4 rounded-lg border bg-muted/30 space-y-3 relative group">
+                  <AlertDialog>
+                    <AlertDialogTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity text-destructive hover:text-destructive hover:bg-destructive/10"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </AlertDialogTrigger>
+                    <AlertDialogContent>
+                      <AlertDialogHeader>
+                        <AlertDialogTitle>Ta bort {item.name || "arbetsmoment"}?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                          Detta kommer permanent ta bort arbetsmomentet ({formatCurrency(item.subtotal)}).
+                        </AlertDialogDescription>
+                      </AlertDialogHeader>
+                      <AlertDialogFooter>
+                        <AlertDialogCancel>Avbryt</AlertDialogCancel>
+                        <AlertDialogAction onClick={() => removeWorkItem(index)}>
+                          Ta bort
+                        </AlertDialogAction>
+                      </AlertDialogFooter>
+                    </AlertDialogContent>
+                  </AlertDialog>
+                  
                   <div>
-                    <Label className="text-xs">Timmar</Label>
+                    <Label className="text-xs">Namn</Label>
                     <Input
-                      type="number"
-                      value={item.hours}
-                      onChange={(e) => updateWorkItem(index, 'hours', parseFloat(e.target.value) || 0)}
+                      value={item.name}
+                      onChange={(e) => updateWorkItem(index, 'name', e.target.value)}
                       className="mt-1"
-                      step="0.5"
                     />
                   </div>
                   <div>
-                    <Label className="text-xs">Timpris (kr)</Label>
-                    <Input
-                      type="number"
-                      value={item.hourlyRate}
-                      onChange={(e) => updateWorkItem(index, 'hourlyRate', parseFloat(e.target.value) || 0)}
+                    <Label className="text-xs">Beskrivning</Label>
+                    <Textarea
+                      value={item.description}
+                      onChange={(e) => updateWorkItem(index, 'description', e.target.value)}
                       className="mt-1"
+                      rows={2}
                     />
                   </div>
-                  <div>
-                    <Label className="text-xs">Summa</Label>
-                    <div className="mt-1 h-10 flex items-center px-3 rounded-md bg-muted font-semibold">
-                      {formatCurrency(item.subtotal)}
+                  <div className="grid grid-cols-3 gap-3">
+                    <div>
+                      <Label className="text-xs">Timmar</Label>
+                      <Input
+                        type="number"
+                        value={item.hours}
+                        onChange={(e) => updateWorkItem(index, 'hours', parseFloat(e.target.value) || 0)}
+                        className="mt-1"
+                        step="0.5"
+                      />
+                    </div>
+                    <div>
+                      <Label className="text-xs">Timpris (kr)</Label>
+                      <Input
+                        type="number"
+                        value={item.hourlyRate}
+                        onChange={(e) => updateWorkItem(index, 'hourlyRate', parseFloat(e.target.value) || 0)}
+                        className="mt-1"
+                      />
+                    </div>
+                    <div>
+                      <Label className="text-xs">Summa</Label>
+                      <div className="mt-1 h-10 flex items-center px-3 rounded-md bg-muted font-semibold">
+                        {formatCurrency(item.subtotal)}
+                      </div>
                     </div>
                   </div>
                 </div>
-              </div>
-            ))}
-          </div>
+              ))}
+              <Button
+                variant="outline"
+                onClick={addWorkItem}
+                className="w-full border-dashed"
+              >
+                <Plus className="h-4 w-4 mr-2" />
+                Lägg till arbetsmoment
+              </Button>
+            </div>
+          )}
         </div>
 
         <Separator />
@@ -214,55 +313,99 @@ const QuoteEditor = ({ quote, onSave, onCancel, isSaving }: QuoteEditorProps) =>
         {/* Materials */}
         <div>
           <h3 className="font-semibold text-lg mb-3 text-secondary">Material</h3>
-          <div className="space-y-4">
-            {editedQuote.materials.map((material, index) => (
-              <div key={index} className="p-4 rounded-lg border bg-muted/30 space-y-3">
-                <div>
-                  <Label className="text-xs">Namn</Label>
-                  <Input
-                    value={material.name}
-                    onChange={(e) => updateMaterial(index, 'name', e.target.value)}
-                    className="mt-1"
-                  />
-                </div>
-                <div className="grid grid-cols-4 gap-3">
+          {editedQuote.materials.length === 0 ? (
+            <div className="p-6 text-center border border-dashed rounded-lg bg-muted/20">
+              <p className="text-muted-foreground mb-3">Inga material ännu. Lägg till ett!</p>
+              <Button variant="outline" onClick={addMaterial}>
+                <Plus className="h-4 w-4 mr-2" />
+                Lägg till material
+              </Button>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {editedQuote.materials.map((material, index) => (
+                <div key={index} className="p-4 rounded-lg border bg-muted/30 space-y-3 relative group">
+                  <AlertDialog>
+                    <AlertDialogTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity text-destructive hover:text-destructive hover:bg-destructive/10"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </AlertDialogTrigger>
+                    <AlertDialogContent>
+                      <AlertDialogHeader>
+                        <AlertDialogTitle>Ta bort {material.name || "material"}?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                          Detta kommer permanent ta bort materialet ({formatCurrency(material.subtotal)}).
+                        </AlertDialogDescription>
+                      </AlertDialogHeader>
+                      <AlertDialogFooter>
+                        <AlertDialogCancel>Avbryt</AlertDialogCancel>
+                        <AlertDialogAction onClick={() => removeMaterial(index)}>
+                          Ta bort
+                        </AlertDialogAction>
+                      </AlertDialogFooter>
+                    </AlertDialogContent>
+                  </AlertDialog>
+                  
                   <div>
-                    <Label className="text-xs">Antal</Label>
+                    <Label className="text-xs">Namn</Label>
                     <Input
-                      type="number"
-                      value={material.quantity}
-                      onChange={(e) => updateMaterial(index, 'quantity', parseFloat(e.target.value) || 0)}
+                      value={material.name}
+                      onChange={(e) => updateMaterial(index, 'name', e.target.value)}
                       className="mt-1"
-                      step="0.1"
                     />
                   </div>
-                  <div>
-                    <Label className="text-xs">Enhet</Label>
-                    <Input
-                      value={material.unit}
-                      onChange={(e) => updateMaterial(index, 'unit', e.target.value)}
-                      className="mt-1"
-                    />
-                  </div>
-                  <div>
-                    <Label className="text-xs">Pris/enhet (kr)</Label>
-                    <Input
-                      type="number"
-                      value={material.pricePerUnit}
-                      onChange={(e) => updateMaterial(index, 'pricePerUnit', parseFloat(e.target.value) || 0)}
-                      className="mt-1"
-                    />
-                  </div>
-                  <div>
-                    <Label className="text-xs">Summa</Label>
-                    <div className="mt-1 h-10 flex items-center px-3 rounded-md bg-muted font-semibold">
-                      {formatCurrency(material.subtotal)}
+                  <div className="grid grid-cols-4 gap-3">
+                    <div>
+                      <Label className="text-xs">Antal</Label>
+                      <Input
+                        type="number"
+                        value={material.quantity}
+                        onChange={(e) => updateMaterial(index, 'quantity', parseFloat(e.target.value) || 0)}
+                        className="mt-1"
+                        step="0.1"
+                      />
+                    </div>
+                    <div>
+                      <Label className="text-xs">Enhet</Label>
+                      <Input
+                        value={material.unit}
+                        onChange={(e) => updateMaterial(index, 'unit', e.target.value)}
+                        className="mt-1"
+                      />
+                    </div>
+                    <div>
+                      <Label className="text-xs">Pris/enhet (kr)</Label>
+                      <Input
+                        type="number"
+                        value={material.pricePerUnit}
+                        onChange={(e) => updateMaterial(index, 'pricePerUnit', parseFloat(e.target.value) || 0)}
+                        className="mt-1"
+                      />
+                    </div>
+                    <div>
+                      <Label className="text-xs">Summa</Label>
+                      <div className="mt-1 h-10 flex items-center px-3 rounded-md bg-muted font-semibold">
+                        {formatCurrency(material.subtotal)}
+                      </div>
                     </div>
                   </div>
                 </div>
-              </div>
-            ))}
-          </div>
+              ))}
+              <Button
+                variant="outline"
+                onClick={addMaterial}
+                className="w-full border-dashed"
+              >
+                <Plus className="h-4 w-4 mr-2" />
+                Lägg till material
+              </Button>
+            </div>
+          )}
         </div>
 
         <Separator />
