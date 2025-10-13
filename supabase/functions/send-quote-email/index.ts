@@ -33,10 +33,20 @@ serve(async (req: Request): Promise<Response> => {
       );
     }
 
-    // Get quote details
+    // Get quote details with customer information
     const { data: quote, error: quoteError } = await supabase
       .from("quotes")
-      .select("*, generated_quote, edited_quote, unique_token, title, user_id")
+      .select(`
+        *,
+        customers (
+          name,
+          email,
+          phone,
+          address,
+          personnummer,
+          property_designation
+        )
+      `)
       .eq("id", quoteId)
       .single();
 
@@ -67,6 +77,11 @@ serve(async (req: Request): Promise<Response> => {
 
     const quoteData = quote.edited_quote || quote.generated_quote;
     
+    // Use customer information if available, otherwise use provided recipient info
+    const customer = quote.customers;
+    const finalRecipientName = customer?.name || recipientName;
+    const finalRecipientEmail = customer?.email || recipientEmail;
+    
     // Build the quote URL - use the actual app URL
     const appUrl = Deno.env.get("APP_URL") || supabaseUrl.replace('.supabase.co', '.lovableproject.com');
     const quoteUrl = `${appUrl}/quote/${uniqueToken}`;
@@ -86,12 +101,23 @@ serve(async (req: Request): Promise<Response> => {
       </h1>
       
       <p style="color: #333; font-size: 16px; line-height: 26px; padding: 0 48px;">
-        Hej ${recipientName},
+        Hej ${finalRecipientName},
       </p>
       
       <p style="color: #333; font-size: 16px; line-height: 26px; padding: 0 48px;">
         Vi har skapat en offert åt dig: <strong>${quote.title}</strong>
       </p>
+      
+      ${customer ? `
+      <div style="background-color: #f6f9fc; border-left: 4px solid #0066ff; padding: 16px; margin: 0 48px 16px;">
+        <p style="color: #333; font-size: 14px; line-height: 20px; margin: 0 0 8px;">
+          <strong>Kunduppgifter:</strong>
+        </p>
+        ${customer.address ? `<p style="color: #666; font-size: 14px; line-height: 20px; margin: 0;">Adress: ${customer.address}</p>` : ''}
+        ${customer.phone ? `<p style="color: #666; font-size: 14px; line-height: 20px; margin: 0;">Telefon: ${customer.phone}</p>` : ''}
+        ${customer.property_designation ? `<p style="color: #666; font-size: 14px; line-height: 20px; margin: 0;">Fastighetsbeteckning: ${customer.property_designation}</p>` : ''}
+      </div>
+      ` : ''}
       
       <p style="color: #333; font-size: 16px; line-height: 26px; padding: 0 48px;">
         Totalt belopp: <strong>${(quoteData?.summary?.customerPays || 0).toLocaleString("sv-SE")} kr</strong>
@@ -140,7 +166,7 @@ serve(async (req: Request): Promise<Response> => {
     const { data: emailData, error: emailError } = await resend.emails.send({
       from: fromEmail,
       replyTo: replyToEmail,
-      to: [recipientEmail],
+      to: [finalRecipientEmail],
       subject: `Offert: ${quote.title}`,
       html: emailHtml,
     });
@@ -158,7 +184,7 @@ serve(async (req: Request): Promise<Response> => {
     // Log email in database
     await supabase.from("quote_email_logs").insert({
       quote_id: quoteId,
-      recipient_email: recipientEmail,
+      recipient_email: finalRecipientEmail,
       email_type: "quote_sent",
       email_provider_id: emailData?.id || null,
     });
@@ -179,7 +205,7 @@ serve(async (req: Request): Promise<Response> => {
         old_status: "draft",
         new_status: "sent",
         changed_by: quote.user_id,
-        note: `Email sent to ${recipientEmail}`,
+        note: `Email sent to ${finalRecipientEmail}${customer ? ` (${customer.name})` : ''}`,
       });
     }
 

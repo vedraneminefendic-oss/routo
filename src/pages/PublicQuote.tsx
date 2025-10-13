@@ -62,6 +62,13 @@ interface QuoteInfo {
   company_phone: string;
   company_address: string;
   company_logo_url: string;
+  customer_id: string | null;
+  customer_name: string | null;
+  customer_email: string | null;
+  customer_phone: string | null;
+  customer_address: string | null;
+  customer_personnummer: string | null;
+  customer_property_designation: string | null;
 }
 
 const PublicQuote = () => {
@@ -142,12 +149,18 @@ const PublicQuote = () => {
   const handleSubmit = async () => {
     if (!quote) return;
 
+    // Pre-fill with customer info if available
+    const finalSignerName = signerName || quote.customer_name || "";
+    const finalSignerEmail = signerEmail || quote.customer_email || "";
+    const finalPersonnummer = signerPersonnummer || quote.customer_personnummer || "";
+    const finalPropertyDesignation = propertyDesignation || quote.customer_property_designation || "";
+
     // Validate inputs with zod
     const validation = quoteResponseSchema.safeParse({
-      signerName,
-      signerEmail,
-      signerPersonnummer,
-      propertyDesignation,
+      signerName: finalSignerName,
+      signerEmail: finalSignerEmail,
+      signerPersonnummer: finalPersonnummer,
+      propertyDesignation: finalPropertyDesignation,
       message
     });
 
@@ -169,13 +182,13 @@ const PublicQuote = () => {
     setSubmitting(true);
 
     try {
-      // Insert signature
+      // Insert signature using final values
       const { error: signatureError } = await supabase.from("quote_signatures").insert({
         quote_id: quote.id,
-        signer_name: signerName,
-        signer_email: signerEmail,
-        signer_personnummer: signerPersonnummer || null,
-        property_designation: propertyDesignation || null,
+        signer_name: finalSignerName,
+        signer_email: finalSignerEmail,
+        signer_personnummer: finalPersonnummer || null,
+        property_designation: finalPropertyDesignation || null,
         response: response,
         ip_address: "unknown",
         user_agent: navigator.userAgent,
@@ -437,6 +450,53 @@ const PublicQuote = () => {
           </CardHeader>
         </Card>
 
+        {/* Customer Information */}
+        {quote.customer_name && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-lg text-secondary">Kundinformation</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <p className="text-sm font-medium text-muted-foreground">Namn</p>
+                  <p className="text-base">{quote.customer_name}</p>
+                </div>
+                {quote.customer_email && (
+                  <div>
+                    <p className="text-sm font-medium text-muted-foreground">E-post</p>
+                    <p className="text-base">{quote.customer_email}</p>
+                  </div>
+                )}
+                {quote.customer_phone && (
+                  <div>
+                    <p className="text-sm font-medium text-muted-foreground">Telefon</p>
+                    <p className="text-base">{quote.customer_phone}</p>
+                  </div>
+                )}
+                {quote.customer_address && (
+                  <div>
+                    <p className="text-sm font-medium text-muted-foreground">Adress</p>
+                    <p className="text-base">{quote.customer_address}</p>
+                  </div>
+                )}
+                {quote.customer_property_designation && (
+                  <div>
+                    <p className="text-sm font-medium text-muted-foreground">Fastighetsbeteckning</p>
+                    <p className="text-base">{quote.customer_property_designation}</p>
+                  </div>
+                )}
+                {quote.customer_personnummer && (
+                  <div>
+                    <p className="text-sm font-medium text-muted-foreground">Personnummer</p>
+                    <p className="text-base">{quote.customer_personnummer}</p>
+                  </div>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
         {/* Quote Details */}
         <Card>
           <CardHeader>
@@ -568,13 +628,26 @@ const PublicQuote = () => {
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
+            {quote.customer_name && (
+              <div className="bg-muted/50 rounded-lg p-4">
+                <p className="text-sm font-medium mb-2">Dina uppgifter (auto-ifyllda från offerten)</p>
+                <div className="text-sm text-muted-foreground space-y-1">
+                  <p><strong>Namn:</strong> {quote.customer_name}</p>
+                  <p><strong>E-post:</strong> {quote.customer_email}</p>
+                  {quote.customer_phone && <p><strong>Telefon:</strong> {quote.customer_phone}</p>}
+                </div>
+                <p className="text-xs text-muted-foreground mt-2">
+                  Du kan ändra uppgifterna nedan om de är felaktiga.
+                </p>
+              </div>
+            )}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="signerName">Namn *</Label>
                 <Input
                   id="signerName"
                   placeholder="För- och efternamn"
-                  value={signerName}
+                  value={signerName || quote.customer_name || ""}
                   onChange={(e) => setSignerName(e.target.value)}
                 />
               </div>
@@ -584,7 +657,7 @@ const PublicQuote = () => {
                   id="signerEmail"
                   type="email"
                   placeholder="din@email.com"
-                  value={signerEmail}
+                  value={signerEmail || quote.customer_email || ""}
                   onChange={(e) => setSignerEmail(e.target.value)}
                 />
               </div>
@@ -596,7 +669,7 @@ const PublicQuote = () => {
                 <Input
                   id="signerPersonnummer"
                   placeholder="ÅÅÅÅMMDD-XXXX"
-                  value={signerPersonnummer}
+                  value={signerPersonnummer || quote.customer_personnummer || ""}
                   onChange={(e) => setSignerPersonnummer(e.target.value)}
                 />
               </div>
@@ -605,7 +678,7 @@ const PublicQuote = () => {
                 <Input
                   id="propertyDesignation"
                   placeholder="T.ex. Uppsala 1:1"
-                  value={propertyDesignation}
+                  value={propertyDesignation || quote.customer_property_designation || ""}
                   onChange={(e) => setPropertyDesignation(e.target.value)}
                 />
               </div>

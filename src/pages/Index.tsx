@@ -25,6 +25,7 @@ const Index = () => {
   const [viewingQuote, setViewingQuote] = useState<any>(null);
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
+  const [currentCustomerId, setCurrentCustomerId] = useState<string | undefined>(undefined);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -68,6 +69,7 @@ const Index = () => {
   const handleGenerateQuote = async (description: string, customerId?: string) => {
     setIsGenerating(true);
     setCurrentDescription(description);
+    setCurrentCustomerId(customerId);
     
     try {
       const { data, error } = await supabase.functions.invoke('generate-quote', {
@@ -110,7 +112,8 @@ const Index = () => {
           title: currentQuote.title,
           description: currentDescription,
           generated_quote: currentQuote,
-          status: 'draft'
+          status: 'draft',
+          customer_id: currentCustomerId || null
         });
 
       if (error) throw error;
@@ -118,6 +121,7 @@ const Index = () => {
       toast.success("Offert sparad!");
       setCurrentQuote(null);
       setCurrentDescription("");
+      setCurrentCustomerId(undefined);
       setIsEditing(false);
       await loadQuotes();
     } catch (error: any) {
@@ -147,7 +151,8 @@ const Index = () => {
           generated_quote: currentQuote,
           edited_quote: editedQuote,
           is_edited: true,
-          status: 'draft'
+          status: 'draft',
+          customer_id: currentCustomerId || null
         });
 
       if (error) throw error;
@@ -155,6 +160,7 @@ const Index = () => {
       toast.success("Redigerad offert sparad!");
       setCurrentQuote(null);
       setCurrentDescription("");
+      setCurrentCustomerId(undefined);
       setIsEditing(false);
       await loadQuotes();
     } catch (error: any) {
@@ -181,6 +187,7 @@ const Index = () => {
     setViewingQuote(null);
     setCurrentQuote(null);
     setCurrentDescription("");
+    setCurrentCustomerId(undefined);
     setIsEditing(false);
   };
 
@@ -204,7 +211,7 @@ const Index = () => {
           description: currentDescription,
           generated_quote: currentQuote,
           status: 'draft',
-          customer_id: null,
+          customer_id: viewingQuote?.customer_id || null,
         },
       ]);
 

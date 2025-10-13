@@ -99,10 +99,50 @@ const QuoteDisplay = ({
   const [recipientName, setRecipientName] = useState("");
   const [isSendingEmail, setIsSendingEmail] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [customerInfo, setCustomerInfo] = useState<any>(null);
 
   useEffect(() => {
     loadCompanySettings();
   }, []);
+
+  useEffect(() => {
+    if (quoteId) {
+      loadCustomerInfo();
+    }
+  }, [quoteId]);
+
+  const loadCustomerInfo = async () => {
+    if (!quoteId) return;
+
+    try {
+      const { data, error } = await supabase
+        .from('quotes')
+        .select(`
+          customer_id,
+          customers (
+            name,
+            email,
+            phone,
+            address,
+            personnummer,
+            property_designation
+          )
+        `)
+        .eq('id', quoteId)
+        .single();
+
+      if (error) throw error;
+
+      if (data?.customers) {
+        setCustomerInfo(data.customers);
+        // Auto-fill email dialog with customer info
+        setRecipientName(data.customers.name || "");
+        setRecipientEmail(data.customers.email || "");
+      }
+    } catch (error) {
+      console.error('Error loading customer info:', error);
+    }
+  };
 
   const loadCompanySettings = async () => {
     try {
@@ -293,6 +333,52 @@ const QuoteDisplay = ({
       y = Math.max(y + 35, infoY + 5);
       
       // Separator line
+      doc.setDrawColor(200, 200, 200);
+      doc.line(leftMargin, y, pageWidth - rightMargin, y);
+      y += 12;
+    }
+
+    // Customer information section
+    if (customerInfo) {
+      y = checkPageBreak(doc, y, 30);
+      doc.setFontSize(12);
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(PRIMARY_BLUE[0], PRIMARY_BLUE[1], PRIMARY_BLUE[2]);
+      doc.text('Kund', leftMargin, y);
+      y += 8;
+
+      doc.setFontSize(10);
+      doc.setFont('helvetica', 'normal');
+      doc.setTextColor(TEXT_DARK[0], TEXT_DARK[1], TEXT_DARK[2]);
+      
+      if (customerInfo.name) {
+        doc.setFont('helvetica', 'bold');
+        doc.text(customerInfo.name, leftMargin, y);
+        y += 5;
+        doc.setFont('helvetica', 'normal');
+      }
+      if (customerInfo.address) {
+        doc.text(customerInfo.address, leftMargin, y);
+        y += 5;
+      }
+      if (customerInfo.phone) {
+        doc.text(`Tel: ${customerInfo.phone}`, leftMargin, y);
+        y += 5;
+      }
+      if (customerInfo.email) {
+        doc.text(`E-post: ${customerInfo.email}`, leftMargin, y);
+        y += 5;
+      }
+      if (customerInfo.personnummer) {
+        doc.text(`Personnummer: ${customerInfo.personnummer}`, leftMargin, y);
+        y += 5;
+      }
+      if (customerInfo.property_designation) {
+        doc.text(`Fastighetsbeteckning: ${customerInfo.property_designation}`, leftMargin, y);
+        y += 5;
+      }
+      
+      y += 5;
       doc.setDrawColor(200, 200, 200);
       doc.line(leftMargin, y, pageWidth - rightMargin, y);
       y += 12;
@@ -528,6 +614,17 @@ const QuoteDisplay = ({
                     </DialogDescription>
                   </DialogHeader>
                   <div className="space-y-4 py-4">
+                    {customerInfo && (
+                      <div className="bg-muted/50 rounded-lg p-4 mb-4">
+                        <p className="text-sm font-medium mb-2">Kundinformation (auto-ifylld)</p>
+                        <div className="text-sm text-muted-foreground space-y-1">
+                          <p><strong>Namn:</strong> {customerInfo.name}</p>
+                          <p><strong>E-post:</strong> {customerInfo.email}</p>
+                          {customerInfo.phone && <p><strong>Telefon:</strong> {customerInfo.phone}</p>}
+                          {customerInfo.address && <p><strong>Adress:</strong> {customerInfo.address}</p>}
+                        </div>
+                      </div>
+                    )}
                     <div className="space-y-2">
                       <Label htmlFor="recipientName">Mottagarens namn</Label>
                       <Input
@@ -535,6 +632,7 @@ const QuoteDisplay = ({
                         placeholder="Johan Andersson"
                         value={recipientName}
                         onChange={(e) => setRecipientName(e.target.value)}
+                        disabled={!!customerInfo}
                       />
                     </div>
                     <div className="space-y-2">
@@ -545,8 +643,14 @@ const QuoteDisplay = ({
                         placeholder="johan@example.com"
                         value={recipientEmail}
                         onChange={(e) => setRecipientEmail(e.target.value)}
+                        disabled={!!customerInfo}
                       />
                     </div>
+                    {!customerInfo && (
+                      <p className="text-sm text-muted-foreground">
+                        Tips: Om du kopplar en kund till offerten fylls uppgifterna i automatiskt.
+                      </p>
+                    )}
                     <Button 
                       onClick={handleSendEmail} 
                       className="w-full"
