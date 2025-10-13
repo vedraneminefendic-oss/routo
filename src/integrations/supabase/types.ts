@@ -59,6 +59,45 @@ export type Database = {
         }
         Relationships: []
       }
+      equipment_rates: {
+        Row: {
+          created_at: string
+          default_quantity: number
+          equipment_type: string
+          id: string
+          is_rented: boolean
+          name: string
+          price_per_day: number | null
+          price_per_hour: number | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          default_quantity?: number
+          equipment_type: string
+          id?: string
+          is_rented?: boolean
+          name: string
+          price_per_day?: number | null
+          price_per_hour?: number | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          default_quantity?: number
+          equipment_type?: string
+          id?: string
+          is_rented?: boolean
+          name?: string
+          price_per_day?: number | null
+          price_per_hour?: number | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       hourly_rates: {
         Row: {
           created_at: string | null
@@ -334,6 +373,7 @@ export type Database = {
           completed_at: string | null
           created_at: string
           description: string
+          detail_level: string | null
           edited_quote: Json | null
           generated_quote: Json
           id: string
@@ -354,6 +394,7 @@ export type Database = {
           completed_at?: string | null
           created_at?: string
           description: string
+          detail_level?: string | null
           edited_quote?: Json | null
           generated_quote: Json
           id?: string
@@ -374,6 +415,7 @@ export type Database = {
           completed_at?: string | null
           created_at?: string
           description?: string
+          detail_level?: string | null
           edited_quote?: Json | null
           generated_quote?: Json
           id?: string

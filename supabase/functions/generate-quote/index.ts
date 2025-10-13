@@ -40,6 +40,16 @@ serve(async (req) => {
       console.error('Error fetching hourly rates:', ratesError);
     }
 
+    // Hämta användarens maskiner och utrustning
+    const { data: equipmentRates, error: equipmentError } = await supabaseClient
+      .from('equipment_rates')
+      .select('name, equipment_type, price_per_day, price_per_hour, is_rented, default_quantity')
+      .eq('user_id', user_id);
+
+    if (equipmentError) {
+      console.error('Error fetching equipment rates:', equipmentError);
+    }
+
     // Bygg rates-text för prompten
     let ratesText = '';
     let hasCustomRates = false;
@@ -52,6 +62,24 @@ serve(async (req) => {
     } else {
       ratesText = 'Användaren har inte angivit specifika timpriser. Använd standardpris 650 kr/h.';
       console.log('No custom rates found, using default 650 kr/h');
+    }
+
+    // Bygg equipment-text för prompten
+    let equipmentText = '';
+    let hasEquipment = false;
+    
+    if (equipmentRates && equipmentRates.length > 0) {
+      equipmentText = '\n\nAnvändarens maskiner och utrustning:\n' + 
+        equipmentRates.map(e => {
+          const priceInfo = e.price_per_day 
+            ? `${e.price_per_day} kr/dag`
+            : `${e.price_per_hour} kr/timme`;
+          const status = e.is_rented ? 'hyrd' : 'ägd';
+          return `- ${e.name} (${e.equipment_type}): ${priceInfo} (${status}, standard antal: ${e.default_quantity})`;
+        }).join('\n') +
+        '\n\nOm uppdraget kräver maskiner eller utrustning, använd dessa och lägg till dem i offerten. Lägg maskinkostnader under materials-array med lämplig beskrivning.';
+      hasEquipment = true;
+      console.log('Using equipment rates:', equipmentRates);
     }
 
     const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
@@ -69,6 +97,7 @@ serve(async (req) => {
             content: `Du är en AI-assistent som hjälper hantverkare att skapa professionella offerter. 
 
 ${ratesText}
+${equipmentText}
 
 VIKTIGA PRINCIPER FÖR KONSEKVENTA OFFERTER:
 - Använd EXAKT de angivna timpriserna ovan för varje arbetstyp
@@ -79,6 +108,16 @@ VIKTIGA PRINCIPER FÖR KONSEKVENTA OFFERTER:
 - Specificera tydligt vad som ingår och inte ingår i offerten
 - Matcha arbetstypen i offerten mot beskrivningen och använd korrekt timpris för varje workItem
 - Om beskrivningen innehåller flera typer av arbeten, använd det timpris som passar bäst för varje specifikt arbetsmoment
+
+AUTOMATISK DETALJNIVÅ (anpassa innehåll efter uppskattat värde):
+1. Uppskatta först total kostnad (totalWithVAT)
+2. Anpassa sedan detaljnivån automatiskt:
+   - Under 15,000 kr: "Snabboffert" - grundläggande arbetsposter och material
+   - 15,000-50,000 kr: "Standard" - arbetsposter, material, grundläggande villkor
+   - 50,000-150,000 kr: "Detaljerad" - lägg till tidsplan och fasindelning i notes
+   - Över 150,000 kr: "Byggprojekt" - lägg till projektledning, försäkringar och besiktningar i notes
+
+Anpassa mängden detaljer i beskrivningar och notes efter vald nivå.
             
 Baserat på uppdragsbeskrivningen ska du returnera en strukturerad offert i JSON-format med följande struktur:
 
@@ -155,12 +194,27 @@ Viktig information:
     const data = await response.json();
     const generatedQuote = JSON.parse(data.choices[0].message.content);
 
-    console.log('Generated quote successfully');
+    // Beräkna detaljnivå baserat på total kostnad
+    const estimatedTotal = generatedQuote.summary?.totalWithVAT || 0;
+    let detailLevel = 'standard';
+    if (estimatedTotal < 15000) {
+      detailLevel = 'quick';
+    } else if (estimatedTotal < 50000) {
+      detailLevel = 'standard';
+    } else if (estimatedTotal < 150000) {
+      detailLevel = 'detailed';
+    } else {
+      detailLevel = 'construction';
+    }
+
+    console.log('Generated quote successfully with detail level:', detailLevel);
 
     return new Response(
       JSON.stringify({ 
         quote: generatedQuote,
-        hasCustomRates 
+        hasCustomRates,
+        hasEquipment,
+        detailLevel
       }),
       { 
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },

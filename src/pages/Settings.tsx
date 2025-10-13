@@ -4,9 +4,10 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { ArrowLeft, Building2, Clock } from "lucide-react";
+import { ArrowLeft, Building2, Clock, Wrench } from "lucide-react";
 import CompanySettings from "@/components/CompanySettings";
 import HourlyRatesManager from "@/components/HourlyRatesManager";
+import EquipmentRatesManager from "@/components/EquipmentRatesManager";
 
 const Settings = () => {
   const navigate = useNavigate();
@@ -58,7 +59,7 @@ const Settings = () => {
 
       <main className="container mx-auto px-4 py-8">
         <Tabs defaultValue="company" className="space-y-6">
-          <TabsList className="grid w-full max-w-md grid-cols-2">
+          <TabsList className="grid w-full max-w-md grid-cols-3">
             <TabsTrigger value="company" className="flex items-center gap-2 data-[state=active]:text-primary data-[state=active]:font-medium">
               <Building2 className="h-4 w-4" />
               Företag
@@ -66,6 +67,10 @@ const Settings = () => {
             <TabsTrigger value="rates" className="flex items-center gap-2 data-[state=active]:text-primary data-[state=active]:font-medium">
               <Clock className="h-4 w-4" />
               Timpriser
+            </TabsTrigger>
+            <TabsTrigger value="equipment" className="flex items-center gap-2 data-[state=active]:text-primary data-[state=active]:font-medium">
+              <Wrench className="h-4 w-4" />
+              Maskiner
             </TabsTrigger>
           </TabsList>
 
@@ -93,6 +98,20 @@ const Settings = () => {
               </CardHeader>
               <CardContent>
                 <HourlyRatesManager userId={user?.id} />
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="equipment">
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-secondary">Maskiner & Utrustning</CardTitle>
+                <CardDescription>
+                  Ange priser för maskiner och utrustning. AI:n lägger till dessa i offerter när de behövs.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <EquipmentRatesManager userId={user?.id} />
               </CardContent>
             </Card>
           </TabsContent>
