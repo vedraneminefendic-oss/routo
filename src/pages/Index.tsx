@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Wrench, LogOut, Settings as SettingsIcon } from "lucide-react";
+import { Wrench, LogOut, Settings as SettingsIcon, BarChart3 } from "lucide-react";
 import { toast } from "sonner";
 import QuoteForm from "@/components/QuoteForm";
 import QuoteDisplay from "@/components/QuoteDisplay";
@@ -211,6 +211,10 @@ const Index = () => {
               <Button variant="outline" onClick={() => navigate("/settings")}>
                 <SettingsIcon className="h-4 w-4 mr-2" />
                 Inställningar
+              </Button>
+              <Button variant="outline" onClick={() => navigate("/reports")}>
+                <BarChart3 className="h-4 w-4 mr-2" />
+                Rapporter
               </Button>
               <Button variant="outline" onClick={handleLogout}>
                 <LogOut className="h-4 w-4 mr-2" />

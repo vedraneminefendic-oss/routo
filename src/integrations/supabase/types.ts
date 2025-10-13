@@ -457,6 +457,20 @@ export type Database = {
           title: string
         }[]
       }
+      get_quote_statistics: {
+        Args: { end_date?: string; start_date?: string }
+        Returns: {
+          accepted_count: number
+          avg_quote_value: number
+          completed_count: number
+          draft_count: number
+          rejected_count: number
+          sent_count: number
+          total_quotes: number
+          total_value: number
+          viewed_count: number
+        }[]
+      }
     }
     Enums: {
       quote_status: "draft" | "sent" | "signed"
