@@ -10,12 +10,12 @@ interface StatusTransition {
 }
 
 const ALLOWED_TRANSITIONS: StatusTransition[] = [
-  { from: "draft", to: ["sent"] },
-  { from: "sent", to: ["viewed", "draft"] },
+  { from: "draft", to: ["accepted", "rejected"] }, // "sent" sätts automatiskt vid e-post
+  { from: "sent", to: ["viewed", "accepted", "rejected", "draft"] },
   { from: "viewed", to: ["accepted", "rejected", "sent"] },
-  { from: "accepted", to: ["completed"] },
-  { from: "rejected", to: ["sent"] },
-  { from: "completed", to: [] },
+  { from: "accepted", to: ["completed", "rejected"] }, // Kan ångras
+  { from: "rejected", to: ["accepted", "sent"] }, // Kan ändras
+  { from: "completed", to: [] }, // Slutgiltig status
 ];
 
 export const useQuoteStatus = () => {

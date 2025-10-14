@@ -106,34 +106,42 @@ export const QuoteStatusManager = ({
 
   return (
     <>
-      <div className="flex items-center gap-3">
-        <div className="flex items-center gap-2">
-          <StatusIcon className="h-5 w-5 text-muted-foreground" />
-          <Badge className={`${STATUS_CONFIG[currentStatus].color} text-white`}>
-            {STATUS_CONFIG[currentStatus].label}
-          </Badge>
+      <div className="space-y-2">
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2">
+            <StatusIcon className="h-5 w-5 text-muted-foreground" />
+            <Badge className={`${STATUS_CONFIG[currentStatus].color} text-white`}>
+              {STATUS_CONFIG[currentStatus].label}
+            </Badge>
+          </div>
+
+          {allowedTransitions.length > 0 && (
+            <Select onValueChange={handleStatusSelect} disabled={isChangingStatus}>
+              <SelectTrigger className="w-[200px]">
+                <SelectValue placeholder="Ändra status..." />
+              </SelectTrigger>
+              <SelectContent>
+                {allowedTransitions.map((status) => {
+                  const config = STATUS_CONFIG[status];
+                  const Icon = config.icon;
+                  return (
+                    <SelectItem key={status} value={status}>
+                      <div className="flex items-center gap-2">
+                        <Icon className="h-4 w-4" />
+                        <span>{config.label}</span>
+                      </div>
+                    </SelectItem>
+                  );
+                })}
+              </SelectContent>
+            </Select>
+          )}
         </div>
 
-        {allowedTransitions.length > 0 && (
-          <Select onValueChange={handleStatusSelect} disabled={isChangingStatus}>
-            <SelectTrigger className="w-[200px]">
-              <SelectValue placeholder="Ändra status..." />
-            </SelectTrigger>
-            <SelectContent>
-              {allowedTransitions.map((status) => {
-                const config = STATUS_CONFIG[status];
-                const Icon = config.icon;
-                return (
-                  <SelectItem key={status} value={status}>
-                    <div className="flex items-center gap-2">
-                      <Icon className="h-4 w-4" />
-                      <span>{config.label}</span>
-                    </div>
-                  </SelectItem>
-                );
-              })}
-            </SelectContent>
-          </Select>
+        {currentStatus === "draft" && (
+          <p className="text-xs text-muted-foreground">
+            💡 Status ändras automatiskt till "Skickad" när du skickar offerten via e-post
+          </p>
         )}
       </div>
 
@@ -151,6 +159,14 @@ export const QuoteStatusManager = ({
               )}
             </AlertDialogDescription>
           </AlertDialogHeader>
+
+          {selectedStatus === "draft" && currentStatus === "sent" && (
+            <div className="bg-amber-50 border border-amber-200 rounded-md p-3 mb-4">
+              <p className="text-sm text-amber-900">
+                ⚠️ Om du ändrar tillbaka till utkast kommer kunden fortfarande ha tillgång till den skickade länken.
+              </p>
+            </div>
+          )}
 
           <div className="space-y-2">
             <Label htmlFor="note">Anteckning (valfritt)</Label>
