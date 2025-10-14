@@ -286,7 +286,7 @@ const Dashboard = () => {
         <Card>
           <CardHeader>
             <div className="flex items-center justify-between">
-              <CardTitle className="text-xl">Senaste offerterna</CardTitle>
+              <CardTitle className="text-lg">Senaste offerterna</CardTitle>
               <Button variant="ghost" size="sm" onClick={() => navigate('/quotes')}>
                 Visa alla
               </Button>
