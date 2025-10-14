@@ -638,12 +638,8 @@ export type Database = {
           company_name: string
           company_phone: string
           created_at: string
-          customer_address: string
-          customer_email: string
           customer_id: string
           customer_name: string
-          customer_personnummer: string
-          customer_phone: string
           customer_property_designation: string
           description: string
           edited_quote: Json

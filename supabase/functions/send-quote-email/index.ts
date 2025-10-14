@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.0";
 import { Resend } from "https://esm.sh/resend@4.0.0";
+import { z } from 'https://deno.land/x/zod@v3.22.4/mod.ts';
 
 const resend = new Resend(Deno.env.get("RESEND_API_KEY"));
 
@@ -15,6 +16,19 @@ serve(async (req: Request): Promise<Response> => {
   }
 
   try {
+    // Input validation schema
+    const requestSchema = z.object({
+      quoteId: z.string().uuid("Invalid quote ID format"),
+      recipientEmail: z.string().trim().email("Invalid email format").max(255, "Email too long"),
+      recipientName: z.string().trim().min(1, "Name required").max(100, "Name too long")
+    });
+
+    // Parse and validate request body
+    const body = await req.json();
+    const validatedData = requestSchema.parse(body);
+
+    const { quoteId, recipientEmail, recipientName } = validatedData;
+
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseKey = Deno.env.get("SUPABASE_ANON_KEY")!;
     const authHeader = req.headers.get("Authorization")!;
@@ -22,16 +36,6 @@ serve(async (req: Request): Promise<Response> => {
     const supabase = createClient(supabaseUrl, supabaseKey, {
       global: { headers: { Authorization: authHeader } },
     });
-
-    const { quoteId, recipientEmail, recipientName } = await req.json();
-
-    if (!quoteId || !recipientEmail || !recipientName) {
-      console.error("Missing required fields:", { quoteId, recipientEmail, recipientName });
-      return new Response(
-        JSON.stringify({ error: "Missing required fields" }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
 
     // Get quote details with customer information
     const { data: quote, error: quoteError } = await supabase

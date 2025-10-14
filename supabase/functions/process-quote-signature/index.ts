@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.0";
+import { z } from 'https://deno.land/x/zod@v3.22.4/mod.ts';
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -12,27 +13,27 @@ serve(async (req: Request): Promise<Response> => {
   }
 
   try {
+    // Input validation schema matching client-side validation
+    const signatureSchema = z.object({
+      quoteId: z.string().uuid("Invalid quote ID format"),
+      response: z.enum(['accepted', 'rejected'], { errorMap: () => ({ message: "Response must be 'accepted' or 'rejected'" }) }),
+      signerName: z.string().trim().min(1, "Name required").max(100, "Name too long").optional(),
+      signerEmail: z.string().trim().email("Invalid email").max(255, "Email too long").optional(),
+      signerPersonnummer: z.string().regex(/^\d{6,8}-?\d{4}$/, "Invalid personnummer format").optional().or(z.literal('')),
+      propertyDesignation: z.string().max(100, "Property designation too long").optional().or(z.literal('')),
+      message: z.string().max(1000, "Message too long").optional().or(z.literal(''))
+    });
+
+    // Parse and validate request body
+    const body = await req.json();
+    const validatedData = signatureSchema.parse(body);
+
+    const { quoteId, response } = validatedData;
+
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
-
-    const { quoteId, response } = await req.json();
-
-    if (!quoteId || !response) {
-      return new Response(
-        JSON.stringify({ error: "Obligatoriska fält saknas" }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
-
-    // Validate response value
-    if (response !== "accepted" && response !== "rejected") {
-      return new Response(
-        JSON.stringify({ error: "Ogiltigt svar" }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
 
     // Get the quote
     const { data: quote, error: quoteError } = await supabase

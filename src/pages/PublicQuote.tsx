@@ -64,10 +64,7 @@ interface QuoteInfo {
   company_logo_url: string;
   customer_id: string | null;
   customer_name: string | null;
-  customer_email: string | null;
-  customer_phone: string | null;
-  customer_address: string | null;
-  customer_personnummer: string | null;
+  // PII fields removed for security - customers must enter their own details
   customer_property_designation: string | null;
 }
 
@@ -149,10 +146,10 @@ const PublicQuote = () => {
   const handleSubmit = async () => {
     if (!quote) return;
 
-    // Pre-fill with customer info if available
+    // Customers must now enter their own details for security
     const finalSignerName = signerName || quote.customer_name || "";
-    const finalSignerEmail = signerEmail || quote.customer_email || "";
-    const finalPersonnummer = signerPersonnummer || quote.customer_personnummer || "";
+    const finalSignerEmail = signerEmail || "";
+    const finalPersonnummer = signerPersonnummer || "";
     const finalPropertyDesignation = propertyDesignation || quote.customer_property_designation || "";
 
     // Validate inputs with zod
@@ -458,38 +455,16 @@ const PublicQuote = () => {
             </CardHeader>
             <CardContent className="space-y-2">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <p className="text-sm font-medium text-muted-foreground">Namn</p>
-                  <p className="text-base">{quote.customer_name}</p>
-                </div>
-                {quote.customer_email && (
+                {quote.customer_name && (
                   <div>
-                    <p className="text-sm font-medium text-muted-foreground">E-post</p>
-                    <p className="text-base">{quote.customer_email}</p>
-                  </div>
-                )}
-                {quote.customer_phone && (
-                  <div>
-                    <p className="text-sm font-medium text-muted-foreground">Telefon</p>
-                    <p className="text-base">{quote.customer_phone}</p>
-                  </div>
-                )}
-                {quote.customer_address && (
-                  <div>
-                    <p className="text-sm font-medium text-muted-foreground">Adress</p>
-                    <p className="text-base">{quote.customer_address}</p>
+                    <p className="text-sm font-medium text-muted-foreground">Namn</p>
+                    <p className="text-base">{quote.customer_name}</p>
                   </div>
                 )}
                 {quote.customer_property_designation && (
                   <div>
                     <p className="text-sm font-medium text-muted-foreground">Fastighetsbeteckning</p>
                     <p className="text-base">{quote.customer_property_designation}</p>
-                  </div>
-                )}
-                {quote.customer_personnummer && (
-                  <div>
-                    <p className="text-sm font-medium text-muted-foreground">Personnummer</p>
-                    <p className="text-base">{quote.customer_personnummer}</p>
                   </div>
                 )}
               </div>
@@ -628,19 +603,6 @@ const PublicQuote = () => {
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            {quote.customer_name && (
-              <div className="bg-muted/50 rounded-lg p-4">
-                <p className="text-sm font-medium mb-2">Dina uppgifter (auto-ifyllda från offerten)</p>
-                <div className="text-sm text-muted-foreground space-y-1">
-                  <p><strong>Namn:</strong> {quote.customer_name}</p>
-                  <p><strong>E-post:</strong> {quote.customer_email}</p>
-                  {quote.customer_phone && <p><strong>Telefon:</strong> {quote.customer_phone}</p>}
-                </div>
-                <p className="text-xs text-muted-foreground mt-2">
-                  Du kan ändra uppgifterna nedan om de är felaktiga.
-                </p>
-              </div>
-            )}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="signerName">Namn *</Label>
@@ -657,7 +619,7 @@ const PublicQuote = () => {
                   id="signerEmail"
                   type="email"
                   placeholder="din@email.com"
-                  value={signerEmail || quote.customer_email || ""}
+                  value={signerEmail}
                   onChange={(e) => setSignerEmail(e.target.value)}
                 />
               </div>
@@ -669,7 +631,7 @@ const PublicQuote = () => {
                 <Input
                   id="signerPersonnummer"
                   placeholder="ÅÅÅÅMMDD-XXXX"
-                  value={signerPersonnummer || quote.customer_personnummer || ""}
+                  value={signerPersonnummer}
                   onChange={(e) => setSignerPersonnummer(e.target.value)}
                 />
               </div>

@@ -1,6 +1,7 @@
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.75.0';
+import { z } from 'https://deno.land/x/zod@v3.22.4/mod.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -83,7 +84,27 @@ serve(async (req) => {
   }
 
   try {
-    const { description, user_id, customer_id, detailLevel = 'standard', deductionType = 'auto' } = await req.json();
+    // Input validation schema
+    const requestSchema = z.object({
+      description: z.string().trim().min(10, "Description too short").max(5000, "Description too long"),
+      customer_id: z.string().uuid().optional(),
+      detailLevel: z.enum(['quick', 'standard', 'detailed', 'construction']).default('standard'),
+      deductionType: z.enum(['rot', 'rut', 'none', 'auto']).default('auto')
+    });
+
+    // Parse and validate request body
+    const body = await req.json();
+    const validatedData = requestSchema.parse(body);
+
+    // Extract user_id from JWT token instead of trusting client
+    const authHeader = req.headers.get('Authorization');
+    if (!authHeader) {
+      return new Response(
+        JSON.stringify({ error: 'Unauthorized' }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
     const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
     const SUPABASE_URL = Deno.env.get('SUPABASE_URL');
     const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
@@ -92,7 +113,24 @@ serve(async (req) => {
       throw new Error('LOVABLE_API_KEY not configured');
     }
 
-    console.log('Generating quote for:', description);
+    // Create admin client to verify JWT and get user
+    const supabaseAdmin = createClient(SUPABASE_URL!, SUPABASE_SERVICE_ROLE_KEY!);
+    const token = authHeader.replace('Bearer ', '');
+    const { data: { user }, error: authError } = await supabaseAdmin.auth.getUser(token);
+
+    if (authError || !user) {
+      console.error('Auth error:', authError);
+      return new Response(
+        JSON.stringify({ error: 'Unauthorized' }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    const user_id = user.id;
+    const { description, customer_id, detailLevel, deductionType } = validatedData;
+
+    console.log('Generating quote for user:', user_id);
+    console.log('Description:', description);
     console.log('Deduction type requested:', deductionType);
 
     // Skapa Supabase-klient för att hämta timpriser
