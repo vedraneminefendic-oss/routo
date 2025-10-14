@@ -13,6 +13,11 @@ serve(async (req: Request): Promise<Response> => {
   }
 
   try {
+    // Get client IP for rate limiting and audit logging
+    const clientIP = req.headers.get('x-forwarded-for')?.split(',')[0] || 
+                     req.headers.get('x-real-ip') || 
+                     'unknown';
+
     // Input validation schema matching client-side validation
     const signatureSchema = z.object({
       quoteId: z.string().uuid("Invalid quote ID format"),
@@ -30,6 +35,8 @@ serve(async (req: Request): Promise<Response> => {
 
     const { quoteId, response } = validatedData;
 
+    console.log(`[SECURITY AUDIT] Quote signature attempt - IP: ${clientIP}, QuoteID: ${quoteId}, Response: ${response}`);
+
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     
@@ -43,7 +50,7 @@ serve(async (req: Request): Promise<Response> => {
       .single();
 
     if (quoteError || !quote) {
-      console.error("Error fetching quote:", quoteError);
+      console.error(`[SECURITY AUDIT] Quote not found - IP: ${clientIP}, QuoteID: ${quoteId}`);
       return new Response(
         JSON.stringify({ error: "Offerten kunde inte hittas" }),
         { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -52,6 +59,7 @@ serve(async (req: Request): Promise<Response> => {
 
     // Prevent changes to already processed quotes (rate limiting)
     if (quote.status === "accepted" || quote.status === "rejected") {
+      console.warn(`[SECURITY AUDIT] Duplicate submission attempt blocked - IP: ${clientIP}, QuoteID: ${quoteId}, Status: ${quote.status}`);
       return new Response(
         JSON.stringify({ error: "Offerten har redan besvarats" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -71,7 +79,7 @@ serve(async (req: Request): Promise<Response> => {
       .eq("id", quoteId);
 
     if (updateError) {
-      console.error("Error updating quote:", updateError);
+      console.error(`[SECURITY AUDIT] Failed to update quote - IP: ${clientIP}, QuoteID: ${quoteId}, Error: ${updateError.message}`);
       return new Response(
         JSON.stringify({ error: "Ett fel uppstod vid uppdatering. Kontakta support om problemet kvarstår." }),
         { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -87,7 +95,7 @@ serve(async (req: Request): Promise<Response> => {
       note: `Customer ${response} the quote`,
     });
 
-    console.log(`Quote ${quoteId} status updated to ${newStatus}`);
+    console.log(`[SECURITY AUDIT] Quote signature successful - IP: ${clientIP}, QuoteID: ${quoteId}, Status: ${newStatus}`);
 
     return new Response(
       JSON.stringify({ 
@@ -100,7 +108,19 @@ serve(async (req: Request): Promise<Response> => {
       }
     );
   } catch (error: any) {
-    console.error("Error in process-quote-signature function:", error);
+    const clientIP = req.headers.get('x-forwarded-for')?.split(',')[0] || 
+                     req.headers.get('x-real-ip') || 
+                     'unknown';
+    
+    if (error instanceof z.ZodError) {
+      console.warn(`[SECURITY AUDIT] Invalid input - IP: ${clientIP}, Errors: ${JSON.stringify(error.errors)}`);
+      return new Response(
+        JSON.stringify({ error: "Ogiltig indata" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+    
+    console.error(`[SECURITY AUDIT] Unexpected error - IP: ${clientIP}, Error: ${error.message}`);
     return new Response(
       JSON.stringify({ error: "Ett fel uppstod. Kontakta support om problemet kvarstår." }),
       {

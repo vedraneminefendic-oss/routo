@@ -32,12 +32,19 @@ serve(async (req) => {
   }
 
   try {
+    // Get client IP for audit logging
+    const clientIP = req.headers.get('x-forwarded-for')?.split(',')[0] || 
+                     req.headers.get('x-real-ip') || 
+                     'scheduler';
+    
+    console.log(`[SECURITY AUDIT] check-pending-quotes invoked - IP: ${clientIP}, Time: ${new Date().toISOString()}`);
+
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const resendApiKey = Deno.env.get('RESEND_API_KEY');
 
     if (!resendApiKey) {
-      console.error('RESEND_API_KEY is not set');
+      console.error(`[SECURITY AUDIT] RESEND_API_KEY not configured - IP: ${clientIP}`);
       return new Response(
         JSON.stringify({ error: 'Email service not configured' }),
         { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -62,19 +69,19 @@ serve(async (req) => {
       .or(`sent_at.lt.${threeDaysAgoISO},viewed_at.lt.${threeDaysAgoISO}`);
 
     if (quotesError) {
-      console.error('Error fetching quotes:', quotesError);
+      console.error(`[SECURITY AUDIT] Failed to fetch quotes - IP: ${clientIP}, Error: ${quotesError.message}`);
       throw quotesError;
     }
 
     if (!pendingQuotes || pendingQuotes.length === 0) {
-      console.log('No pending quotes found');
+      console.log(`[SECURITY AUDIT] No pending quotes found - IP: ${clientIP}`);
       return new Response(
         JSON.stringify({ message: 'No pending quotes found' }),
         { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    console.log(`Found ${pendingQuotes.length} pending quotes`);
+    console.log(`[SECURITY AUDIT] Found ${pendingQuotes.length} pending quotes - IP: ${clientIP}`);
 
     // Gruppera per användare
     const quotesByUser = new Map<string, PendingQuote[]>();
@@ -99,7 +106,7 @@ serve(async (req) => {
       const quotesToRemind = quotes.filter(q => !recentReminderQuoteIds.has(q.id));
 
       if (quotesToRemind.length === 0) {
-        console.log(`Skipping user ${userId}, recent reminders already sent`);
+        console.log(`[SECURITY AUDIT] Skipping user (recent reminders sent) - UserID: ${userId}`);
         continue;
       }
 
@@ -111,7 +118,7 @@ serve(async (req) => {
         .single();
 
       if (!companySettings?.email) {
-        console.log(`No email configured for user ${userId}`);
+        console.log(`[SECURITY AUDIT] No email configured - UserID: ${userId}`);
         continue;
       }
 
@@ -166,7 +173,7 @@ serve(async (req) => {
         });
 
         if (emailError) {
-          console.error(`Error sending email to ${companySettings.email}:`, emailError);
+          console.error(`[SECURITY AUDIT] Email send failed - Email: ${companySettings.email}, UserID: ${userId}, Error: ${emailError.message}`);
           results.push({ userId, success: false, error: emailError.message });
           continue;
         }
@@ -184,16 +191,18 @@ serve(async (req) => {
           .insert(reminderInserts);
 
         if (reminderError) {
-          console.error('Error logging reminders:', reminderError);
+          console.error(`[SECURITY AUDIT] Failed to log reminders - UserID: ${userId}, Error: ${reminderError.message}`);
         }
 
-        console.log(`Email sent to ${companySettings.email} for ${quotesToRemind.length} quotes`);
+        console.log(`[SECURITY AUDIT] Reminder sent successfully - Email: ${companySettings.email}, UserID: ${userId}, QuoteCount: ${quotesToRemind.length}`);
         results.push({ userId, success: true, quotesCount: quotesToRemind.length });
       } catch (error: any) {
-        console.error(`Error processing user ${userId}:`, error);
+        console.error(`[SECURITY AUDIT] Error processing user - UserID: ${userId}, Error: ${error.message}`);
         results.push({ userId, success: false, error: error.message });
       }
     }
+
+    console.log(`[SECURITY AUDIT] Reminder check completed - IP: ${clientIP}, TotalPending: ${pendingQuotes.length}, UsersNotified: ${results.filter(r => r.success).length}`);
 
     return new Response(
       JSON.stringify({ 
@@ -206,7 +215,7 @@ serve(async (req) => {
     );
 
   } catch (error: any) {
-    console.error('Error in check-pending-quotes function:', error);
+    console.error(`[SECURITY AUDIT] Unexpected error - Error: ${error.message}`);
     return new Response(
       JSON.stringify({ error: error.message }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
