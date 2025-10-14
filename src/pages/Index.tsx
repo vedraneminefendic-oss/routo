@@ -86,7 +86,7 @@ const Index = () => {
     }
   };
 
-  const handleGenerateQuote = async (description: string, customerId?: string, detailLevel?: string) => {
+  const handleGenerateQuote = async (description: string, customerId?: string, detailLevel?: string, deductionType?: string) => {
     setIsGenerating(true);
     setCurrentDescription(description);
     setCurrentCustomerId(customerId);
@@ -97,7 +97,8 @@ const Index = () => {
           description,
           user_id: user?.id,
           customer_id: customerId,
-          detailLevel: detailLevel || 'standard'
+          detailLevel: detailLevel || 'standard',
+          deductionType: deductionType || 'auto'
         }
       });
 

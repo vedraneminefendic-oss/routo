@@ -9,7 +9,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Customer } from "@/pages/Customers";
 
 interface QuoteFormProps {
-  onGenerate: (description: string, customerId?: string, detailLevel?: string) => Promise<void>;
+  onGenerate: (description: string, customerId?: string, detailLevel?: string, deductionType?: string) => Promise<void>;
   isGenerating: boolean;
 }
 
@@ -27,6 +27,7 @@ const QuoteForm = ({ onGenerate, isGenerating }: QuoteFormProps) => {
   const [templates, setTemplates] = useState<Template[]>([]);
   const [selectedTemplateId, setSelectedTemplateId] = useState<string>("");
   const [detailLevel, setDetailLevel] = useState<string>("standard");
+  const [deductionType, setDeductionType] = useState<string>("auto");
 
   useEffect(() => {
     loadCustomers();
@@ -72,7 +73,7 @@ const QuoteForm = ({ onGenerate, isGenerating }: QuoteFormProps) => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (description.trim()) {
-      await onGenerate(description, selectedCustomerId || undefined, detailLevel);
+      await onGenerate(description, selectedCustomerId || undefined, detailLevel, deductionType);
     }
   };
 
@@ -166,6 +167,40 @@ const QuoteForm = ({ onGenerate, isGenerating }: QuoteFormProps) => {
             </Select>
             <p className="text-sm text-muted-foreground">
               Välj hur detaljerad offerten ska vara
+            </p>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="deductionType">Skatteavdrag</Label>
+            <Select value={deductionType} onValueChange={setDeductionType}>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="auto">
+                  <div className="flex items-center gap-2">
+                    <span>🤖 Automatisk detektering</span>
+                  </div>
+                </SelectItem>
+                <SelectItem value="rot">
+                  <div className="flex items-center gap-2">
+                    <span>🔨 ROT-avdrag (Renovering)</span>
+                  </div>
+                </SelectItem>
+                <SelectItem value="rut">
+                  <div className="flex items-center gap-2">
+                    <span>✨ RUT-avdrag (Städning/Hemservice)</span>
+                  </div>
+                </SelectItem>
+                <SelectItem value="none">
+                  <div className="flex items-center gap-2">
+                    <span>❌ Inget avdrag</span>
+                  </div>
+                </SelectItem>
+              </SelectContent>
+            </Select>
+            <p className="text-sm text-muted-foreground">
+              AI:n kan automatiskt avgöra om arbetet klassas som ROT eller RUT
             </p>
           </div>
           

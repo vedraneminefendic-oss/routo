@@ -72,7 +72,7 @@ serve(async (req) => {
   }
 
   try {
-    const { description, user_id, customer_id, detailLevel = 'standard' } = await req.json();
+    const { description, user_id, customer_id, detailLevel = 'standard', deductionType = 'auto' } = await req.json();
     const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
     const SUPABASE_URL = Deno.env.get('SUPABASE_URL');
     const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
@@ -82,6 +82,7 @@ serve(async (req) => {
     }
 
     console.log('Generating quote for:', description);
+    console.log('Deduction type requested:', deductionType);
 
     // Skapa Supabase-klient för att hämta timpriser
     const supabaseClient = createClient(
@@ -89,8 +90,16 @@ serve(async (req) => {
       SUPABASE_SERVICE_ROLE_KEY!
     );
 
+    // Detect deduction type if set to auto
+    let finalDeductionType = deductionType;
+    if (deductionType === 'auto') {
+      console.log('Auto-detecting deduction type...');
+      finalDeductionType = await detectDeductionType(description, LOVABLE_API_KEY);
+      console.log('Detected deduction type:', finalDeductionType);
+    }
+
     // Hämta användarens timpriser
-    const { data: hourlyRates, error: ratesError } = await supabaseClient
+    const { data: hourlyRates, error: ratesError} = await supabaseClient
       .from('hourly_rates')
       .select('work_type, rate')
       .eq('user_id', user_id);
@@ -199,6 +208,13 @@ serve(async (req) => {
       hasEquipment = true;
       console.log('Using equipment rates:', equipmentRates);
     }
+
+    // Build deduction info based on type
+    const deductionInfo = finalDeductionType === 'rot' 
+      ? `ROT-avdrag: 50% av arbetskostnaden (max 50 000 kr per person/år). Gäller renovering, reparation, ombyggnad.`
+      : finalDeductionType === 'rut'
+      ? `RUT-avdrag: 50% av arbetskostnaden (max 75 000 kr per person/år). Gäller städning, underhåll, trädgård, hemservice.`
+      : `Inget skatteavdrag tillämpas på detta arbete.`;
 
     // STEG 1: Beräkna bastotaler först (för priskonsistens)
     console.log('Step 1: Calculating base totals for price consistency...');
@@ -318,16 +334,26 @@ Baserat på uppdragsbeskrivningen ska du returnera en strukturerad offert i JSON
     "totalBeforeVAT": 15000,
     "vat": 3750,
     "totalWithVAT": 18750,
-    "rotDeduction": 5625,
-    "customerPays": 13125
+    "deductionAmount": ${finalDeductionType !== 'none' ? '5000' : '0'},
+    "customerPays": ${finalDeductionType !== 'none' ? '13750' : '18750'}
   },
   "notes": "Eventuella anteckningar eller villkor"
 }
 
+**SKATTEAVDRAG:**
+${deductionInfo}
+
+${finalDeductionType !== 'none' ? `
+VIKTIGT för ${finalDeductionType.toUpperCase()}-arbeten:
+1. Var tydlig med vad som är arbetskostnad (avdragsgillt)
+2. Material och utrustning är INTE avdragsgilla
+3. Kunden får avdraget preliminärt direkt på fakturan
+4. Visa tydligt i sammanfattningen: "Kund betalar efter ${finalDeductionType.toUpperCase()}-avdrag"
+` : ''}
+
 Viktig information:
 - Använd realistiska svenska priser (2025)
 - Använd de angivna timpriserna ovan för varje arbetsmoment
-- ROT-avdrag är 50% av arbetskostnaden (max 50 000 kr per person/år)
 - Inkludera moms (25%)
 - Specificera material och kvantiteter
 - Var tydlig med vad som ingår och inte ingår`
@@ -364,6 +390,9 @@ Viktig information:
 
     const data = await response.json();
     const generatedQuote = JSON.parse(data.choices[0].message.content);
+    
+    // Add deduction type to the quote
+    generatedQuote.deductionType = finalDeductionType;
 
     console.log('Generated quote successfully with detail level:', detailLevel);
 
@@ -372,7 +401,8 @@ Viktig information:
         quote: generatedQuote,
         hasCustomRates,
         hasEquipment,
-        detailLevel
+        detailLevel,
+        deductionType: finalDeductionType
       }),
       { 
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -391,3 +421,87 @@ Viktig information:
     );
   }
 });
+
+// AI function to detect deduction type based on job description
+async function detectDeductionType(description: string, apiKey: string): Promise<'rot' | 'rut' | 'none'> {
+  try {
+    const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: 'google/gemini-2.5-flash',
+        messages: [
+          {
+            role: 'system',
+            content: `Du är expert på svenska skatteregler för ROT och RUT-avdrag. Avgör om ett jobb klassificeras som ROT, RUT eller inget avdrag.
+
+**ROT-arbeten (Reparation, Ombyggnad, Tillbyggnad):**
+- Renovering av badrum, kök, våtrum
+- Målning, tapetsering, golvläggning, kakelläggning
+- El- och VVS-installation som kräver byggarbete
+- Värmepump, solpaneler, fönsterbyte
+- Fasadrenovering, takläggning, takbyte
+- Tillbyggnad, ombyggnad av bostaden
+- Installation av hiss
+- Dränering runt huset
+- KRÄVER OFTA SPECIALISTKUNSKAP OCH BYGGARBETE
+
+**RUT-arbeten (Rengöring, Underhåll, Trädgård):**
+- Städning (hemstädning, storstädning, trappstädning)
+- Fönsterputs, rengöring
+- Gräsklippning, snöskottning, ogräsrensning
+- Trädfällning, häckklippning, trädgårdsskötsel
+- Flyttjänster, flyttstädning
+- Klädtvätt, matlagning (hemservice)
+- IT-support i hemmet
+- Reparation av vitvaror (diskmaskin, tvättmaskin, spis)
+- Enkel reparation och underhåll som inte kräver bygglov
+- SAKER SOM HUSHÅLL KAN GÖRA SJÄLVA
+
+**Viktiga skillnader:**
+- "Installera värmepump" = ROT (kräver byggarbete)
+- "Rengöra värmepumpens filter" = RUT (underhåll)
+- "Renovera badrum" = ROT (bygg och installation)
+- "Städa badrum" = RUT (rengöring)
+- "Måla fasad" = ROT (renovering av byggnad)
+- "Tvätta fönster" = RUT (hemservice)
+- "Bygga altandäck" = ROT (tillbyggnad)
+- "Sopa och rensa däck" = RUT (underhåll)
+- "Rensa stuprör" = RUT (underhåll)
+- "Byta taket" = ROT (renovering)
+
+Returnera ENDAST ett JSON-objekt med detta format:
+{"type": "rot"} eller {"type": "rut"} eller {"type": "none"}`
+          },
+          {
+            role: 'user',
+            content: `Klassificera följande arbete: "${description}"`
+          }
+        ],
+        response_format: { type: "json_object" },
+        temperature: 0
+      }),
+    });
+
+    if (!response.ok) {
+      console.error('AI detection failed, defaulting to ROT');
+      return 'rot';
+    }
+
+    const data = await response.json();
+    const result = JSON.parse(data.choices[0].message.content);
+    
+    if (result.type === 'rot' || result.type === 'rut' || result.type === 'none') {
+      return result.type;
+    }
+    
+    console.warn('Invalid deduction type from AI, defaulting to ROT');
+    return 'rot';
+  } catch (error) {
+    console.error('Error detecting deduction type:', error);
+    return 'rot'; // Default fallback
+  }
+}

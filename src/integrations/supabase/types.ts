@@ -19,6 +19,7 @@ export type Database = {
           address: string | null
           company_name: string
           created_at: string | null
+          default_deduction_type: string | null
           email: string | null
           has_f_skatt: boolean | null
           id: string
@@ -33,6 +34,7 @@ export type Database = {
           address?: string | null
           company_name: string
           created_at?: string | null
+          default_deduction_type?: string | null
           email?: string | null
           has_f_skatt?: boolean | null
           id?: string
@@ -47,6 +49,7 @@ export type Database = {
           address?: string | null
           company_name?: string
           created_at?: string | null
+          default_deduction_type?: string | null
           email?: string | null
           has_f_skatt?: boolean | null
           id?: string
@@ -98,6 +101,39 @@ export type Database = {
           property_designation?: string | null
           updated_at?: string
           user_id?: string
+        }
+        Relationships: []
+      }
+      deduction_limits: {
+        Row: {
+          created_at: string | null
+          deduction_percentage: number
+          deduction_type: string
+          description: string | null
+          id: string
+          max_amount_per_year: number
+          valid_from: string
+          valid_to: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          deduction_percentage: number
+          deduction_type: string
+          description?: string | null
+          id?: string
+          max_amount_per_year: number
+          valid_from: string
+          valid_to?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          deduction_percentage?: number
+          deduction_type?: string
+          description?: string | null
+          id?: string
+          max_amount_per_year?: number
+          valid_from?: string
+          valid_to?: string | null
         }
         Relationships: []
       }
@@ -483,6 +519,7 @@ export type Database = {
           completed_at: string | null
           created_at: string
           customer_id: string | null
+          deduction_type: string | null
           description: string
           detail_level: string | null
           edited_quote: Json | null
@@ -505,6 +542,7 @@ export type Database = {
           completed_at?: string | null
           created_at?: string
           customer_id?: string | null
+          deduction_type?: string | null
           description: string
           detail_level?: string | null
           edited_quote?: Json | null
@@ -527,6 +565,7 @@ export type Database = {
           completed_at?: string | null
           created_at?: string
           customer_id?: string | null
+          deduction_type?: string | null
           description?: string
           detail_level?: string | null
           edited_quote?: Json | null

@@ -1,7 +1,7 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
-import { FileText, Download, Save, Edit, Send, ChevronDown, Trash2, Copy } from "lucide-react";
+import { FileText, Download, Save, Edit, Send, ChevronDown, Trash2, Copy, Hammer, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 import jsPDF from "jspdf";
 import { supabase } from "@/integrations/supabase/client";
@@ -54,7 +54,8 @@ interface Summary {
   totalBeforeVAT: number;
   vat: number;
   totalWithVAT: number;
-  rotDeduction: number;
+  rotDeduction?: number; // Legacy field
+  deductionAmount?: number; // New field
   customerPays: number;
 }
 
@@ -64,6 +65,7 @@ interface Quote {
   materials: Material[];
   summary: Summary;
   notes?: string;
+  deductionType?: 'rot' | 'rut' | 'none';
 }
 
 interface QuoteDisplayProps {
@@ -251,6 +253,11 @@ const QuoteDisplay = ({
       minimumFractionDigits: 0,
     }).format(amount);
   };
+
+  // Support both old and new deduction field names
+  const deductionAmount = quote.summary.deductionAmount ?? quote.summary.rotDeduction ?? 0;
+  const deductionType = quote.deductionType || 'rot';
+  const maxDeduction = deductionType === 'rut' ? 75000 : 50000;
 
   const checkPageBreak = (doc: jsPDF, currentY: number, requiredSpace: number): number => {
     const pageHeight = doc.internal.pageSize.height;
@@ -518,11 +525,14 @@ const QuoteDisplay = ({
     doc.line(leftMargin + 5, y, pageWidth - rightMargin - 5, y);
     y += 5;
     
-    doc.setFont('helvetica', 'normal');
-    doc.setTextColor(34, 139, 34);
-    doc.text('ROT-avdrag (50%)', leftMargin + 5, y);
-    doc.text(`-${formatCurrency(quote.summary.rotDeduction)}`, pageWidth - rightMargin - 5, y, { align: 'right' });
-    y += 8;
+    if (deductionAmount > 0) {
+      doc.setFont('helvetica', 'normal');
+      doc.setTextColor(34, 139, 34);
+      const deductionLabel = deductionType === 'rut' ? 'RUT-avdrag (50%)' : 'ROT-avdrag (50%)';
+      doc.text(deductionLabel, leftMargin + 5, y);
+      doc.text(`-${formatCurrency(deductionAmount)}`, pageWidth - rightMargin - 5, y, { align: 'right' });
+      y += 8;
+    }
     
     // Highlight final amount
     doc.setFillColor(34, 197, 94, 20);
@@ -797,15 +807,54 @@ const QuoteDisplay = ({
               <span>{formatCurrency(quote.summary.totalWithVAT)}</span>
             </div>
             <Separator className="my-3" />
-            <div className="flex justify-between text-accent">
-              <span className="font-medium">ROT-avdrag (50%)</span>
-              <span className="font-semibold">-{formatCurrency(quote.summary.rotDeduction)}</span>
-            </div>
+            {deductionAmount > 0 && (
+              <div className="flex justify-between text-accent">
+                <div className="flex items-center gap-2">
+                  {deductionType === 'rot' && (
+                    <>
+                      <Hammer className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+                      <span className="font-medium">ROT-avdrag (50%)</span>
+                    </>
+                  )}
+                  {deductionType === 'rut' && (
+                    <>
+                      <Sparkles className="h-4 w-4 text-green-600 dark:text-green-400" />
+                      <span className="font-medium">RUT-avdrag (50%)</span>
+                    </>
+                  )}
+                </div>
+                <span className="font-semibold">-{formatCurrency(deductionAmount)}</span>
+              </div>
+            )}
             <div className="flex justify-between text-lg font-bold text-primary">
               <span>Kund betalar</span>
               <span>{formatCurrency(quote.summary.customerPays)}</span>
             </div>
           </div>
+
+          {deductionAmount > 0 && (
+            <div className="mt-4 p-3 bg-muted/50 rounded-lg text-sm space-y-1">
+              <p className="font-medium flex items-center gap-2">
+                {deductionType === 'rot' && (
+                  <>
+                    <Hammer className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+                    <span>ROT-avdrag (Renovering, Ombyggnad, Tillbyggnad)</span>
+                  </>
+                )}
+                {deductionType === 'rut' && (
+                  <>
+                    <Sparkles className="h-4 w-4 text-green-600 dark:text-green-400" />
+                    <span>RUT-avdrag (Rengöring, Underhåll, Trädgård)</span>
+                  </>
+                )}
+              </p>
+              <p className="text-muted-foreground text-xs">
+                Avdraget ({formatCurrency(deductionAmount)}) gäller endast arbetskostnaden ({formatCurrency(quote.summary.workCost)}). 
+                Max {formatCurrency(maxDeduction)} per person och år enligt Skatteverket. 
+                Material och utrustning ({formatCurrency(quote.summary.materialCost)}) är inte avdragsgilla.
+              </p>
+            </div>
+          )}
         </div>
 
         {/* Notes */}
