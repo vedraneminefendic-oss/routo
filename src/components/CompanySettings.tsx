@@ -11,12 +11,24 @@ import { toast } from "sonner";
 import { Loader2, Upload, X } from "lucide-react";
 
 const companySchema = z.object({
-  company_name: z.string().min(1, "Företagsnamn krävs"),
-  org_number: z.string().optional(),
-  address: z.string().optional(),
-  phone: z.string().optional(),
+  company_name: z.string().min(1, "Företagsnamn krävs").max(100, "Företagsnamn får max vara 100 tecken"),
+  org_number: z.string().optional().refine(
+    (val) => !val || /^\d{6}-?\d{4}$/.test(val),
+    "Ogiltigt organisationsnummer (format: XXXXXX-XXXX)"
+  ),
+  address: z.string().optional().refine(
+    (val) => !val || val.length <= 200,
+    "Adress får max vara 200 tecken"
+  ),
+  phone: z.string().optional().refine(
+    (val) => !val || /^[\d\s\-+()]+$/.test(val),
+    "Ogiltigt telefonnummer"
+  ),
   email: z.string().email("Ogiltig e-postadress").optional().or(z.literal("")),
-  vat_number: z.string().optional(),
+  vat_number: z.string().optional().refine(
+    (val) => !val || /^SE\d{10}01$/.test(val),
+    "Ogiltigt VAT-nummer (format: SE + 10 siffror + 01)"
+  ),
   has_f_skatt: z.boolean(),
 });
 
@@ -34,7 +46,7 @@ const CompanySettings = ({ userId }: CompanySettingsProps) => {
   const [isNewUser, setIsNewUser] = useState(false);
   const [showWelcome, setShowWelcome] = useState(false);
 
-  const { register, handleSubmit, reset, formState: { errors } } = useForm<CompanyFormData>({
+  const { register, handleSubmit, reset, formState: { errors, isDirty } } = useForm<CompanyFormData>({
     resolver: zodResolver(companySchema),
     defaultValues: {
       has_f_skatt: true,

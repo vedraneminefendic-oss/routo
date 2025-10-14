@@ -4,7 +4,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Edit, Trash2, Search } from "lucide-react";
+import { Edit, Trash2, Search, ChevronDown, Mail, Phone, TrendingUp } from "lucide-react";
 import { Customer } from "@/pages/Customers";
 import {
   AlertDialog,
@@ -16,6 +16,11 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { Badge } from "@/components/ui/badge";
+import { useCustomerStats } from "@/hooks/useCustomerStats";
+import { format } from "date-fns";
+import { sv } from "date-fns/locale";
 
 interface CustomerListProps {
   customers: Customer[];
@@ -23,6 +28,118 @@ interface CustomerListProps {
   onEdit: (customer: Customer) => void;
   onDelete: (customerId: string) => void;
 }
+
+const CustomerRow = ({ customer, onEdit, onDelete }: { 
+  customer: Customer; 
+  onEdit: (customer: Customer) => void;
+  onDelete: (id: string) => void;
+}) => {
+  const [isOpen, setIsOpen] = useState(false);
+  const { stats, loading } = useCustomerStats(customer.id);
+
+  return (
+    <Collapsible asChild open={isOpen} onOpenChange={setIsOpen}>
+      <>
+        <TableRow className="hover:bg-muted/50 transition-colors">
+          <TableCell>
+            <CollapsibleTrigger asChild>
+              <Button variant="ghost" size="sm" className="p-0 h-auto hover:bg-transparent">
+                <ChevronDown className={`h-4 w-4 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} />
+              </Button>
+            </CollapsibleTrigger>
+          </TableCell>
+          <TableCell className="font-medium">{customer.name}</TableCell>
+          <TableCell>
+            {customer.email ? (
+              <a href={`mailto:${customer.email}`} className="flex items-center gap-1 text-primary hover:underline">
+                <Mail className="h-3 w-3" />
+                {customer.email}
+              </a>
+            ) : (
+              "-"
+            )}
+          </TableCell>
+          <TableCell>
+            {customer.phone ? (
+              <a href={`tel:${customer.phone}`} className="flex items-center gap-1 text-primary hover:underline">
+                <Phone className="h-3 w-3" />
+                {customer.phone}
+              </a>
+            ) : (
+              "-"
+            )}
+          </TableCell>
+          <TableCell>
+            {!loading && stats.totalQuotes > 0 && (
+              <Badge variant="secondary" className="gap-1">
+                <TrendingUp className="h-3 w-3" />
+                {stats.totalQuotes} offerter
+              </Badge>
+            )}
+          </TableCell>
+          <TableCell className="text-right">
+            <div className="flex justify-end gap-2">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => onEdit(customer)}
+              >
+                <Edit className="h-4 w-4" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => onDelete(customer.id)}
+              >
+                <Trash2 className="h-4 w-4" />
+              </Button>
+            </div>
+          </TableCell>
+        </TableRow>
+        <TableRow>
+          <TableCell colSpan={6} className="p-0 border-0">
+            <CollapsibleContent>
+              <div className="bg-muted/30 p-4 space-y-3 border-t">
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  <div>
+                    <p className="text-xs text-muted-foreground mb-1">Totalt värde</p>
+                    <p className="text-sm font-semibold">{loading ? "..." : `${stats.totalValue.toLocaleString("sv-SE")} kr`}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground mb-1">Acceptansgrad</p>
+                    <p className="text-sm font-semibold">{loading ? "..." : `${stats.acceptanceRate.toFixed(0)}%`}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground mb-1">Accepterade offerter</p>
+                    <p className="text-sm font-semibold">{loading ? "..." : `${stats.acceptedQuotes} / ${stats.totalQuotes}`}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground mb-1">Senaste offert</p>
+                    <p className="text-sm font-semibold">
+                      {loading ? "..." : stats.lastQuoteDate ? format(new Date(stats.lastQuoteDate), "d MMM yyyy", { locale: sv }) : "-"}
+                    </p>
+                  </div>
+                </div>
+                {customer.address && (
+                  <div>
+                    <p className="text-xs text-muted-foreground mb-1">Adress</p>
+                    <p className="text-sm">{customer.address}</p>
+                  </div>
+                )}
+                {customer.notes && (
+                  <div>
+                    <p className="text-xs text-muted-foreground mb-1">Anteckningar</p>
+                    <p className="text-sm italic text-muted-foreground">{customer.notes}</p>
+                  </div>
+                )}
+              </div>
+            </CollapsibleContent>
+          </TableCell>
+        </TableRow>
+      </>
+    </Collapsible>
+  );
+};
 
 const CustomerList = ({ customers, loading, onEdit, onDelete }: CustomerListProps) => {
   const [searchTerm, setSearchTerm] = useState("");
@@ -79,39 +196,22 @@ const CustomerList = ({ customers, loading, onEdit, onDelete }: CustomerListProp
             <Table>
               <TableHeader>
                 <TableRow>
+                  <TableHead className="w-12"></TableHead>
                   <TableHead>Namn</TableHead>
                   <TableHead>E-post</TableHead>
                   <TableHead>Telefon</TableHead>
-                  <TableHead>Adress</TableHead>
+                  <TableHead>Status</TableHead>
                   <TableHead className="text-right">Åtgärder</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {filteredCustomers.map((customer) => (
-                  <TableRow key={customer.id}>
-                    <TableCell className="font-medium">{customer.name}</TableCell>
-                    <TableCell>{customer.email || "-"}</TableCell>
-                    <TableCell>{customer.phone || "-"}</TableCell>
-                    <TableCell>{customer.address || "-"}</TableCell>
-                    <TableCell className="text-right">
-                      <div className="flex justify-end gap-2">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => onEdit(customer)}
-                        >
-                          <Edit className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => setDeleteCustomerId(customer.id)}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
+                  <CustomerRow 
+                    key={customer.id} 
+                    customer={customer} 
+                    onEdit={onEdit}
+                    onDelete={setDeleteCustomerId}
+                  />
                 ))}
               </TableBody>
             </Table>
