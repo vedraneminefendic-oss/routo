@@ -102,13 +102,18 @@ All colors MUST be HSL.
     @apply text-secondary font-semibold;
   }
   
-  h1 { @apply text-4xl leading-tight; }
-  h2 { @apply text-3xl leading-tight; }
-  h3 { @apply text-2xl leading-snug; }
-  h4 { @apply text-xl leading-snug; }
+  h1 { @apply text-2xl md:text-4xl leading-tight; }
+  h2 { @apply text-xl md:text-3xl leading-tight; }
+  h3 { @apply text-lg md:text-2xl leading-snug; }
+  h4 { @apply text-base md:text-xl leading-snug; }
   
   /* Brödtext */
   p {
-    @apply leading-relaxed;
+    @apply leading-relaxed text-sm md:text-base;
+  }
+  
+  /* Smooth transitions */
+  * {
+    @apply transition-colors duration-200;
   }
 }

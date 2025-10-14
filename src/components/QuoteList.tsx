@@ -94,7 +94,7 @@ const QuoteList = ({ quotes, onQuoteClick }: QuoteListProps) => {
         return (
           <Card 
             key={quote.id} 
-            className="cursor-pointer hover:bg-muted/30 transition-colors border-border"
+            className="cursor-pointer hover:bg-muted/30 hover:border-primary/30 hover:shadow-sm transition-all duration-200 border-border"
             onClick={() => onQuoteClick?.(quote)}
           >
             <CardContent className="p-3">

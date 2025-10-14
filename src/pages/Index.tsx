@@ -309,36 +309,45 @@ const Index = () => {
   return (
     <div className="min-h-screen bg-background">
       {/* Header */}
-      <header className="border-b bg-card shadow-sm">
-        <div className="container mx-auto px-4 py-4">
+      <header className="sticky top-0 z-50 border-b bg-card/95 backdrop-blur supports-[backdrop-filter]:bg-card/80 shadow-sm">
+        <div className="container mx-auto px-4 py-3">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <div className="p-2 bg-primary rounded-lg shadow-md">
+              <div className="p-2 bg-primary rounded-lg shadow-md transition-transform hover:scale-105">
                 <Wrench className="h-6 w-6 text-primary-foreground" />
               </div>
-              <div>
-                <h1 className="text-2xl font-bold text-secondary">Offertverktyget</h1>
-                <p className="text-sm text-muted-foreground">Smarta offerter på minuter</p>
+              <div className="hidden sm:block">
+                <h1 className="text-xl md:text-2xl font-bold text-secondary">Offertverktyget</h1>
+                <p className="text-xs md:text-sm text-muted-foreground hidden md:block">Smarta offerter på minuter</p>
               </div>
             </div>
-            <div className="flex gap-2">
-              <Button variant="outline" onClick={() => navigate("/customers")}>
-                <Users className="h-4 w-4 mr-2" />
-                Kunder
+            <nav className="flex gap-1 md:gap-2">
+              <Button variant="ghost" size="sm" onClick={() => navigate("/customers")} className="hidden md:flex">
+                <Users className="h-4 w-4 md:mr-2" />
+                <span className="hidden lg:inline">Kunder</span>
               </Button>
-              <Button variant="outline" onClick={() => navigate("/settings")}>
-                <SettingsIcon className="h-4 w-4 mr-2" />
-                Inställningar
+              <Button variant="ghost" size="sm" onClick={() => navigate("/settings")} className="hidden md:flex">
+                <SettingsIcon className="h-4 w-4 md:mr-2" />
+                <span className="hidden lg:inline">Inställningar</span>
               </Button>
-              <Button variant="outline" onClick={() => navigate("/reports")}>
-                <BarChart3 className="h-4 w-4 mr-2" />
-                Rapporter
+              <Button variant="ghost" size="sm" onClick={() => navigate("/reports")} className="hidden md:flex">
+                <BarChart3 className="h-4 w-4 md:mr-2" />
+                <span className="hidden lg:inline">Rapporter</span>
               </Button>
-              <Button variant="outline" onClick={handleLogout}>
-                <LogOut className="h-4 w-4 mr-2" />
-                Logga ut
+              <Button variant="ghost" size="sm" onClick={() => navigate("/customers")} className="md:hidden">
+                <Users className="h-4 w-4" />
               </Button>
-            </div>
+              <Button variant="ghost" size="sm" onClick={() => navigate("/settings")} className="md:hidden">
+                <SettingsIcon className="h-4 w-4" />
+              </Button>
+              <Button variant="ghost" size="sm" onClick={() => navigate("/reports")} className="md:hidden">
+                <BarChart3 className="h-4 w-4" />
+              </Button>
+              <Button variant="outline" size="sm" onClick={handleLogout}>
+                <LogOut className="h-4 w-4 md:mr-2" />
+                <span className="hidden lg:inline">Logga ut</span>
+              </Button>
+            </nav>
           </div>
         </div>
       </header>
