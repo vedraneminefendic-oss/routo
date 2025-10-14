@@ -10,6 +10,8 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { Edit, Save, X, Plus, Trash2, Hammer, Sparkles, ChevronDown } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
+import RecipientsManager, { Recipient } from "./RecipientsManager";
+import { supabase } from "@/integrations/supabase/client";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -65,10 +67,72 @@ interface QuoteEditorProps {
   onSave: (editedQuote: Quote) => void;
   onCancel: () => void;
   isSaving?: boolean;
+  quoteId?: string;
 }
 
-const QuoteEditor = ({ quote, onSave, onCancel, isSaving }: QuoteEditorProps) => {
+const QuoteEditor = ({ quote, onSave, onCancel, isSaving, quoteId }: QuoteEditorProps) => {
   const [editedQuote, setEditedQuote] = useState<Quote>(JSON.parse(JSON.stringify(quote)));
+  const [recipients, setRecipients] = useState<Recipient[]>([]);
+  const [recipientsLoaded, setRecipientsLoaded] = useState(false);
+
+  // Load recipients from database
+  const loadRecipients = async () => {
+    if (!quoteId || recipientsLoaded) return;
+
+    try {
+      const { data, error } = await supabase
+        .from('quote_recipients')
+        .select('*')
+        .eq('quote_id', quoteId);
+
+      if (error) throw error;
+
+      if (data && data.length > 0) {
+        const loadedRecipients: Recipient[] = data.map(r => ({
+          id: r.id,
+          customer_name: r.customer_name,
+          customer_personnummer: r.customer_personnummer || "",
+          ownership_share: r.ownership_share || 0
+        }));
+        setRecipients(loadedRecipients);
+      } else {
+        // Create default recipient with 100% share
+        setRecipients([{
+          id: crypto.randomUUID(),
+          customer_name: "",
+          customer_personnummer: "",
+          ownership_share: 1
+        }]);
+      }
+      setRecipientsLoaded(true);
+    } catch (error) {
+      console.error('Error loading recipients:', error);
+      // Create default recipient on error
+      setRecipients([{
+        id: crypto.randomUUID(),
+        customer_name: "",
+        customer_personnummer: "",
+        ownership_share: 1
+      }]);
+      setRecipientsLoaded(true);
+    }
+  };
+
+  // Load recipients when component mounts or quoteId changes
+  useState(() => {
+    if (quoteId && (editedQuote.deductionType === 'rot' || editedQuote.deductionType === 'rut') && !recipientsLoaded) {
+      loadRecipients();
+    } else if (!quoteId && !recipientsLoaded) {
+      // For new quotes, create default recipient
+      setRecipients([{
+        id: crypto.randomUUID(),
+        customer_name: "",
+        customer_personnummer: "",
+        ownership_share: 1
+      }]);
+      setRecipientsLoaded(true);
+    }
+  });
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('sv-SE', {
@@ -172,11 +236,66 @@ const QuoteEditor = ({ quote, onSave, onCancel, isSaving }: QuoteEditorProps) =>
     toast.success("Nytt material tillagt");
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (editedQuote.workItems.length === 0 && editedQuote.materials.length === 0) {
       toast.error("Du måste ha minst ett arbetsmoment eller material");
       return;
     }
+
+    // Validate recipients if ROT/RUT is selected
+    if ((editedQuote.deductionType === 'rot' || editedQuote.deductionType === 'rut')) {
+      if (recipients.length === 0) {
+        toast.error("Du måste ha minst en mottagare för ROT/RUT-avdrag");
+        return;
+      }
+
+      // Check if all recipients have names and personnummer
+      const invalidRecipient = recipients.find(r => !r.customer_name || !r.customer_personnummer);
+      if (invalidRecipient) {
+        toast.error("Alla mottagare måste ha namn och personnummer");
+        return;
+      }
+
+      // Check if total ownership is 100%
+      const totalShare = recipients.reduce((sum, r) => sum + r.ownership_share, 0);
+      if (Math.abs(totalShare - 1) > 0.01) {
+        toast.error("Ägarandelarna måste summera till 100%");
+        return;
+      }
+
+      // Save recipients to database
+      if (quoteId) {
+        try {
+          // Delete existing recipients
+          await supabase
+            .from('quote_recipients')
+            .delete()
+            .eq('quote_id', quoteId);
+
+          // Insert new recipients
+          const recipientsToInsert = recipients.map(r => ({
+            quote_id: quoteId,
+            customer_name: r.customer_name,
+            customer_personnummer: r.customer_personnummer,
+            ownership_share: r.ownership_share,
+            customer_email: null,
+            customer_address: null,
+            property_designation: null
+          }));
+
+          const { error } = await supabase
+            .from('quote_recipients')
+            .insert(recipientsToInsert);
+
+          if (error) throw error;
+        } catch (error) {
+          console.error('Error saving recipients:', error);
+          toast.error("Kunde inte spara mottagare");
+          return;
+        }
+      }
+    }
+
     onSave(editedQuote);
     toast.success("Ändringar sparade!");
   };
@@ -231,6 +350,11 @@ const QuoteEditor = ({ quote, onSave, onCancel, isSaving }: QuoteEditorProps) =>
             onValueChange={(value: 'rot' | 'rut' | 'none') => {
               const updated = { ...editedQuote, deductionType: value };
               setEditedQuote(recalculate(updated));
+              
+              // Load recipients when ROT/RUT is selected
+              if ((value === 'rot' || value === 'rut') && quoteId && !recipientsLoaded) {
+                loadRecipients();
+              }
             }}
           >
             <SelectTrigger className="mt-1">
@@ -258,6 +382,14 @@ const QuoteEditor = ({ quote, onSave, onCancel, isSaving }: QuoteEditorProps) =>
             </SelectContent>
           </Select>
         </div>
+
+        {(effectiveDeductionType === 'rot' || effectiveDeductionType === 'rut') && recipients.length > 0 && (
+          <RecipientsManager
+            recipients={recipients}
+            onChange={setRecipients}
+            deductionType={effectiveDeductionType}
+          />
+        )}
 
         <Separator />
 
@@ -543,6 +675,21 @@ const QuoteEditor = ({ quote, onSave, onCancel, isSaving }: QuoteEditorProps) =>
                   </span>
                   <span className="font-medium">-{formatCurrency(deductionAmount)}</span>
                 </div>
+                
+                {recipients.length > 1 && (
+                  <div className="ml-6 space-y-1 mt-2 border-l-2 border-primary/20 pl-3">
+                    <p className="text-xs font-medium text-muted-foreground mb-1">Fördelning:</p>
+                    {recipients.map(r => (
+                      <div key={r.id} className="flex justify-between items-center text-xs">
+                        <span className="text-muted-foreground">
+                          {r.customer_name || 'Mottagare'} ({Math.round(r.ownership_share * 100)}%)
+                        </span>
+                        <span className="font-medium">{formatCurrency(deductionAmount * r.ownership_share)}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                
                 <div className="flex justify-between font-bold text-lg pt-2 border-t border-primary/30">
                   <span>Kund betalar:</span>
                   <span className="text-primary">{formatCurrency(editedQuote.summary.customerPays)}</span>

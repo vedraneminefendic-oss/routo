@@ -37,7 +37,7 @@ serve(async (req: Request): Promise<Response> => {
       global: { headers: { Authorization: authHeader } },
     });
 
-    // Get quote details with customer information
+    // Get quote details with customer and recipients information
     const { data: quote, error: quoteError } = await supabase
       .from("quotes")
       .select(`
@@ -53,6 +53,12 @@ serve(async (req: Request): Promise<Response> => {
       `)
       .eq("id", quoteId)
       .single();
+
+    // Get recipients for multi-recipient ROT/RUT scenarios
+    const { data: quoteRecipients } = await supabase
+      .from("quote_recipients")
+      .select("*")
+      .eq("quote_id", quoteId);
 
     if (quoteError || !quote) {
       console.error("Error fetching quote:", quoteError);
@@ -120,6 +126,22 @@ serve(async (req: Request): Promise<Response> => {
         ${customer.address ? `<p style="color: #666; font-size: 14px; line-height: 20px; margin: 0;">Adress: ${customer.address}</p>` : ''}
         ${customer.phone ? `<p style="color: #666; font-size: 14px; line-height: 20px; margin: 0;">Telefon: ${customer.phone}</p>` : ''}
         ${customer.property_designation ? `<p style="color: #666; font-size: 14px; line-height: 20px; margin: 0;">Fastighetsbeteckning: ${customer.property_designation}</p>` : ''}
+      </div>
+      ` : ''}
+      
+      ${quoteRecipients && quoteRecipients.length > 1 ? `
+      <div style="background-color: #fff7ed; border-left: 4px solid #f59e0b; padding: 16px; margin: 0 48px 16px;">
+        <p style="color: #333; font-size: 14px; line-height: 20px; margin: 0 0 8px;">
+          <strong>Mottagare för ${quoteData.deductionType?.toUpperCase() || 'ROT'}-avdrag:</strong>
+        </p>
+        ${quoteRecipients.map(r => `
+          <p style="color: #666; font-size: 13px; line-height: 18px; margin: 4px 0;">
+            • ${r.customer_name} (${r.customer_personnummer}) - ${Math.round((r.ownership_share || 0) * 100)}%
+          </p>
+        `).join('')}
+        <p style="color: #888; font-size: 12px; line-height: 16px; margin: 8px 0 0; font-style: italic;">
+          Skatteverket fördelar avdraget automatiskt baserat på ägarandel.
+        </p>
       </div>
       ` : ''}
       

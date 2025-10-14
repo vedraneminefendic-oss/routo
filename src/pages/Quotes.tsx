@@ -289,6 +289,7 @@ const Quotes = () => {
                 onSave={handleSaveEdit}
                 onCancel={handleCancelEdit}
                 isSaving={isSaving}
+                quoteId={viewingQuote?.id}
               />
             )}
 
