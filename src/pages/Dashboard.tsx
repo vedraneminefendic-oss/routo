@@ -144,7 +144,7 @@ const Dashboard = () => {
                 <Wrench className="h-6 w-6 text-primary-foreground" />
               </div>
               <div className="hidden sm:block">
-                <h1 className="text-xl md:text-2xl font-bold text-secondary">Offertverktyget</h1>
+                <h1 className="text-xl md:text-2xl font-bold text-primary">Offertverktyget</h1>
                 <p className="text-xs md:text-sm text-muted-foreground hidden md:block">Smarta offerter på minuter</p>
               </div>
             </div>
@@ -210,9 +210,9 @@ const Dashboard = () => {
             <CardContent className="flex items-center gap-4 pt-6">
               <AlertCircle className="h-8 w-8 text-amber-600 dark:text-amber-500 shrink-0" />
               <div className="flex-1">
-                <h3 className="font-semibold text-amber-900 dark:text-amber-100 mb-1">
+                <p className="font-semibold text-base text-amber-900 dark:text-amber-100 mb-1">
                   {pendingQuotesCount} {pendingQuotesCount === 1 ? 'offert behöver' : 'offerter behöver'} uppföljning
-                </h3>
+                </p>
                 <p className="text-sm text-amber-700 dark:text-amber-400">
                   Skickade för mer än 3 dagar sedan utan svar
                 </p>
@@ -319,9 +319,9 @@ const Dashboard = () => {
                       onClick={() => navigate(`/quotes?id=${quote.id}`)}
                     >
                       <div className="flex-1 min-w-0">
-                        <h4 className="font-medium text-foreground truncate mb-1">
+                        <p className="font-semibold text-base text-foreground truncate mb-1">
                           {quote.title}
-                        </h4>
+                        </p>
                         <p className="text-sm text-muted-foreground">
                           {formatDate(quote.created_at)}
                         </p>
