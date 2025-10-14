@@ -381,11 +381,20 @@ Baserat på uppdragsbeskrivningen ska du returnera en strukturerad offert i JSON
     "totalBeforeVAT": 15000,
     "vat": 3750,
     "totalWithVAT": 18750,
-    "deductionAmount": ${finalDeductionType !== 'none' ? '5000' : '0'},
+    ${finalDeductionType === 'rot' ? '"rotDeduction": 5000,' : ''}
+    ${finalDeductionType === 'rut' ? '"rutDeduction": 5000,' : ''}
     "customerPays": ${finalDeductionType !== 'none' ? '13750' : '18750'}
   },
+  "deductionType": "${finalDeductionType}",
   "notes": "Eventuella anteckningar eller villkor"
 }
+
+**VIKTIGT - SKATTEAVDRAGSTYP:**
+Du MÅSTE inkludera exakt detta i ditt svar:
+- "deductionType": "${finalDeductionType}"
+${finalDeductionType === 'rot' ? '- Använd fältet "rotDeduction" för avdraget (INTE rutDeduction)' : ''}
+${finalDeductionType === 'rut' ? '- Använd fältet "rutDeduction" för avdraget (INTE rotDeduction)' : ''}
+${finalDeductionType === 'none' ? '- Inkludera INGET avdragsfält (varken rotDeduction eller rutDeduction)' : ''}
 
 **SKATTEAVDRAG:**
 ${deductionInfo}
