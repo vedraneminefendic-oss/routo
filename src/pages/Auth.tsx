@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { useNavigate, Link } from "react-router-dom";
+import { useState, useEffect } from "react";
+import { useNavigate, Link, useSearchParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -14,11 +14,22 @@ import Footer from "@/components/Footer";
 
 const Auth = () => {
   const navigate = useNavigate();
-  const [isLogin, setIsLogin] = useState(true);
+  const [searchParams] = useSearchParams();
+  const [isLogin, setIsLogin] = useState(searchParams.get("mode") !== "signup");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [acceptedTerms, setAcceptedTerms] = useState(false);
+
+  useEffect(() => {
+    // Update mode based on URL parameter
+    const mode = searchParams.get("mode");
+    if (mode === "signup") {
+      setIsLogin(false);
+    } else if (mode === "login") {
+      setIsLogin(true);
+    }
+  }, [searchParams]);
 
   const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -37,19 +48,33 @@ const Auth = () => {
           password,
         });
         
-        if (error) throw error;
+        if (error) {
+          if (error.message.includes("Invalid login credentials")) {
+            toast.error("Fel e-post eller lösenord");
+          } else {
+            toast.error(error.message);
+          }
+          throw error;
+        }
         toast.success("Inloggning lyckades!");
-        navigate("/");
+        navigate("/dashboard");
       } else {
         const { error } = await supabase.auth.signUp({
           email,
           password,
           options: {
-            emailRedirectTo: `${window.location.origin}/`,
+            emailRedirectTo: `${window.location.origin}/dashboard`,
           },
         });
         
-        if (error) throw error;
+        if (error) {
+          if (error.message.includes("User already registered")) {
+            toast.error("En användare med denna e-post finns redan");
+          } else {
+            toast.error(error.message);
+          }
+          throw error;
+        }
         toast.success("Konto skapat! Du kan nu logga in.");
         setIsLogin(true);
       }
@@ -157,16 +182,22 @@ const Auth = () => {
             </div>
           )}
           
-          <div className="mt-4 text-center text-sm">
+          <div className="mt-4 text-center text-sm space-y-2">
             <button
               type="button"
               onClick={() => setIsLogin(!isLogin)}
-              className="text-primary hover:underline"
+              className="text-primary hover:underline block w-full"
             >
               {isLogin 
                 ? "Har du inget konto? Skapa ett här" 
                 : "Har du redan ett konto? Logga in"}
             </button>
+            <Link 
+              to="/"
+              className="text-muted-foreground hover:text-primary hover:underline text-sm block"
+            >
+              Tillbaka till startsidan
+            </Link>
           </div>
         </CardContent>
       </Card>
