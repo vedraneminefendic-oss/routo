@@ -1,6 +1,6 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { FileText, Calendar, Send, Eye, CheckCircle, XCircle, Check } from "lucide-react";
+import { FileText, Calendar, Send, Eye, CheckCircle, XCircle, Check, Hammer, Sparkles } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { sv } from "date-fns/locale";
 import { QuoteStatus } from "@/hooks/useQuoteStatus";
@@ -11,6 +11,7 @@ interface Quote {
   status: string;
   created_at: string;
   generated_quote: any;
+  edited_quote?: any;
 }
 
 interface QuoteListProps {
@@ -68,6 +69,11 @@ const QuoteList = ({ quotes, onQuoteClick }: QuoteListProps) => {
     }).format(amount);
   };
 
+  const getDeductionType = (quote: Quote): 'rot' | 'rut' | 'none' | null => {
+    const quoteData = quote.edited_quote || quote.generated_quote;
+    return quoteData?.deductionType || quoteData?.summary?.deductionType || null;
+  };
+
   if (quotes.length === 0) {
     return (
       <Card>
@@ -113,10 +119,32 @@ const QuoteList = ({ quotes, onQuoteClick }: QuoteListProps) => {
                     )}
                   </div>
                 </div>
-                <Badge className={`${statusConfig.color} text-white flex items-center gap-1 text-xs px-2 py-0.5`}>
-                  <StatusIcon className="h-3 w-3" />
-                  {statusConfig.label}
-                </Badge>
+                <div className="flex items-center gap-2">
+                  {(() => {
+                    const deductionType = getDeductionType(quote);
+                    if (deductionType === 'rot') {
+                      return (
+                        <Badge variant="outline" className="text-blue-600 border-blue-600 text-xs px-2 py-0.5">
+                          <Hammer className="h-3 w-3 mr-1" />
+                          ROT
+                        </Badge>
+                      );
+                    }
+                    if (deductionType === 'rut') {
+                      return (
+                        <Badge variant="outline" className="text-green-600 border-green-600 text-xs px-2 py-0.5">
+                          <Sparkles className="h-3 w-3 mr-1" />
+                          RUT
+                        </Badge>
+                      );
+                    }
+                    return null;
+                  })()}
+                  <Badge className={`${statusConfig.color} text-white flex items-center gap-1 text-xs px-2 py-0.5`}>
+                    <StatusIcon className="h-3 w-3" />
+                    {statusConfig.label}
+                  </Badge>
+                </div>
               </div>
             </CardContent>
           </Card>
