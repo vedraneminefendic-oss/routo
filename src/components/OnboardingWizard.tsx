@@ -10,14 +10,16 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
-import { Building2, Users, FileText, CheckCircle2 } from "lucide-react";
+import { Building2, Users, CheckCircle2 } from "lucide-react";
+import { CompanySettingsForm } from "@/components/CompanySettingsForm";
+import { CustomerFormSimple } from "@/components/CustomerFormSimple";
 
 interface OnboardingWizardProps {
   userId: string;
   onComplete: () => void;
 }
 
-type Step = "welcome" | "setup" | "complete";
+type Step = "welcome" | "company" | "customer" | "complete";
 
 const STEPS: { id: Step; title: string; description: string; icon: any }[] = [
   {
@@ -27,10 +29,16 @@ const STEPS: { id: Step; title: string; description: string; icon: any }[] = [
     icon: CheckCircle2,
   },
   {
-    id: "setup",
-    title: "Snabb setup",
-    description: "Lägg till företagsinfo och kund (båda är valfria - du kan fylla i detta senare).",
+    id: "company",
+    title: "Företagsinformation",
+    description: "Lägg till dina företagsuppgifter (valfritt - visas på offerterna)",
     icon: Building2,
+  },
+  {
+    id: "customer",
+    title: "Första kunden",
+    description: "Spara din första kund (valfritt - gör det enklare att skapa offerter)",
+    icon: Users,
   },
   {
     id: "complete",
@@ -69,8 +77,15 @@ export function OnboardingWizard({ userId, onComplete }: OnboardingWizardProps) 
       });
       setOpen(true);
     } else if (!data.completed && !data.skipped) {
-      // Resume onboarding
-      setCurrentStep(data.current_step as Step);
+      // Resume onboarding - migrate old "setup" step to "company"
+      const resumeStep = data.current_step === "setup" ? "company" : data.current_step;
+      setCurrentStep(resumeStep as Step);
+      
+      // Update if it was migrated
+      if (data.current_step === "setup") {
+        await updateStep("company");
+      }
+      
       setOpen(true);
     }
   };
@@ -122,6 +137,18 @@ export function OnboardingWizard({ userId, onComplete }: OnboardingWizardProps) 
     }
   };
 
+  const handleCompanySaved = () => {
+    handleNext();
+  };
+
+  const handleCustomerSaved = () => {
+    handleNext();
+  };
+
+  const skipAll = async () => {
+    await completeOnboarding();
+  };
+
   const currentStepData = STEPS.find((s) => s.id === currentStep);
   const currentIndex = STEPS.findIndex((s) => s.id === currentStep);
   const progress = ((currentIndex + 1) / STEPS.length) * 100;
@@ -129,7 +156,7 @@ export function OnboardingWizard({ userId, onComplete }: OnboardingWizardProps) 
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogContent className="sm:max-w-[500px]">
+      <DialogContent className="sm:max-w-[650px] max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <div className="flex items-center gap-3 mb-2">
             {Icon && <Icon className="h-6 w-6 text-primary" />}
@@ -153,54 +180,38 @@ export function OnboardingWizard({ userId, onComplete }: OnboardingWizardProps) 
             <div className="space-y-4 text-sm">
               <p>Ditt smarta offertverktyg med AI-generering är redo att användas!</p>
               <div className="bg-muted/50 p-4 rounded-lg space-y-3">
-                <p className="font-medium">Vad du kan göra nu:</p>
+                <p className="font-medium">Vad vi kommer sätta upp:</p>
                 <ul className="space-y-2">
                   <li className="flex items-start gap-2">
                     <Building2 className="h-4 w-4 text-primary mt-0.5 flex-shrink-0" />
-                    <span><strong>Företagsinfo</strong> - Lägg till dina uppgifter (visas på offerter)</span>
+                    <span><strong>Företagsinfo</strong> - Dina uppgifter som visas på offerter</span>
                   </li>
                   <li className="flex items-start gap-2">
                     <Users className="h-4 w-4 text-primary mt-0.5 flex-shrink-0" />
-                    <span><strong>Första kunden</strong> - Spara kunduppgifter för snabbare offertgenerering</span>
-                  </li>
-                  <li className="flex items-start gap-2">
-                    <FileText className="h-4 w-4 text-primary mt-0.5 flex-shrink-0" />
-                    <span><strong>Skapa offert</strong> - Beskriv jobbet så gör AI:n resten!</span>
+                    <span><strong>Första kunden</strong> - För snabbare offertgenerering</span>
                   </li>
                 </ul>
               </div>
-              <p className="text-muted-foreground">Vill du göra en snabb setup nu eller hoppa direkt till offertgenerering?</p>
+              <p className="text-muted-foreground">
+                Allt är valfritt! Du kan hoppa över och lägga till senare, eller hoppa direkt till offertgenerering.
+              </p>
             </div>
           )}
 
-          {currentStep === "setup" && (
-            <div className="space-y-4 text-sm">
-              <div className="space-y-3">
-                <div className="flex items-start gap-3 p-3 bg-muted/50 rounded-lg">
-                  <Building2 className="h-5 w-5 text-primary mt-0.5 flex-shrink-0" />
-                  <div className="space-y-1">
-                    <p className="font-medium">1. Företagsinformation (valfritt)</p>
-                    <p className="text-muted-foreground">
-                      Gå till <strong>Inställningar → Företag</strong> och fyll i företagsnamn, adress, telefon och timpriser.
-                    </p>
-                  </div>
-                </div>
-                
-                <div className="flex items-start gap-3 p-3 bg-muted/50 rounded-lg">
-                  <Users className="h-5 w-5 text-primary mt-0.5 flex-shrink-0" />
-                  <div className="space-y-1">
-                    <p className="font-medium">2. Lägg till en kund (valfritt)</p>
-                    <p className="text-muted-foreground">
-                      Gå till <strong>Kunder</strong> och klicka "Ny kund". Du behöver minst namn och e-post.
-                    </p>
-                  </div>
-                </div>
-              </div>
-              
-              <p className="text-center text-muted-foreground pt-2">
-                Du kan hoppa över detta och lägga till senare - klicka bara "Nästa" när du är klar!
-              </p>
-            </div>
+          {currentStep === "company" && (
+            <CompanySettingsForm 
+              userId={userId} 
+              onSave={handleCompanySaved}
+              onSkip={handleNext}
+            />
+          )}
+
+          {currentStep === "customer" && (
+            <CustomerFormSimple 
+              userId={userId} 
+              onSave={handleCustomerSaved}
+              onSkip={handleNext}
+            />
           )}
 
           {currentStep === "complete" && (
@@ -225,7 +236,16 @@ export function OnboardingWizard({ userId, onComplete }: OnboardingWizardProps) 
         </div>
 
         <div className="flex justify-between gap-2">
-          {currentStep !== "complete" && (
+          {currentStep === "welcome" && (
+            <Button
+              variant="ghost"
+              onClick={skipAll}
+              className="text-muted-foreground"
+            >
+              Hoppa över allt
+            </Button>
+          )}
+          {currentStep !== "complete" && currentStep !== "welcome" && currentStep !== "company" && currentStep !== "customer" && (
             <Button
               variant="ghost"
               onClick={continueLater}
@@ -235,14 +255,16 @@ export function OnboardingWizard({ userId, onComplete }: OnboardingWizardProps) 
             </Button>
           )}
           <div className="flex gap-2 ml-auto">
-            {currentIndex > 0 && currentStep !== "complete" && (
+            {currentIndex > 0 && currentStep !== "complete" && currentStep !== "company" && currentStep !== "customer" && (
               <Button variant="outline" onClick={handleBack}>
                 Tillbaka
               </Button>
             )}
-            <Button onClick={handleNext}>
-              {currentStep === "complete" ? "Börja använda" : "Nästa"}
-            </Button>
+            {currentStep !== "company" && currentStep !== "customer" && (
+              <Button onClick={handleNext}>
+                {currentStep === "complete" ? "Börja använda" : "Nästa"}
+              </Button>
+            )}
           </div>
         </div>
       </DialogContent>
