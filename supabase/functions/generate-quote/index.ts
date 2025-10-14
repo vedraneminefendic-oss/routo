@@ -375,16 +375,18 @@ Baserat på uppdragsbeskrivningen ska du returnera en strukturerad offert i JSON
       "subtotal": 1000
     }
   ],
-  "summary": {
-    "workCost": 10000,
-    "materialCost": 5000,
-    "totalBeforeVAT": 15000,
-    "vat": 3750,
-    "totalWithVAT": 18750,
-    ${finalDeductionType === 'rot' ? '"rotDeduction": 5000,' : ''}
-    ${finalDeductionType === 'rut' ? '"rutDeduction": 5000,' : ''}
-    "customerPays": ${finalDeductionType !== 'none' ? '13750' : '18750'}
-  },
+        "summary": {
+          "workCost": 10000,
+          "materialCost": 5000,
+          "totalBeforeVAT": 15000,
+          "vat": 3750,
+          "totalWithVAT": 18750,
+          "deductionAmount": ${finalDeductionType !== 'none' ? '5000' : '0'},
+          "deductionType": "${finalDeductionType}",
+          ${finalDeductionType === 'rot' ? '"rotDeduction": 5000,' : ''}
+          ${finalDeductionType === 'rut' ? '"rutDeduction": 5000,' : ''}
+          "customerPays": ${finalDeductionType !== 'none' ? '13750' : '18750'}
+        },
   "deductionType": "${finalDeductionType}",
   "notes": "Eventuella anteckningar eller villkor"
 }
@@ -449,6 +451,18 @@ Viktig information:
     
     // Add deduction type to the quote
     generatedQuote.deductionType = finalDeductionType;
+
+    // Normalize deduction fields for consistent display
+    if (finalDeductionType === 'rot' && generatedQuote.summary.rotDeduction) {
+      generatedQuote.summary.deductionAmount = generatedQuote.summary.rotDeduction;
+      generatedQuote.summary.deductionType = 'rot';
+    } else if (finalDeductionType === 'rut' && generatedQuote.summary.rutDeduction) {
+      generatedQuote.summary.deductionAmount = generatedQuote.summary.rutDeduction;
+      generatedQuote.summary.deductionType = 'rut';
+    } else {
+      generatedQuote.summary.deductionAmount = 0;
+      generatedQuote.summary.deductionType = 'none';
+    }
 
     console.log('Generated quote successfully with detail level:', detailLevel);
 
