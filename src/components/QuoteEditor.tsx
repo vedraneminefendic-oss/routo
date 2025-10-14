@@ -5,7 +5,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { Textarea } from "@/components/ui/textarea";
-import { Edit, Save, X, Plus, Trash2 } from "lucide-react";
+import { Edit, Save, X, Plus, Trash2, Hammer, Sparkles } from "lucide-react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
 import {
   AlertDialog,
@@ -41,12 +42,14 @@ interface Summary {
   totalBeforeVAT: number;
   vat: number;
   totalWithVAT: number;
-  rotDeduction: number;
+  deductionAmount: number;
+  deductionType?: 'rot' | 'rut' | 'none';
   customerPays: number;
 }
 
 interface Quote {
   title: string;
+  deductionType?: 'rot' | 'rut' | 'none';
   workItems: WorkItem[];
   materials: Material[];
   summary: Summary;
@@ -90,8 +93,12 @@ const QuoteEditor = ({ quote, onSave, onCancel, isSaving }: QuoteEditorProps) =>
     const totalBeforeVAT = workCost + materialCost;
     const vat = totalBeforeVAT * 0.25;
     const totalWithVAT = totalBeforeVAT + vat;
-    const rotDeduction = workCost * 0.5;
-    const customerPays = totalWithVAT - rotDeduction;
+    
+    // Handle different deduction types
+    const deductionType = updated.deductionType || 'rot';
+    const deductionPercentage = (deductionType === 'rot' || deductionType === 'rut') ? 0.5 : 0;
+    const deductionAmount = workCost * deductionPercentage;
+    const customerPays = totalWithVAT - deductionAmount;
 
     return {
       ...updated,
@@ -103,7 +110,8 @@ const QuoteEditor = ({ quote, onSave, onCancel, isSaving }: QuoteEditorProps) =>
         totalBeforeVAT,
         vat,
         totalWithVAT,
-        rotDeduction,
+        deductionAmount,
+        deductionType,
         customerPays,
       },
     };
@@ -205,6 +213,42 @@ const QuoteEditor = ({ quote, onSave, onCancel, isSaving }: QuoteEditorProps) =>
             onChange={(e) => setEditedQuote({ ...editedQuote, title: e.target.value })}
             className="mt-1"
           />
+        </div>
+
+        {/* Deduction Type Selector */}
+        <div>
+          <Label htmlFor="deductionType">Skatteavdrag</Label>
+          <Select 
+            value={editedQuote.deductionType || 'rot'} 
+            onValueChange={(value: 'rot' | 'rut' | 'none') => {
+              const updated = { ...editedQuote, deductionType: value };
+              setEditedQuote(recalculate(updated));
+            }}
+          >
+            <SelectTrigger className="mt-1">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="rot">
+                <div className="flex items-center gap-2">
+                  <Hammer className="h-4 w-4" />
+                  <span>ROT-avdrag (Renovering)</span>
+                </div>
+              </SelectItem>
+              <SelectItem value="rut">
+                <div className="flex items-center gap-2">
+                  <Sparkles className="h-4 w-4" />
+                  <span>RUT-avdrag (Städning/Underhåll)</span>
+                </div>
+              </SelectItem>
+              <SelectItem value="none">
+                <div className="flex items-center gap-2">
+                  <X className="h-4 w-4" />
+                  <span>Inget avdrag</span>
+                </div>
+              </SelectItem>
+            </SelectContent>
+          </Select>
         </div>
 
         <Separator />
@@ -436,10 +480,25 @@ const QuoteEditor = ({ quote, onSave, onCancel, isSaving }: QuoteEditorProps) =>
               <span>{formatCurrency(editedQuote.summary.totalWithVAT)}</span>
             </div>
             <Separator className="my-3" />
-            <div className="flex justify-between text-secondary">
-              <span className="font-medium">ROT-avdrag (50%)</span>
-              <span className="font-semibold">-{formatCurrency(editedQuote.summary.rotDeduction)}</span>
-            </div>
+            {editedQuote.summary.deductionAmount > 0 && (
+              <div className="flex justify-between text-secondary">
+                <span className="font-medium flex items-center gap-2">
+                  {editedQuote.deductionType === 'rot' && (
+                    <>
+                      <Hammer className="h-4 w-4 text-blue-600" />
+                      ROT-avdrag (50%)
+                    </>
+                  )}
+                  {editedQuote.deductionType === 'rut' && (
+                    <>
+                      <Sparkles className="h-4 w-4 text-green-600" />
+                      RUT-avdrag (50%)
+                    </>
+                  )}
+                </span>
+                <span className="font-semibold">-{formatCurrency(editedQuote.summary.deductionAmount)}</span>
+              </div>
+            )}
             <div className="flex justify-between text-lg font-bold text-primary">
               <span>Kund betalar</span>
               <span>{formatCurrency(editedQuote.summary.customerPays)}</span>
