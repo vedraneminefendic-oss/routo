@@ -17,7 +17,7 @@ interface OnboardingWizardProps {
   onComplete: () => void;
 }
 
-type Step = "welcome" | "company" | "customer" | "quote" | "complete";
+type Step = "welcome" | "setup" | "complete";
 
 const STEPS: { id: Step; title: string; description: string; icon: any }[] = [
   {
@@ -27,22 +27,10 @@ const STEPS: { id: Step; title: string; description: string; icon: any }[] = [
     icon: CheckCircle2,
   },
   {
-    id: "company",
-    title: "Företagsinformation",
-    description: "Börja med att lägga till dina företagsuppgifter. Detta visas på alla dina offerter.",
+    id: "setup",
+    title: "Snabb setup",
+    description: "Lägg till företagsinfo och kund (båda är valfria - du kan fylla i detta senare).",
     icon: Building2,
-  },
-  {
-    id: "customer",
-    title: "Första kunden",
-    description: "Lägg till en kund som du vill skicka offert till. Du kan alltid lägga till fler senare.",
-    icon: Users,
-  },
-  {
-    id: "quote",
-    title: "Skapa offert",
-    description: "Nu är du redo att skapa din första offert! Beskriv bara jobbet och AI:n gör resten.",
-    icon: FileText,
   },
   {
     id: "complete",
@@ -108,15 +96,11 @@ export function OnboardingWizard({ userId, onComplete }: OnboardingWizardProps) 
     });
   };
 
-  const skipOnboarding = async () => {
-    await supabase
-      .from("user_onboarding")
-      .update({ skipped: true })
-      .eq("user_id", userId);
+  const continueLater = async () => {
     setOpen(false);
     toast({
-      title: "Guide överhoppad",
-      description: "Du kan alltid komma åt hjälp via frågetecknen i appen.",
+      title: "Progress sparad",
+      description: "Du kan återuppta guiden från Inställningar när du vill.",
     });
   };
 
@@ -166,78 +150,91 @@ export function OnboardingWizard({ userId, onComplete }: OnboardingWizardProps) 
           </div>
 
           {currentStep === "welcome" && (
-            <div className="space-y-3 text-sm">
-              <p>Vi guidar dig genom 3 enkla steg:</p>
-              <ul className="space-y-2">
-                <li className="flex items-center gap-2">
-                  <Building2 className="h-4 w-4 text-primary" />
-                  <span>Ange företagsinformation</span>
-                </li>
-                <li className="flex items-center gap-2">
-                  <Users className="h-4 w-4 text-primary" />
-                  <span>Lägg till din första kund</span>
-                </li>
-                <li className="flex items-center gap-2">
-                  <FileText className="h-4 w-4 text-primary" />
-                  <span>Skapa din första offert</span>
-                </li>
-              </ul>
-              <p className="text-muted-foreground mt-4">Det tar bara några minuter!</p>
+            <div className="space-y-4 text-sm">
+              <p>Ditt smarta offertverktyg med AI-generering är redo att användas!</p>
+              <div className="bg-muted/50 p-4 rounded-lg space-y-3">
+                <p className="font-medium">Vad du kan göra nu:</p>
+                <ul className="space-y-2">
+                  <li className="flex items-start gap-2">
+                    <Building2 className="h-4 w-4 text-primary mt-0.5 flex-shrink-0" />
+                    <span><strong>Företagsinfo</strong> - Lägg till dina uppgifter (visas på offerter)</span>
+                  </li>
+                  <li className="flex items-start gap-2">
+                    <Users className="h-4 w-4 text-primary mt-0.5 flex-shrink-0" />
+                    <span><strong>Första kunden</strong> - Spara kunduppgifter för snabbare offertgenerering</span>
+                  </li>
+                  <li className="flex items-start gap-2">
+                    <FileText className="h-4 w-4 text-primary mt-0.5 flex-shrink-0" />
+                    <span><strong>Skapa offert</strong> - Beskriv jobbet så gör AI:n resten!</span>
+                  </li>
+                </ul>
+              </div>
+              <p className="text-muted-foreground">Vill du göra en snabb setup nu eller hoppa direkt till offertgenerering?</p>
             </div>
           )}
 
-          {currentStep === "company" && (
-            <div className="space-y-3 text-sm">
-              <p>Gå till <strong>Inställningar → Företag</strong> och fyll i:</p>
-              <ul className="list-disc list-inside space-y-1 text-muted-foreground">
-                <li>Företagsnamn och organisationsnummer</li>
-                <li>Adress och telefonnummer</li>
-                <li>Timpriser (används för offertberäkningar)</li>
-              </ul>
-              <p className="mt-3">När du är klar, klicka på "Nästa" nedan.</p>
-            </div>
-          )}
-
-          {currentStep === "customer" && (
-            <div className="space-y-3 text-sm">
-              <p>Gå till <strong>Kunder</strong> och lägg till en kund genom att klicka på "Ny kund".</p>
-              <p className="text-muted-foreground">
-                Du behöver minst namn och e-post för att kunna skicka offerter.
+          {currentStep === "setup" && (
+            <div className="space-y-4 text-sm">
+              <div className="space-y-3">
+                <div className="flex items-start gap-3 p-3 bg-muted/50 rounded-lg">
+                  <Building2 className="h-5 w-5 text-primary mt-0.5 flex-shrink-0" />
+                  <div className="space-y-1">
+                    <p className="font-medium">1. Företagsinformation (valfritt)</p>
+                    <p className="text-muted-foreground">
+                      Gå till <strong>Inställningar → Företag</strong> och fyll i företagsnamn, adress, telefon och timpriser.
+                    </p>
+                  </div>
+                </div>
+                
+                <div className="flex items-start gap-3 p-3 bg-muted/50 rounded-lg">
+                  <Users className="h-5 w-5 text-primary mt-0.5 flex-shrink-0" />
+                  <div className="space-y-1">
+                    <p className="font-medium">2. Lägg till en kund (valfritt)</p>
+                    <p className="text-muted-foreground">
+                      Gå till <strong>Kunder</strong> och klicka "Ny kund". Du behöver minst namn och e-post.
+                    </p>
+                  </div>
+                </div>
+              </div>
+              
+              <p className="text-center text-muted-foreground pt-2">
+                Du kan hoppa över detta och lägga till senare - klicka bara "Nästa" när du är klar!
               </p>
-            </div>
-          )}
-
-          {currentStep === "quote" && (
-            <div className="space-y-3 text-sm">
-              <p>Nu är allt klart! Skapa din första offert:</p>
-              <ul className="list-disc list-inside space-y-1 text-muted-foreground">
-                <li>Välj kund från listan</li>
-                <li>Beskriv jobbet (AI:n skapar offerten automatiskt)</li>
-                <li>Använd gärna en mall för snabbare resultat</li>
-              </ul>
             </div>
           )}
 
           {currentStep === "complete" && (
-            <div className="text-center space-y-3">
+            <div className="text-center space-y-4">
               <CheckCircle2 className="h-16 w-16 text-primary mx-auto" />
-              <p className="text-lg">Du är nu redo att börja!</p>
-              <p className="text-sm text-muted-foreground">
-                Tips: Använd frågetecknen (?) i appen för kontextuell hjälp när du behöver.
-              </p>
+              <div className="space-y-2">
+                <p className="text-lg font-medium">Du är nu redo att börja!</p>
+                <p className="text-sm text-muted-foreground">
+                  Skapa din första offert genom att beskriva jobbet - AI:n genererar resten automatiskt.
+                </p>
+              </div>
+              <div className="bg-muted/50 p-4 rounded-lg text-left space-y-2 text-sm">
+                <p className="font-medium">Snabbguide:</p>
+                <ul className="space-y-1 text-muted-foreground">
+                  <li>• Använd <strong>frågetecknen (?)</strong> för kontextuell hjälp</li>
+                  <li>• Skapa <strong>mallar</strong> för återkommande offerter</li>
+                  <li>• Anpassa <strong>timpriser</strong> i Inställningar</li>
+                </ul>
+              </div>
             </div>
           )}
         </div>
 
         <div className="flex justify-between gap-2">
-          <Button
-            variant="ghost"
-            onClick={skipOnboarding}
-            className="text-muted-foreground"
-          >
-            Hoppa över
-          </Button>
-          <div className="flex gap-2">
+          {currentStep !== "complete" && (
+            <Button
+              variant="ghost"
+              onClick={continueLater}
+              className="text-muted-foreground"
+            >
+              Fortsätt senare
+            </Button>
+          )}
+          <div className="flex gap-2 ml-auto">
             {currentIndex > 0 && currentStep !== "complete" && (
               <Button variant="outline" onClick={handleBack}>
                 Tillbaka
