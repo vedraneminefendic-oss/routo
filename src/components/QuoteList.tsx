@@ -1,9 +1,10 @@
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { FileText, Calendar, Send, Eye, CheckCircle, XCircle, Check, Hammer, Sparkles } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { sv } from "date-fns/locale";
 import { QuoteStatus } from "@/hooks/useQuoteStatus";
+import { EmptyState } from "@/components/EmptyState";
 
 interface Quote {
   id: string;
@@ -76,12 +77,11 @@ const QuoteList = ({ quotes, onQuoteClick }: QuoteListProps) => {
 
   if (quotes.length === 0) {
     return (
-      <Card>
-        <CardContent className="pt-6 text-center text-muted-foreground">
-          <FileText className="h-12 w-12 mx-auto mb-3 opacity-50" />
-          <p>Inga offerter ännu. Skapa din första offert ovan!</p>
-        </CardContent>
-      </Card>
+      <EmptyState
+        icon={FileText}
+        title="Inga offerter ännu"
+        description="Börja med att skapa din första offert med AI-assistenten ovan. Beskriv uppdraget så genererar vi en komplett offert åt dig på några sekunder!"
+      />
     );
   }
 
@@ -94,8 +94,17 @@ const QuoteList = ({ quotes, onQuoteClick }: QuoteListProps) => {
         return (
           <Card 
             key={quote.id} 
-            className="cursor-pointer hover:bg-muted/30 hover:border-primary/30 hover:shadow-sm transition-all duration-200 border-border"
+            className="cursor-pointer hover:bg-muted/30 hover:border-primary/30 hover:shadow-sm transition-all duration-200 border-border focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2"
             onClick={() => onQuoteClick?.(quote)}
+            role="button"
+            tabIndex={0}
+            aria-label={`Öppna offert: ${quote.title}`}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                onQuoteClick?.(quote);
+              }
+            }}
           >
             <CardContent className="p-3">
               <div className="flex items-start justify-between">

@@ -93,6 +93,27 @@ All colors MUST be HSL.
     @apply border-border;
   }
 
+  * {
+    @apply border-border transition-colors duration-200;
+  }
+  
+  /* Enhanced focus indicators for accessibility */
+  *:focus-visible {
+    @apply outline-none ring-2 ring-ring ring-offset-2 ring-offset-background;
+  }
+  
+  /* Keyboard navigation improvements */
+  button:focus-visible,
+  a:focus-visible,
+  [role="button"]:focus-visible {
+    @apply ring-2 ring-primary ring-offset-2;
+  }
+  
+  /* Skip link for keyboard navigation */
+  .skip-link {
+    @apply sr-only focus:not-sr-only focus:absolute focus:top-4 focus:left-4 focus:z-50 focus:px-4 focus:py-2 focus:bg-primary focus:text-primary-foreground focus:rounded-md;
+  }
+  
   body {
     @apply bg-background text-foreground font-sans;
   }

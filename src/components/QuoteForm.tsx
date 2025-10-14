@@ -92,14 +92,14 @@ const QuoteForm = ({ onGenerate, isGenerating }: QuoteFormProps) => {
         </CardDescription>
       </CardHeader>
       <CardContent>
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form onSubmit={handleSubmit} className="space-y-4" aria-label="Skapa ny offert formulär">
           <div className="space-y-2">
             <div className="flex items-center gap-2">
               <Label htmlFor="customer">Kund (valfritt)</Label>
               <ContextualHelp content="Välj en befintlig kund om du vill koppla offerten till någon. Du kan också lägga till kund senare." />
             </div>
             <Select value={selectedCustomerId} onValueChange={setSelectedCustomerId}>
-              <SelectTrigger>
+              <SelectTrigger id="customer" aria-label="Välj kund">
                 <SelectValue placeholder="Välj kund eller lämna tom" />
               </SelectTrigger>
               <SelectContent>
@@ -116,7 +116,7 @@ const QuoteForm = ({ onGenerate, isGenerating }: QuoteFormProps) => {
           <div className="space-y-2">
             <Label htmlFor="template">Mall (valfritt)</Label>
             <Select value={selectedTemplateId} onValueChange={handleTemplateChange}>
-              <SelectTrigger>
+              <SelectTrigger id="template" aria-label="Välj mall">
                 <SelectValue placeholder="Välj mall eller skapa från grunden" />
               </SelectTrigger>
               <SelectContent>
@@ -142,7 +142,7 @@ const QuoteForm = ({ onGenerate, isGenerating }: QuoteFormProps) => {
               <ContextualHelp content="Välj hur detaljerad offerten ska vara. Snabboffert för enkla jobb, Standard för de flesta uppdrag, Detaljerad för större projekt." />
             </div>
             <Select value={detailLevel} onValueChange={setDetailLevel}>
-              <SelectTrigger>
+              <SelectTrigger id="detailLevel" aria-label="Välj detaljnivå">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -183,7 +183,7 @@ const QuoteForm = ({ onGenerate, isGenerating }: QuoteFormProps) => {
               <ContextualHelp content="Välj typ av skatteavdrag. Automatisk detektering låter AI:n avgöra om det är ROT (renovering) eller RUT (hemservice). Du kan också tvinga en viss typ." />
             </div>
             <Select value={deductionType} onValueChange={setDeductionType}>
-              <SelectTrigger>
+              <SelectTrigger id="deductionType" aria-label="Välj skatteavdrag">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -226,6 +226,8 @@ const QuoteForm = ({ onGenerate, isGenerating }: QuoteFormProps) => {
               onChange={(e) => setDescription(e.target.value)}
               className="min-h-[150px] resize-none"
               disabled={isGenerating}
+              aria-label="Uppdragsbeskrivning"
+              aria-required="true"
             />
             <p className="text-sm text-muted-foreground">
               Inkludera information om: typ av arbete, storlek/omfattning, materialnivå
@@ -236,6 +238,8 @@ const QuoteForm = ({ onGenerate, isGenerating }: QuoteFormProps) => {
             className="w-full bg-primary hover:bg-primary/90" 
             size="lg"
             disabled={isGenerating || !description.trim()}
+            aria-busy={isGenerating}
+            aria-label={isGenerating ? "Genererar offert" : "Generera offert"}
           >
             {isGenerating ? (
               <>

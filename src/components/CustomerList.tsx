@@ -4,7 +4,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Edit, Trash2, Search, ChevronDown, Mail, Phone, TrendingUp } from "lucide-react";
+import { Edit, Trash2, Search, ChevronDown, Mail, Phone, TrendingUp, UserPlus } from "lucide-react";
 import { Customer } from "@/pages/Customers";
 import {
   AlertDialog,
@@ -21,6 +21,7 @@ import { Badge } from "@/components/ui/badge";
 import { useCustomerStats } from "@/hooks/useCustomerStats";
 import { format } from "date-fns";
 import { sv } from "date-fns/locale";
+import { EmptyState } from "@/components/EmptyState";
 
 interface CustomerListProps {
   customers: Customer[];
@@ -189,9 +190,19 @@ const CustomerList = ({ customers, loading, onEdit, onDelete }: CustomerListProp
         </CardHeader>
         <CardContent>
           {filteredCustomers.length === 0 ? (
-            <div className="text-center py-8 text-muted-foreground">
-              {searchTerm ? "Inga kunder matchade sökningen" : "Inga kunder ännu"}
-            </div>
+            searchTerm ? (
+              <EmptyState
+                icon={Search}
+                title="Inga matchande kunder"
+                description={`Inga kunder matchade sökningen "${searchTerm}". Prova att ändra sökorden.`}
+              />
+            ) : (
+              <EmptyState
+                icon={UserPlus}
+                title="Inga kunder ännu"
+                description="Lägg till din första kund för att börja hantera kundregister och koppla dem till offerter."
+              />
+            )
           ) : (
             <Table>
               <TableHeader>
