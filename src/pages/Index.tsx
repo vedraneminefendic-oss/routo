@@ -11,6 +11,9 @@ import QuoteForm from "@/components/QuoteForm";
 import QuoteDisplay from "@/components/QuoteDisplay";
 import QuoteEditor from "@/components/QuoteEditor";
 import QuoteList from "@/components/QuoteList";
+import { OnboardingWizard } from "@/components/OnboardingWizard";
+import { QuoteTemplates, QuoteTemplate } from "@/components/QuoteTemplates";
+import { ContextualHelp } from "@/components/ContextualHelp";
 
 const Index = () => {
   const navigate = useNavigate();
@@ -27,6 +30,7 @@ const Index = () => {
   const [statusFilter, setStatusFilter] = useState("all");
   const [currentCustomerId, setCurrentCustomerId] = useState<string | undefined>(undefined);
   const [pendingQuotesCount, setPendingQuotesCount] = useState(0);
+  const [showTemplates, setShowTemplates] = useState(false);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -255,6 +259,14 @@ const Index = () => {
     navigate("/auth");
   };
 
+  const handleSelectTemplate = (template: QuoteTemplate) => {
+    setShowTemplates(false);
+    // Auto-fill the form with template text
+    const description = template.exampleText;
+    // Trigger generation immediately
+    handleGenerateQuote(description, undefined, 'standard', template.category.toLowerCase());
+  };
+
   const filteredQuotes = quotes.filter((quote) => {
     const matchesSearch = searchTerm === "" || 
       quote.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -322,11 +334,48 @@ const Index = () => {
         </div>
       </header>
 
+      {/* Onboarding Wizard */}
+      {user && (
+        <OnboardingWizard 
+          userId={user.id} 
+          onComplete={() => console.log("Onboarding complete")} 
+        />
+      )}
+
       {/* Main Content */}
       <main className="container mx-auto px-4 py-8 bg-background">
         <div className="grid lg:grid-cols-2 gap-6">
           {/* Left Column - Form & Generated Quote */}
           <div className="space-y-6">
+            {/* Quick Templates Section */}
+            {!currentQuote && (
+              <Card className="border-2 border-dashed border-primary/20 bg-primary/5">
+                <CardHeader>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <CardTitle className="text-lg">Snabbmallar</CardTitle>
+                      <ContextualHelp content="Välj en färdig mall för vanliga ROT/RUT-jobb för att snabbt komma igång. Mallen förfyller beskrivningen och AI:n genererar offerten automatiskt." />
+                    </div>
+                    <Button 
+                      variant="ghost" 
+                      size="sm"
+                      onClick={() => setShowTemplates(!showTemplates)}
+                    >
+                      {showTemplates ? 'Dölj' : 'Visa alla'}
+                    </Button>
+                  </div>
+                  <CardDescription>
+                    Börja snabbt med färdiga mallar för vanliga jobb
+                  </CardDescription>
+                </CardHeader>
+                {showTemplates && (
+                  <CardContent>
+                    <QuoteTemplates onSelectTemplate={handleSelectTemplate} />
+                  </CardContent>
+                )}
+              </Card>
+            )}
+
             <QuoteForm onGenerate={handleGenerateQuote} isGenerating={isGenerating} />
             
             {currentQuote && !isEditing && (
@@ -358,7 +407,10 @@ const Index = () => {
           <div>
             <Card>
               <CardHeader className="pb-3">
-                <CardTitle className="text-lg text-secondary">Dina offerter</CardTitle>
+                <div className="flex items-center gap-2">
+                  <CardTitle className="text-lg text-secondary">Dina offerter</CardTitle>
+                  <ContextualHelp content="Här ser du alla dina sparade offerter. Klicka på en offert för att visa, redigera eller skicka den. Du kan också söka och filtrera på status." />
+                </div>
                 <CardDescription className="text-xs">
                   {quotes.length} {quotes.length === 1 ? 'offert' : 'offerter'} totalt
                 </CardDescription>

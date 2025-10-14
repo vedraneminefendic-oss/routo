@@ -594,6 +594,36 @@ export type Database = {
           },
         ]
       }
+      user_onboarding: {
+        Row: {
+          completed: boolean
+          created_at: string
+          current_step: string | null
+          id: string
+          skipped: boolean
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          completed?: boolean
+          created_at?: string
+          current_step?: string | null
+          id?: string
+          skipped?: boolean
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          completed?: boolean
+          created_at?: string
+          current_step?: string | null
+          id?: string
+          skipped?: boolean
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never

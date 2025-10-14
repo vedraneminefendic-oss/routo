@@ -7,6 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Sparkles, Loader2, Plus } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { Customer } from "@/pages/Customers";
+import { ContextualHelp } from "@/components/ContextualHelp";
 
 interface QuoteFormProps {
   onGenerate: (description: string, customerId?: string, detailLevel?: string, deductionType?: string) => Promise<void>;
@@ -93,7 +94,10 @@ const QuoteForm = ({ onGenerate, isGenerating }: QuoteFormProps) => {
       <CardContent>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-2">
-            <Label htmlFor="customer">Kund (valfritt)</Label>
+            <div className="flex items-center gap-2">
+              <Label htmlFor="customer">Kund (valfritt)</Label>
+              <ContextualHelp content="Välj en befintlig kund om du vill koppla offerten till någon. Du kan också lägga till kund senare." />
+            </div>
             <Select value={selectedCustomerId} onValueChange={setSelectedCustomerId}>
               <SelectTrigger>
                 <SelectValue placeholder="Välj kund eller lämna tom" />
@@ -133,7 +137,10 @@ const QuoteForm = ({ onGenerate, isGenerating }: QuoteFormProps) => {
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="detailLevel">Detaljnivå</Label>
+            <div className="flex items-center gap-2">
+              <Label htmlFor="detailLevel">Detaljnivå</Label>
+              <ContextualHelp content="Välj hur detaljerad offerten ska vara. Snabboffert för enkla jobb, Standard för de flesta uppdrag, Detaljerad för större projekt." />
+            </div>
             <Select value={detailLevel} onValueChange={setDetailLevel}>
               <SelectTrigger>
                 <SelectValue />
@@ -171,7 +178,10 @@ const QuoteForm = ({ onGenerate, isGenerating }: QuoteFormProps) => {
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="deductionType">Skatteavdrag</Label>
+            <div className="flex items-center gap-2">
+              <Label htmlFor="deductionType">Skatteavdrag</Label>
+              <ContextualHelp content="Välj typ av skatteavdrag. Automatisk detektering låter AI:n avgöra om det är ROT (renovering) eller RUT (hemservice). Du kan också tvinga en viss typ." />
+            </div>
             <Select value={deductionType} onValueChange={setDeductionType}>
               <SelectTrigger>
                 <SelectValue />
@@ -205,7 +215,10 @@ const QuoteForm = ({ onGenerate, isGenerating }: QuoteFormProps) => {
           </div>
           
           <div className="space-y-2">
-            <Label htmlFor="description">Uppdragsbeskrivning</Label>
+            <div className="flex items-center gap-2">
+              <Label htmlFor="description">Uppdragsbeskrivning</Label>
+              <ContextualHelp content="Beskriv uppdraget så detaljerat som möjligt. AI:n använder din beskrivning för att automatiskt beräkna tid, material och pris. Inkludera typ av arbete, storlek och materialnivå." />
+            </div>
             <Textarea
               id="description"
               placeholder={exampleText}
