@@ -33,21 +33,32 @@ async function calculateBaseTotals(
       messages: [
         {
           role: 'system',
-          content: `Du beräknar ENDAST total arbetstid och materialkostnad för byggprojekt. 
+          content: `Du beräknar ENDAST total arbetstid och materialkostnad för projekt. 
+
+VIKTIGT: Identifiera vilka FAKTISKA arbetstyper som krävs för detta uppdrag.
+
+Exempel:
+- Städning → "Städare"
+- Fönsterputsning → "Fönsterputsare"
+- Trädfällning → "Arborist" eller "Trädvård"
+- Badrumsrenovering → "Snickare", "VVS", "Elektriker"
+- Målning → "Målare"
+- Gräsklippning → "Trädgårdsskötare"
+
 ${ratesContext}${equipmentContext}
 
-VIKTIGT: Beräkna realistiska totaler baserat på projektets verkliga omfattning.
 Returnera ENDAST JSON i detta format:
 {
-  "workHours": { "Snickare": 20, "VVS": 15 },
-  "materialCost": 18500,
-  "equipmentCost": 2600
+  "workHours": { "Städare": 8, "Fönsterputsare": 2 },
+  "materialCost": 500,
+  "equipmentCost": 0
 }
 
 Regler:
-- workHours: Total arbetstid per arbetstyp som projektet faktiskt kräver
+- workHours: Total arbetstid per FAKTISK arbetstyp som projektet kräver (använd svenska yrkestitlar)
 - materialCost: Total materialkostnad i kronor (realistiska 2025 priser)
-- equipmentCost: Total kostnad för maskiner/utrustning om projektet kräver det (annars 0)`
+- equipmentCost: Total kostnad för maskiner/utrustning om projektet kräver det (annars 0)
+- Använd INTE "Snickare" för städning eller "VVS" för trädgårdsskötsel - var specifik!`
         },
         {
           role: 'user',
@@ -240,15 +251,51 @@ ${equipmentText}
 ${customerHistoryText}
 ${pricingHistoryText}
 
+**TIMPRIS-MATCHNING:**
+När du skapar workItems, följ dessa regler:
+
+1. Om arbetstypen (t.ex. "Snickare") finns i användarens timpriser → Använd EXAKT det priset
+2. Om arbetstypen (t.ex. "Städare") INTE finns i listan → Använd branschstandard-priser:
+   - Städare: 450-550 kr/h
+   - Arborist/Trädfällning: 800-1200 kr/h (komplext arbete)
+   - Trädgårdsskötare: 500-650 kr/h
+   - Målare: 650-750 kr/h
+   - Elektriker: 850-950 kr/h (om ej angiven)
+   - VVS: 900-1100 kr/h (om ej angiven)
+   - Fönsterputsare: 400-500 kr/h
+
+3. VIKTIGT: Matcha INTE fel arbetstyper! 
+   - Städning kräver INTE en snickare
+   - Trädfällning kräver INTE en elektriker
+   - Använd logiska arbetstyper baserat på uppdraget
+
+Exempel på korrekt matching:
+
+❌ FEL:
+Uppdrag: "Städning 70 kvm"
+workItems: [{ name: "Snickare - Städning", hours: 8, hourlyRate: 799 }]
+
+✅ RÄTT:
+Uppdrag: "Städning 70 kvm"
+workItems: [{ name: "Städare - Hemstädning", hours: 6, hourlyRate: 500 }]
+
+---
+
+❌ FEL:
+Uppdrag: "Fälla två ekar"
+workItems: [{ name: "Snickare - Trädfällning", hours: 16, hourlyRate: 799 }]
+
+✅ RÄTT:
+Uppdrag: "Fälla två ekar"
+workItems: [{ name: "Arborist - Trädfällning", hours: 16, hourlyRate: 1100 }]
+
 VIKTIGA PRINCIPER FÖR KONSEKVENTA OFFERTER:
-- Använd EXAKT de angivna timpriserna ovan för varje arbetstyp
+- Använd EXAKT de angivna timpriserna ovan för matchande arbetstyper
 - Basera tidsestimat på branschstandarder och erfarenhet
 - Samma beskrivning ska alltid ge samma resultat - var konsekvent!
 - Avrunda alltid timmar till närmaste heltal
 - Använd realistiska och konsekventa materialpriser baserat på 2025 års priser
 - Specificera tydligt vad som ingår och inte ingår i offerten
-- Matcha arbetstypen i offerten mot beskrivningen och använd korrekt timpris för varje workItem
-- Om beskrivningen innehåller flera typer av arbeten, använd det timpris som passar bäst för varje specifikt arbetsmoment
 
 **🔒 KRITISKT - LÅS DESSA FÖRUTBERÄKNADE TOTALER:**
 
