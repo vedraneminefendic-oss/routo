@@ -45,6 +45,8 @@ interface Summary {
   deductionAmount: number;
   deductionType?: 'rot' | 'rut' | 'none';
   customerPays: number;
+  rotDeduction?: number; // Legacy field
+  rutDeduction?: number; // Legacy field
 }
 
 interface Quote {
@@ -94,14 +96,17 @@ const QuoteEditor = ({ quote, onSave, onCancel, isSaving }: QuoteEditorProps) =>
     const vat = totalBeforeVAT * 0.25;
     const totalWithVAT = totalBeforeVAT + vat;
     
-    // Handle different deduction types
-    const deductionType = updated.deductionType || 'rot';
+    // Handle both new and legacy deduction fields
+    const deductionType = updated.deductionType ?? 
+      (updated.summary?.rotDeduction ? 'rot' : 
+       updated.summary?.rutDeduction ? 'rut' : 'none');
     const deductionPercentage = (deductionType === 'rot' || deductionType === 'rut') ? 0.5 : 0;
     const deductionAmount = workCost * deductionPercentage;
     const customerPays = totalWithVAT - deductionAmount;
 
     return {
       ...updated,
+      deductionType,
       workItems,
       materials,
       summary: {
@@ -219,7 +224,9 @@ const QuoteEditor = ({ quote, onSave, onCancel, isSaving }: QuoteEditorProps) =>
         <div>
           <Label htmlFor="deductionType">Skatteavdrag</Label>
           <Select 
-            value={editedQuote.deductionType || 'rot'} 
+            value={editedQuote.deductionType ?? 
+              (editedQuote.summary?.rotDeduction ? 'rot' : 
+               editedQuote.summary?.rutDeduction ? 'rut' : 'none')} 
             onValueChange={(value: 'rot' | 'rut' | 'none') => {
               const updated = { ...editedQuote, deductionType: value };
               setEditedQuote(recalculate(updated));
@@ -457,6 +464,16 @@ const QuoteEditor = ({ quote, onSave, onCancel, isSaving }: QuoteEditorProps) =>
         {/* Summary (Read-only, auto-calculated) */}
         <div className="bg-secondary/5 border border-secondary/10 rounded-lg p-6">
           <h3 className="font-semibold text-lg mb-4 text-secondary">Sammanfattning</h3>
+          {(() => {
+            // Support both new and legacy deduction fields for initial render
+            const deductionAmount = editedQuote.summary.deductionAmount ?? 
+              editedQuote.summary.rotDeduction ?? 
+              editedQuote.summary.rutDeduction ?? 0;
+            const effectiveDeductionType = editedQuote.deductionType ?? 
+              (editedQuote.summary.rotDeduction ? 'rot' : 
+               editedQuote.summary.rutDeduction ? 'rut' : 'none');
+
+            return (
           <div className="space-y-2">
             <div className="flex justify-between text-sm">
               <span>Arbetskostnad</span>
@@ -479,17 +496,17 @@ const QuoteEditor = ({ quote, onSave, onCancel, isSaving }: QuoteEditorProps) =>
               <span>Totalt inkl. moms</span>
               <span>{formatCurrency(editedQuote.summary.totalWithVAT)}</span>
             </div>
-            {editedQuote.summary.deductionAmount > 0 && (
+            {deductionAmount > 0 && (
               <>
                 <Separator className="my-2" />
                 <div className="flex justify-between text-sm text-green-600 dark:text-green-400">
                   <span className="flex items-center gap-1">
-                    {editedQuote.deductionType === 'rot' ? (
+                    {effectiveDeductionType === 'rot' ? (
                       <>
                         <Hammer className="h-3 w-3" />
                         ROT-avdrag (50% av arbetskostnad)
                       </>
-                    ) : editedQuote.deductionType === 'rut' ? (
+                    ) : effectiveDeductionType === 'rut' ? (
                       <>
                         <Sparkles className="h-3 w-3" />
                         RUT-avdrag (50% av arbetskostnad)
@@ -499,7 +516,7 @@ const QuoteEditor = ({ quote, onSave, onCancel, isSaving }: QuoteEditorProps) =>
                     )}
                   </span>
                   <span className="font-medium">
-                    -{formatCurrency(editedQuote.summary.deductionAmount)}
+                    -{formatCurrency(deductionAmount)}
                   </span>
                 </div>
               </>
@@ -510,6 +527,8 @@ const QuoteEditor = ({ quote, onSave, onCancel, isSaving }: QuoteEditorProps) =>
               <span>{formatCurrency(editedQuote.summary.customerPays)}</span>
             </div>
           </div>
+            );
+          })()}
         </div>
 
         {/* Notes */}

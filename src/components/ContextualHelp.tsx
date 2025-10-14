@@ -13,7 +13,7 @@ interface ContextualHelpProps {
 
 export function ContextualHelp({ content, side = "top" }: ContextualHelpProps) {
   return (
-    <TooltipProvider>
+    <TooltipProvider delayDuration={100}>
       <Tooltip>
         <TooltipTrigger asChild>
           <button
