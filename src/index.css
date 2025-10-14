@@ -8,83 +8,86 @@ All colors MUST be HSL.
 
 @layer base {
   :root {
-    --background: 36 26% 93%; /* #F6F0E6 - Varm bakgrund */
-    --foreground: 0 0% 11%; /* #1B1B1B - Mörk text */
+    /* Neutrals - Ljus beige/kräm bas */
+    --background: 40 50% 98%; /* #FAF8F5 - Mycket ljus kräm */
+    --foreground: 0 0% 18%; /* #2D2D2D - Mörkgrå text */
 
-    --card: 0 0% 100%; /* Vit för kort */
-    --card-foreground: 0 0% 11%;
+    --card: 40 30% 99%; /* Nästan vit för kort */
+    --card-foreground: 0 0% 18%;
 
-    --popover: 0 0% 100%;
-    --popover-foreground: 0 0% 11%;
+    --popover: 40 30% 99%;
+    --popover-foreground: 0 0% 18%;
 
-    --primary: 234 56% 52%; /* #3A44CC - Blå accent */
+    /* Brand Colors - Din palett */
+    --primary: 342 32% 42%; /* #8B4A5E - Marsala/vinröd (förstärkt) */
     --primary-foreground: 0 0% 100%;
 
-    --secondary: 132 21% 37%; /* #4A7151 - Grön */
-    --secondary-foreground: 0 0% 100%;
+    --secondary: 277 24% 68%; /* #B8A6C8 - Lavendel (förstärkt) */
+    --secondary-foreground: 0 0% 18%;
 
-    --muted: 36 26% 93%; /* Samma som bakgrund */
-    --muted-foreground: 0 0% 40%;
+    --accent: 46 75% 60%; /* #E8C547 - Gul/guld (förstärkt kontrast) */
+    --accent-foreground: 0 0% 18%;
 
-    --accent: 33 58% 56%; /* #D2994E - Guld */
-    --accent-foreground: 0 0% 100%;
+    --muted: 40 30% 94%; /* Ljus beige för muted areas */
+    --muted-foreground: 0 0% 42%;
 
-    --destructive: 0 65% 51%;
+    --destructive: 0 72% 51%;
     --destructive-foreground: 0 0% 100%;
 
-    --border: 0 0% 89%;
-    --input: 0 0% 89%;
-    --ring: 234 56% 52%; /* Blå focus ring */
+    --border: 40 20% 88%;
+    --input: 40 20% 88%;
+    --ring: 342 32% 42%; /* Marsala focus ring */
 
-    --radius: 0.75rem;
+    --radius: 0.5rem; /* Modernare, mindre rundning */
 
-    --sidebar-background: 36 26% 95%;
-    --sidebar-foreground: 0 0% 11%;
-    --sidebar-primary: 234 56% 52%;
+    --sidebar-background: 40 40% 96%;
+    --sidebar-foreground: 0 0% 18%;
+    --sidebar-primary: 342 32% 42%;
     --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 36 26% 90%;
-    --sidebar-accent-foreground: 0 0% 11%;
-    --sidebar-border: 0 0% 89%;
-    --sidebar-ring: 234 56% 52%;
+    --sidebar-accent: 40 30% 92%;
+    --sidebar-accent-foreground: 0 0% 18%;
+    --sidebar-border: 40 20% 88%;
+    --sidebar-ring: 342 32% 42%;
   }
 
   .dark {
-    --background: 132 21% 15%; /* Mörkgrön bakgrund */
-    --foreground: 0 0% 98%;
+    /* Dark mode - Djup marsala/vinröd bas */
+    --background: 342 20% 12%; /* Mörkvinröd bakgrund */
+    --foreground: 40 30% 95%;
 
-    --card: 132 21% 18%;
-    --card-foreground: 0 0% 98%;
+    --card: 342 18% 16%;
+    --card-foreground: 40 30% 95%;
 
-    --popover: 132 21% 18%;
-    --popover-foreground: 0 0% 98%;
+    --popover: 342 18% 16%;
+    --popover-foreground: 40 30% 95%;
 
-    --primary: 234 56% 52%; /* Samma blå */
+    --primary: 342 40% 58%; /* Ljusare marsala för dark mode */
     --primary-foreground: 0 0% 100%;
 
-    --secondary: 132 21% 45%; /* Ljusare grön */
-    --secondary-foreground: 0 0% 100%;
+    --secondary: 277 35% 75%; /* Ljusare lavendel */
+    --secondary-foreground: 342 20% 12%;
 
-    --muted: 132 21% 22%;
-    --muted-foreground: 0 0% 65%;
+    --accent: 46 85% 65%; /* Ljusare gul för dark mode */
+    --accent-foreground: 0 0% 18%;
 
-    --accent: 33 58% 56%; /* Samma guld */
-    --accent-foreground: 0 0% 100%;
+    --muted: 342 15% 20%;
+    --muted-foreground: 40 15% 65%;
 
-    --destructive: 0 62% 50%;
-    --destructive-foreground: 0 0% 98%;
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 100%;
 
-    --border: 132 21% 25%;
-    --input: 132 21% 25%;
-    --ring: 234 56% 52%;
+    --border: 342 15% 24%;
+    --input: 342 15% 24%;
+    --ring: 342 40% 58%;
     
-    --sidebar-background: 132 21% 13%;
-    --sidebar-foreground: 0 0% 98%;
-    --sidebar-primary: 234 56% 52%;
+    --sidebar-background: 342 20% 10%;
+    --sidebar-foreground: 40 30% 95%;
+    --sidebar-primary: 342 40% 58%;
     --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 132 21% 22%;
-    --sidebar-accent-foreground: 0 0% 98%;
-    --sidebar-border: 132 21% 25%;
-    --sidebar-ring: 234 56% 52%;
+    --sidebar-accent: 342 15% 20%;
+    --sidebar-accent-foreground: 40 30% 95%;
+    --sidebar-border: 342 15% 24%;
+    --sidebar-ring: 342 40% 58%;
   }
 }
 
@@ -115,18 +118,21 @@ All colors MUST be HSL.
   }
   
   body {
-    @apply bg-background text-foreground font-sans;
+    @apply bg-background text-foreground font-sans antialiased;
+    line-height: 1.6;
+    letter-spacing: -0.011em;
   }
   
-  /* Typografi - Rubriker i grön */
+  /* Modern Typografi - Rubriker i primary (marsala) */
   h1, h2, h3, h4, h5, h6 {
-    @apply text-secondary font-semibold;
+    @apply text-foreground font-semibold tracking-tight;
+    line-height: 1.2;
   }
   
-  h1 { @apply text-2xl md:text-4xl leading-tight; }
-  h2 { @apply text-xl md:text-3xl leading-tight; }
-  h3 { @apply text-lg md:text-2xl leading-snug; }
-  h4 { @apply text-base md:text-xl leading-snug; }
+  h1 { @apply text-3xl md:text-5xl; }
+  h2 { @apply text-2xl md:text-4xl; }
+  h3 { @apply text-xl md:text-3xl; }
+  h4 { @apply text-lg md:text-2xl; }
   
   /* Brödtext */
   p {
@@ -136,5 +142,14 @@ All colors MUST be HSL.
   /* Smooth transitions */
   * {
     @apply transition-colors duration-200;
+  }
+  
+  /* Enhanced shadows for modern look */
+  .shadow-modern {
+    box-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.05), 0 1px 2px -1px rgb(0 0 0 / 0.05);
+  }
+  
+  .shadow-modern-lg {
+    box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.05), 0 4px 6px -4px rgb(0 0 0 / 0.05);
   }
 }
