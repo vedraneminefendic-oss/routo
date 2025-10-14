@@ -1,9 +1,10 @@
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { Calendar } from "@/components/ui/calendar";
-import { CalendarIcon } from "lucide-react";
-import { format } from "date-fns";
+import { CalendarIcon, Info } from "lucide-react";
+import { format, differenceInDays } from "date-fns";
 import { sv } from "date-fns/locale";
 import type { TimeFilterType } from "@/pages/Reports";
 
@@ -12,9 +13,32 @@ interface TimeFilterProps {
   onChange: (value: TimeFilterType) => void;
   dateRange?: { from: Date; to: Date };
   onDateRangeChange: (range: { from: Date; to: Date } | undefined) => void;
+  quoteCount?: number;
 }
 
-export const TimeFilter = ({ value, onChange, dateRange, onDateRangeChange }: TimeFilterProps) => {
+export const TimeFilter = ({ 
+  value, 
+  onChange, 
+  dateRange, 
+  onDateRangeChange,
+  quoteCount = 0 
+}: TimeFilterProps) => {
+  const getDaysInPeriod = () => {
+    if (value === 'custom' && dateRange?.from && dateRange?.to) {
+      return differenceInDays(dateRange.to, dateRange.from) + 1;
+    }
+    
+    const daysMap: Record<TimeFilterType, number> = {
+      week: 7,
+      month: 30,
+      quarter: 90,
+      year: 365,
+      custom: 0
+    };
+    
+    return daysMap[value];
+  };
+
   return (
     <div className="flex items-center gap-2">
       <Select value={value} onValueChange={(v) => onChange(v as TimeFilterType)}>
@@ -64,6 +88,12 @@ export const TimeFilter = ({ value, onChange, dateRange, onDateRangeChange }: Ti
           </PopoverContent>
         </Popover>
       )}
+      
+      {/* Period info badge */}
+      <Badge variant="outline" className="text-xs">
+        <Info className="h-3 w-3 mr-1" />
+        {quoteCount} {quoteCount === 1 ? 'offert' : 'offerter'} ({getDaysInPeriod()} dagar)
+      </Badge>
     </div>
   );
 };

@@ -31,6 +31,8 @@ const CompanySettings = ({ userId }: CompanySettingsProps) => {
   const [saving, setSaving] = useState(false);
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
+  const [isNewUser, setIsNewUser] = useState(false);
+  const [showWelcome, setShowWelcome] = useState(false);
 
   const { register, handleSubmit, reset, formState: { errors } } = useForm<CompanyFormData>({
     resolver: zodResolver(companySchema),
@@ -54,6 +56,7 @@ const CompanySettings = ({ userId }: CompanySettingsProps) => {
       if (error) throw error;
 
       if (data) {
+        // Befintlig användare
         reset({
           company_name: data.company_name || "",
           org_number: data.org_number || "",
@@ -64,6 +67,20 @@ const CompanySettings = ({ userId }: CompanySettingsProps) => {
           has_f_skatt: data.has_f_skatt ?? true,
         });
         setLogoUrl(data.logo_url);
+      } else {
+        // NY ANVÄNDARE - Hämta uppgifter från auth.users
+        setIsNewUser(true);
+        setShowWelcome(true);
+        
+        const { data: { user } } = await supabase.auth.getUser();
+        
+        if (user) {
+          reset({
+            company_name: user.user_metadata?.full_name || "",
+            email: user.email || "",
+            has_f_skatt: true,
+          });
+        }
       }
     } catch (error: any) {
       console.error('Error loading settings:', error);
@@ -91,6 +108,12 @@ const CompanySettings = ({ userId }: CompanySettingsProps) => {
         }, { onConflict: 'user_id' });
 
       if (error) throw error;
+
+      // Dölj välkomstmeddelande efter första sparningen
+      if (isNewUser) {
+        setIsNewUser(false);
+        setShowWelcome(false);
+      }
 
       toast.success("Inställningar sparade!");
     } catch (error: any) {
@@ -157,6 +180,31 @@ const CompanySettings = ({ userId }: CompanySettingsProps) => {
 
   return (
     <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
+      {showWelcome && (
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
+          <div className="flex justify-between items-start">
+            <div>
+              <h3 className="font-semibold text-blue-900 mb-1">
+                Välkommen till ditt offertverktyg! 👋
+              </h3>
+              <p className="text-sm text-blue-700">
+                Vi har förfyllt dina uppgifter från ditt konto. Komplettera med företagsinformation 
+                som visas på dina offerter, och spara sedan för att komma igång.
+              </p>
+            </div>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={() => setShowWelcome(false)}
+              className="text-blue-600 hover:text-blue-800"
+            >
+              <X className="h-4 w-4" />
+            </Button>
+          </div>
+        </div>
+      )}
+      
       {/* Logo Upload */}
       <div className="space-y-2">
         <Label>Logotyp</Label>

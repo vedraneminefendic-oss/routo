@@ -29,7 +29,10 @@ interface Statistics {
 
 const Reports = () => {
   const navigate = useNavigate();
-  const [timeFilter, setTimeFilter] = useState<TimeFilterType>('month');
+  
+  // Hämta senast använda filter från localStorage
+  const savedFilter = localStorage.getItem('reports-time-filter') as TimeFilterType | null;
+  const [timeFilter, setTimeFilter] = useState<TimeFilterType>(savedFilter || 'month');
   const [dateRange, setDateRange] = useState<{ from: Date; to: Date }>();
   const [statistics, setStatistics] = useState<Statistics | null>(null);
   const [quotes, setQuotes] = useState<any[]>([]);
@@ -55,6 +58,11 @@ const Reports = () => {
       default:
         return { from: startOfMonth(now), to: endOfDay(now) };
     }
+  };
+
+  const handleTimeFilterChange = (newFilter: TimeFilterType) => {
+    setTimeFilter(newFilter);
+    localStorage.setItem('reports-time-filter', newFilter);
   };
 
   useEffect(() => {
@@ -158,10 +166,11 @@ const Reports = () => {
                 Exportera CSV
               </Button>
               <TimeFilter
-              value={timeFilter} 
-              onChange={setTimeFilter}
-              dateRange={dateRange}
-              onDateRangeChange={setDateRange}
+                value={timeFilter} 
+                onChange={handleTimeFilterChange}
+                dateRange={dateRange}
+                onDateRangeChange={setDateRange}
+                quoteCount={quotes.length}
               />
             </div>
           </div>
