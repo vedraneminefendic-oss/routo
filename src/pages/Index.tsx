@@ -14,6 +14,7 @@ import QuoteList from "@/components/QuoteList";
 import { OnboardingWizard } from "@/components/OnboardingWizard";
 import { QuoteTemplates, QuoteTemplate } from "@/components/QuoteTemplates";
 import { ContextualHelp } from "@/components/ContextualHelp";
+import { AIProgressIndicator } from "@/components/AIProgressIndicator";
 
 const Index = () => {
   const navigate = useNavigate();
@@ -31,6 +32,8 @@ const Index = () => {
   const [currentCustomerId, setCurrentCustomerId] = useState<string | undefined>(undefined);
   const [pendingQuotesCount, setPendingQuotesCount] = useState(0);
   const [showTemplates, setShowTemplates] = useState(false);
+  const [hasCustomRates, setHasCustomRates] = useState(false);
+  const [hourlyRate, setHourlyRate] = useState<number>(650);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -109,6 +112,12 @@ const Index = () => {
       if (error) throw error;
       
       setCurrentQuote(data.quote);
+      
+      // Spara info om custom rates och hourly rate
+      setHasCustomRates(data.hasCustomRates || false);
+      if (data.quote?.workItems?.[0]?.hourlyRate) {
+        setHourlyRate(data.quote.workItems[0].hourlyRate);
+      }
       
       // Visa varning om inga anpassade timpriser användes
       if (!data.hasCustomRates) {
@@ -376,6 +385,9 @@ const Index = () => {
               </Card>
             )}
 
+            {/* AI Progress Indicator */}
+            {isGenerating && <AIProgressIndicator isGenerating={isGenerating} />}
+
             <QuoteForm onGenerate={handleGenerateQuote} isGenerating={isGenerating} />
             
             {currentQuote && !isEditing && (
@@ -390,6 +402,8 @@ const Index = () => {
                 quoteId={viewingQuote?.id}
                 currentStatus={viewingQuote?.status}
                 onStatusChanged={loadQuotes}
+                hasCustomRates={hasCustomRates}
+                hourlyRate={hourlyRate}
               />
             )}
 

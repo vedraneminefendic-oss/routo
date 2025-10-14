@@ -2,6 +2,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { FileText, Download, Save, Edit, Send, ChevronDown, Trash2, Copy, Hammer, Sparkles } from "lucide-react";
+import { AIInsightBadge } from "@/components/AIInsightBadge";
 import { toast } from "sonner";
 import jsPDF from "jspdf";
 import { supabase } from "@/integrations/supabase/client";
@@ -79,6 +80,8 @@ interface QuoteDisplayProps {
   quoteId?: string;
   currentStatus?: QuoteStatus;
   onStatusChanged?: () => void;
+  hasCustomRates?: boolean;
+  hourlyRate?: number;
 }
 
 const QuoteDisplay = ({ 
@@ -91,7 +94,9 @@ const QuoteDisplay = ({
   isSaving, 
   quoteId, 
   currentStatus,
-  onStatusChanged 
+  onStatusChanged,
+  hasCustomRates,
+  hourlyRate
 }: QuoteDisplayProps) => {
   const [companySettings, setCompanySettings] = useState<any>(null);
   const [logoImage, setLogoImage] = useState<string | null>(null);
@@ -595,6 +600,15 @@ const QuoteDisplay = ({
             <CardDescription className="mt-1">
               Genererad offert - granska och spara
             </CardDescription>
+            
+            {/* AI Insights */}
+            <div className="mt-3">
+              <AIInsightBadge 
+                deductionType={quote.deductionType} 
+                hasCustomRates={hasCustomRates}
+                hourlyRate={hourlyRate}
+              />
+            </div>
             
             {/* Status Manager - only show if we have quoteId and currentStatus */}
             {quoteId && currentStatus && (
