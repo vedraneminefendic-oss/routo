@@ -40,11 +40,13 @@ export function AIInsightBadge({ deductionType, hasCustomRates, hourlyRate }: AI
         <TooltipProvider>
           <Tooltip>
             <TooltipTrigger asChild>
-              <Badge variant="outline" className={deductionInfo.color}>
-                <Sparkles className="h-3 w-3 mr-1" />
-                {deductionInfo.label}
-                <Info className="h-3 w-3 ml-1" />
-              </Badge>
+              <div className="inline-block cursor-pointer">
+                <Badge variant="outline" className={deductionInfo.color}>
+                  <Sparkles className="h-3 w-3 mr-1" />
+                  {deductionInfo.label}
+                  <Info className="h-3 w-3 ml-1" />
+                </Badge>
+              </div>
             </TooltipTrigger>
             <TooltipContent className="max-w-xs">
               <p className="text-sm">{deductionInfo.description}</p>
@@ -57,11 +59,13 @@ export function AIInsightBadge({ deductionType, hasCustomRates, hourlyRate }: AI
         <TooltipProvider>
           <Tooltip>
             <TooltipTrigger asChild>
-              <Badge variant="outline" className="bg-primary/10 text-primary border-primary/30">
-                <Sparkles className="h-3 w-3 mr-1" />
-                {hasCustomRates ? 'Anpassade priser' : 'Standardpriser'}
-                <Info className="h-3 w-3 ml-1" />
-              </Badge>
+              <div className="inline-block cursor-pointer">
+                <Badge variant="outline" className="bg-primary/10 text-primary border-primary/30">
+                  <Sparkles className="h-3 w-3 mr-1" />
+                  {hasCustomRates ? 'Anpassade priser' : 'Standardpriser'}
+                  <Info className="h-3 w-3 ml-1" />
+                </Badge>
+              </div>
             </TooltipTrigger>
             <TooltipContent className="max-w-xs">
               <p className="text-sm">

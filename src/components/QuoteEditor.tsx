@@ -479,26 +479,32 @@ const QuoteEditor = ({ quote, onSave, onCancel, isSaving }: QuoteEditorProps) =>
               <span>Totalt inkl. moms</span>
               <span>{formatCurrency(editedQuote.summary.totalWithVAT)}</span>
             </div>
-            <Separator className="my-3" />
             {editedQuote.summary.deductionAmount > 0 && (
-              <div className="flex justify-between text-secondary">
-                <span className="font-medium flex items-center gap-2">
-                  {editedQuote.deductionType === 'rot' && (
-                    <>
-                      <Hammer className="h-4 w-4 text-blue-600" />
-                      ROT-avdrag (50%)
-                    </>
-                  )}
-                  {editedQuote.deductionType === 'rut' && (
-                    <>
-                      <Sparkles className="h-4 w-4 text-green-600" />
-                      RUT-avdrag (50%)
-                    </>
-                  )}
-                </span>
-                <span className="font-semibold">-{formatCurrency(editedQuote.summary.deductionAmount)}</span>
-              </div>
+              <>
+                <Separator className="my-2" />
+                <div className="flex justify-between text-sm text-green-600 dark:text-green-400">
+                  <span className="flex items-center gap-1">
+                    {editedQuote.deductionType === 'rot' ? (
+                      <>
+                        <Hammer className="h-3 w-3" />
+                        ROT-avdrag (50% av arbetskostnad)
+                      </>
+                    ) : editedQuote.deductionType === 'rut' ? (
+                      <>
+                        <Sparkles className="h-3 w-3" />
+                        RUT-avdrag (50% av arbetskostnad)
+                      </>
+                    ) : (
+                      'Skatteavdrag'
+                    )}
+                  </span>
+                  <span className="font-medium">
+                    -{formatCurrency(editedQuote.summary.deductionAmount)}
+                  </span>
+                </div>
+              </>
             )}
+            <Separator className="my-3" />
             <div className="flex justify-between text-lg font-bold text-primary">
               <span>Kund betalar</span>
               <span>{formatCurrency(editedQuote.summary.customerPays)}</span>
