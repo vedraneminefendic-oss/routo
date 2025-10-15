@@ -5,12 +5,13 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Wrench, LogOut, Settings as SettingsIcon, BarChart3, Users, Search, AlertCircle, Plus, ArrowLeft } from "lucide-react";
+import { Search, AlertCircle, Plus } from "lucide-react";
 import { toast } from "sonner";
 import QuoteDisplay from "@/components/QuoteDisplay";
 import QuoteEditor from "@/components/QuoteEditor";
 import QuoteList from "@/components/QuoteList";
 import { ContextualHelp } from "@/components/ContextualHelp";
+import { AppHeader } from "@/components/AppHeader";
 
 const Quotes = () => {
   const navigate = useNavigate();
@@ -189,10 +190,6 @@ const Quotes = () => {
     setIsEditing(false);
   };
 
-  const handleLogout = async () => {
-    await supabase.auth.signOut();
-    navigate("/auth");
-  };
 
   const filteredQuotes = quotes.filter((quote) => {
     const matchesSearch = searchTerm === "" || 
@@ -226,43 +223,7 @@ const Quotes = () => {
 
   return (
     <div className="min-h-screen bg-background">
-      {/* Header */}
-      <header className="sticky top-0 z-50 border-b bg-card/95 backdrop-blur supports-[backdrop-filter]:bg-card/80 shadow-sm">
-        <div className="container mx-auto px-4 py-3">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <Button variant="ghost" size="sm" onClick={() => navigate('/')}>
-                <ArrowLeft className="h-4 w-4" />
-              </Button>
-              <div className="p-2 bg-primary rounded-lg shadow-md">
-                <Wrench className="h-6 w-6 text-primary-foreground" />
-              </div>
-              <div className="hidden sm:block">
-                <h1 className="text-xl md:text-2xl font-bold text-secondary">Alla offerter</h1>
-                <p className="text-xs md:text-sm text-muted-foreground hidden md:block">Hantera dina offerter</p>
-              </div>
-            </div>
-            <nav className="flex gap-1 md:gap-2">
-              <Button variant="ghost" size="sm" onClick={() => navigate("/customers")} className="hidden md:flex">
-                <Users className="h-4 w-4 md:mr-2" />
-                <span className="hidden lg:inline">Kunder</span>
-              </Button>
-              <Button variant="ghost" size="sm" onClick={() => navigate("/settings")} className="hidden md:flex">
-                <SettingsIcon className="h-4 w-4 md:mr-2" />
-                <span className="hidden lg:inline">Inställningar</span>
-              </Button>
-              <Button variant="ghost" size="sm" onClick={() => navigate("/reports")} className="hidden md:flex">
-                <BarChart3 className="h-4 w-4 md:mr-2" />
-                <span className="hidden lg:inline">Rapporter</span>
-              </Button>
-              <Button variant="outline" size="sm" onClick={handleLogout}>
-                <LogOut className="h-4 w-4 md:mr-2" />
-                <span className="hidden lg:inline">Logga ut</span>
-              </Button>
-            </nav>
-          </div>
-        </div>
-      </header>
+      <AppHeader currentPage="quotes" />
 
       {/* Main Content */}
       <main className="container mx-auto px-4 py-8">

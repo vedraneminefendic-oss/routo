@@ -5,12 +5,13 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { ArrowLeft, Building2, Clock, Wrench, FileText, PlayCircle } from "lucide-react";
+import { Building2, Clock, Wrench, FileText, PlayCircle } from "lucide-react";
 import CompanySettings from "@/components/CompanySettings";
 import HourlyRatesManager from "@/components/HourlyRatesManager";
 import EquipmentRatesManager from "@/components/EquipmentRatesManager";
 import TemplatesManager from "@/components/TemplatesManager";
 import { useToast } from "@/hooks/use-toast";
+import { AppHeader } from "@/components/AppHeader";
 
 const Settings = () => {
   const navigate = useNavigate();
@@ -80,19 +81,7 @@ const Settings = () => {
 
   return (
     <div className="min-h-screen bg-background">
-      <header className="border-b bg-card">
-        <div className="container mx-auto px-4 py-4">
-          <div className="flex items-center gap-4">
-            <Button variant="ghost" size="icon" onClick={() => navigate("/")}>
-              <ArrowLeft className="h-5 w-5" />
-            </Button>
-            <div>
-              <h1 className="text-2xl font-bold text-secondary">Inställningar</h1>
-              <p className="text-sm text-muted-foreground">Anpassa ditt offertverktyg</p>
-            </div>
-          </div>
-        </div>
-      </header>
+      <AppHeader currentPage="settings" />
 
       <main className="container mx-auto px-4 py-8">
         {showOnboardingResume && (

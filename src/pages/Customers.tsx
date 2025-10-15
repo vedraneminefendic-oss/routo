@@ -1,12 +1,13 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, Plus } from "lucide-react";
+import { Plus } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import CustomerList from "@/components/CustomerList";
 import CustomerForm from "@/components/CustomerForm";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { AppHeader } from "@/components/AppHeader";
 
 export interface Customer {
   id: string;
@@ -118,23 +119,18 @@ const Customers = () => {
 
   return (
     <div className="min-h-screen bg-background">
-      <header className="border-b bg-card">
-        <div className="container mx-auto px-4 py-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-4">
-              <Button variant="ghost" onClick={() => navigate("/")}>
-                <ArrowLeft className="h-4 w-4 mr-2" />
-                Tillbaka
-              </Button>
-              <h1 className="text-2xl font-bold">Kunder</h1>
-            </div>
+      <AppHeader currentPage="customers" />
+
+      <div className="border-b bg-card">
+        <div className="container mx-auto px-4 py-3">
+          <div className="flex items-center justify-end">
             <Button onClick={() => setIsFormOpen(true)}>
               <Plus className="h-4 w-4 mr-2" />
               Ny kund
             </Button>
           </div>
         </div>
-      </header>
+      </div>
 
       <main className="container mx-auto px-4 py-8">
         <CustomerList 

@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, Download } from "lucide-react";
+import { Download } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { StatisticsCards } from "@/components/reports/StatisticsCards";
 import { QuotesTable } from "@/components/reports/QuotesTable";
@@ -12,6 +12,7 @@ import { AcceptanceRateChart } from "@/components/reports/AcceptanceRateChart";
 import { KeyPerformanceIndicators } from "@/components/reports/KeyPerformanceIndicators";
 import { startOfWeek, startOfMonth, startOfQuarter, startOfYear, endOfDay } from "date-fns";
 import { toast } from "sonner";
+import { AppHeader } from "@/components/AppHeader";
 
 export type TimeFilterType = 'week' | 'month' | 'quarter' | 'year' | 'custom';
 
@@ -150,32 +151,25 @@ const Reports = () => {
 
   return (
     <div className="min-h-screen bg-background">
-      <header className="border-b bg-card">
-        <div className="container mx-auto px-4 py-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-4">
-              <Button variant="ghost" onClick={() => navigate("/")}>
-                <ArrowLeft className="h-4 w-4 mr-2" />
-                Tillbaka
-              </Button>
-              <h1 className="text-2xl font-bold">Rapporter</h1>
-            </div>
-            <div className="flex gap-2">
-              <Button variant="outline" onClick={exportToCSV}>
-                <Download className="h-4 w-4 mr-2" />
-                Exportera CSV
-              </Button>
-              <TimeFilter
-                value={timeFilter} 
-                onChange={handleTimeFilterChange}
-                dateRange={dateRange}
-                onDateRangeChange={setDateRange}
-                quoteCount={quotes.length}
-              />
-            </div>
+      <AppHeader currentPage="reports" />
+
+      <div className="border-b bg-card">
+        <div className="container mx-auto px-4 py-3">
+          <div className="flex gap-2 justify-end">
+            <Button variant="outline" size="sm" onClick={exportToCSV}>
+              <Download className="h-4 w-4 mr-2" />
+              Exportera CSV
+            </Button>
+            <TimeFilter
+              value={timeFilter} 
+              onChange={handleTimeFilterChange}
+              dateRange={dateRange}
+              onDateRangeChange={setDateRange}
+              quoteCount={quotes.length}
+            />
           </div>
         </div>
-      </header>
+      </div>
 
       <main className="container mx-auto px-4 py-8">
         <div className="space-y-8">
