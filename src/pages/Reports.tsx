@@ -181,20 +181,20 @@ const Reports = () => {
             loading={loading} 
           />
           
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <QuotesOverTimeChart 
+          <QuotesOverTimeChart 
+            data={timeSeriesData} 
+            loading={loading} 
+            timeFilter={timeFilter}
+          />
+          
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <AcceptanceRateChart 
               data={timeSeriesData} 
               loading={loading} 
-              timeFilter={timeFilter}
             />
             
             <QuotesByStatusChart 
               statistics={statistics} 
-              loading={loading} 
-            />
-            
-            <AcceptanceRateChart 
-              data={timeSeriesData} 
               loading={loading} 
             />
           </div>

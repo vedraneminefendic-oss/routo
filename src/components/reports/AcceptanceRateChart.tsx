@@ -7,6 +7,7 @@ interface TimeSeriesData {
   sent_count: number;
   accepted_count: number;
   rejected_count: number;
+  viewed_count: number;
   total_quotes: number;
 }
 
@@ -46,7 +47,8 @@ export const AcceptanceRateChart = ({ data, loading }: AcceptanceRateChartProps)
     period: item.period_label,
     accepted: item.accepted_count,
     rejected: item.rejected_count,
-    pending: item.sent_count - item.accepted_count - item.rejected_count,
+    viewed: item.viewed_count,
+    pending: item.sent_count - item.accepted_count - item.rejected_count - item.viewed_count,
   }));
 
   return (
@@ -70,7 +72,8 @@ export const AcceptanceRateChart = ({ data, loading }: AcceptanceRateChartProps)
             <Tooltip
               formatter={(value: number, name: string) => {
                 const label = name === 'accepted' ? 'Accepterade' : 
-                             name === 'rejected' ? 'Avvisade' : 'Väntande';
+                             name === 'rejected' ? 'Avvisade' : 
+                             name === 'viewed' ? 'Visade' : 'Väntande';
                 return [value, label];
               }}
               contentStyle={{
@@ -82,11 +85,13 @@ export const AcceptanceRateChart = ({ data, loading }: AcceptanceRateChartProps)
             <Legend 
               formatter={(value) => {
                 return value === 'accepted' ? 'Accepterade' : 
-                       value === 'rejected' ? 'Avvisade' : 'Väntande';
+                       value === 'rejected' ? 'Avvisade' : 
+                       value === 'viewed' ? 'Visade' : 'Väntande';
               }}
             />
             <Bar dataKey="accepted" stackId="a" fill="hsl(var(--success))" />
             <Bar dataKey="rejected" stackId="a" fill="hsl(var(--destructive))" />
+            <Bar dataKey="viewed" stackId="a" fill="hsl(var(--info))" />
             <Bar dataKey="pending" stackId="a" fill="hsl(var(--warning))" />
           </BarChart>
         </ResponsiveContainer>

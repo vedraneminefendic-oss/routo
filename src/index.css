@@ -31,7 +31,17 @@ All colors MUST be HSL.
     --muted: 220 13% 96%; /* Ljusgrå för muted areas */
     --muted-foreground: 220 9% 46%;
 
-    --destructive: 0 84% 60%; /* Röd - errors/delete */
+    /* Status Colors - För rapporter och grafer */
+    --success: 142 76% 36%; /* Grön - accepterad/completed */
+    --success-foreground: 0 0% 100%;
+    
+    --warning: 45 93% 47%; /* Gul/orange - väntande/pending */
+    --warning-foreground: 0 0% 100%;
+    
+    --info: 199 89% 48%; /* Cyan - viewed/info */
+    --info-foreground: 0 0% 100%;
+
+    --destructive: 0 84% 60%; /* Röd - errors/delete/rejected */
     --destructive-foreground: 0 0% 100%;
 
     --border: 220 13% 91%;
@@ -72,6 +82,16 @@ All colors MUST be HSL.
 
     --muted: 223 47% 11%;
     --muted-foreground: 215 16% 57%;
+
+    /* Status Colors - Dark mode */
+    --success: 142 70% 45%; /* Ljusare grön för dark mode */
+    --success-foreground: 144 61% 12%;
+    
+    --warning: 48 96% 53%; /* Ljusare gul för dark mode */
+    --warning-foreground: 45 95% 15%;
+    
+    --info: 199 89% 58%; /* Ljusare cyan för dark mode */
+    --info-foreground: 199 80% 15%;
 
     --destructive: 0 84% 60%;
     --destructive-foreground: 0 0% 100%;
