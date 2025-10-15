@@ -8,6 +8,127 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+// Validation function to ensure AI output matches base totals
+function validateQuoteOutput(quote: any, baseTotals: any): { valid: boolean; errors: string[] } {
+  const errors: string[] = [];
+  
+  // 1. Validate work hours by type
+  const workHoursByType = new Map<string, number>();
+  quote.workItems.forEach((item: any) => {
+    const type = item.name.split(' - ')[0]; // "Snickare - Rivning" → "Snickare"
+    workHoursByType.set(type, (workHoursByType.get(type) || 0) + item.hours);
+  });
+  
+  Object.entries(baseTotals.workHours).forEach(([type, hours]) => {
+    const actualHours = workHoursByType.get(type) || 0;
+    const tolerance = 0.5;
+    if (Math.abs(actualHours - (hours as number)) > tolerance) {
+      errors.push(`${type}: Förväntade ${hours}h men fick ${actualHours}h`);
+    }
+  });
+  
+  // 2. Validate material cost
+  const totalMaterialCost = quote.materials.reduce((sum: number, m: any) => sum + m.subtotal, 0);
+  const expectedMaterialCost = baseTotals.materialCost + baseTotals.equipmentCost;
+  const costTolerance = 100;
+  if (Math.abs(totalMaterialCost - expectedMaterialCost) > costTolerance) {
+    errors.push(`Material: Förväntade ${expectedMaterialCost} kr men fick ${totalMaterialCost} kr`);
+  }
+  
+  // 3. Validate summary calculations
+  const actualWorkCost = quote.workItems.reduce((sum: number, w: any) => sum + w.subtotal, 0);
+  if (Math.abs(quote.summary.workCost - actualWorkCost) > 1) {
+    errors.push('summary.workCost matchar inte summan av workItems');
+  }
+  
+  if (Math.abs(quote.summary.materialCost - totalMaterialCost) > 1) {
+    errors.push('summary.materialCost matchar inte summan av materials');
+  }
+  
+  return { valid: errors.length === 0, errors };
+}
+
+// Auto-correct function to force mathematical consistency
+function autoCorrectQuote(quote: any, baseTotals: any): any {
+  const correctedQuote = JSON.parse(JSON.stringify(quote)); // Deep clone
+  
+  // Force correct work hours distribution
+  Object.entries(baseTotals.workHours).forEach(([type, expectedHours]) => {
+    const typeItems = correctedQuote.workItems.filter((item: any) => 
+      item.name.startsWith(type + ' -') || item.name === type
+    );
+    
+    if (typeItems.length > 0) {
+      const totalActualHours = typeItems.reduce((sum: number, item: any) => sum + item.hours, 0);
+      const ratio = (expectedHours as number) / totalActualHours;
+      
+      typeItems.forEach((item: any) => {
+        item.hours = Math.round(item.hours * ratio * 10) / 10;
+        item.subtotal = item.hours * item.hourlyRate;
+      });
+    }
+  });
+  
+  // Force correct material cost
+  const expectedMaterialCost = baseTotals.materialCost + baseTotals.equipmentCost;
+  const actualMaterialCost = correctedQuote.materials.reduce((sum: number, m: any) => sum + m.subtotal, 0);
+  
+  if (actualMaterialCost > 0) {
+    const materialRatio = expectedMaterialCost / actualMaterialCost;
+    correctedQuote.materials.forEach((item: any) => {
+      item.subtotal = Math.round(item.subtotal * materialRatio);
+      item.pricePerUnit = Math.round(item.subtotal / item.quantity);
+    });
+  }
+  
+  // Recalculate summary
+  correctedQuote.summary.workCost = correctedQuote.workItems.reduce((sum: number, w: any) => sum + w.subtotal, 0);
+  correctedQuote.summary.materialCost = correctedQuote.materials.reduce((sum: number, m: any) => sum + m.subtotal, 0);
+  correctedQuote.summary.totalBeforeVAT = correctedQuote.summary.workCost + correctedQuote.summary.materialCost;
+  correctedQuote.summary.vat = Math.round(correctedQuote.summary.totalBeforeVAT * 0.25);
+  correctedQuote.summary.totalWithVAT = correctedQuote.summary.totalBeforeVAT + correctedQuote.summary.vat;
+  
+  return correctedQuote;
+}
+
+// Industry standard validation
+function validateRealism(quote: any, description: string): string[] {
+  const warnings: string[] = [];
+  const descLower = description.toLowerCase();
+  
+  // Bathroom renovation should take at least 30h
+  if ((descLower.includes('badrum') || descLower.includes('våtrum')) && 
+      descLower.includes('renovering')) {
+    const totalHours = quote.workItems.reduce((sum: number, w: any) => sum + w.hours, 0);
+    if (totalHours < 30) {
+      warnings.push(`Badrumsrenovering: ${totalHours}h verkar orealistiskt lågt (branschstandard: 40-80h)`);
+    }
+  }
+  
+  // Tree felling should cost at least 800 kr/h
+  if (descLower.includes('träd') && (descLower.includes('fälla') || descLower.includes('fällning'))) {
+    const treeWorkItem = quote.workItems.find((w: any) => 
+      w.name.toLowerCase().includes('träd') || w.name.toLowerCase().includes('arborist')
+    );
+    if (treeWorkItem && treeWorkItem.hourlyRate < 800) {
+      warnings.push(`Trädfällning: ${treeWorkItem.hourlyRate} kr/h är för lågt (branschstandard: 800-1200 kr/h)`);
+    }
+  }
+  
+  // Cleaning should not use carpenter rates
+  if ((descLower.includes('städ') || descLower.includes('rengör')) && 
+      !descLower.includes('renovering')) {
+    const carpenterItem = quote.workItems.find((w: any) => 
+      w.name.toLowerCase().includes('snickare')
+    );
+    if (carpenterItem) {
+      warnings.push('Städning kräver inte snickare - kontrollera arbetstyper');
+    }
+  }
+  
+  return warnings;
+}
+
 async function calculateBaseTotals(
   description: string, 
   apiKey: string,
@@ -270,6 +391,65 @@ serve(async (req) => {
     const baseTotals = await calculateBaseTotals(description, LOVABLE_API_KEY!, hourlyRates, equipmentRates);
     console.log('Base totals calculated:', baseTotals);
 
+    // Define strict JSON schema for tool calling
+    const quoteSchema = {
+      type: "object",
+      properties: {
+        title: { type: "string", description: "Kort beskrivande titel för offerten" },
+        workItems: {
+          type: "array",
+          description: "Lista över arbetsmoment",
+          items: {
+            type: "object",
+            properties: {
+              name: { type: "string", description: "Namn på arbetsmoment" },
+              description: { type: "string", description: "Beskrivning av momentet" },
+              hours: { type: "number", description: "Antal timmar" },
+              hourlyRate: { type: "number", description: "Timpris i kronor" },
+              subtotal: { type: "number", description: "Totalkostnad (hours × hourlyRate)" }
+            },
+            required: ["name", "description", "hours", "hourlyRate", "subtotal"],
+            additionalProperties: false
+          }
+        },
+        materials: {
+          type: "array",
+          description: "Lista över material",
+          items: {
+            type: "object",
+            properties: {
+              name: { type: "string", description: "Namn på material/produkt" },
+              quantity: { type: "number", description: "Antal" },
+              unit: { type: "string", description: "Enhet (st/m2/m/kg)" },
+              pricePerUnit: { type: "number", description: "Pris per enhet" },
+              subtotal: { type: "number", description: "Totalkostnad (quantity × pricePerUnit)" }
+            },
+            required: ["name", "quantity", "unit", "pricePerUnit", "subtotal"],
+            additionalProperties: false
+          }
+        },
+        summary: {
+          type: "object",
+          description: "Sammanfattning av kostnader",
+          properties: {
+            workCost: { type: "number", description: "Total arbetskostnad" },
+            materialCost: { type: "number", description: "Total materialkostnad" },
+            totalBeforeVAT: { type: "number", description: "Summa före moms" },
+            vat: { type: "number", description: "Moms (25%)" },
+            totalWithVAT: { type: "number", description: "Totalt inkl moms" },
+            deductionAmount: { type: "number", description: "ROT/RUT-avdrag" },
+            deductionType: { type: "string", enum: ["rot", "rut", "none"], description: "Typ av avdrag" },
+            customerPays: { type: "number", description: "Kund betalar efter avdrag" }
+          },
+          required: ["workCost", "materialCost", "totalBeforeVAT", "vat", "totalWithVAT", "deductionAmount", "deductionType", "customerPays"],
+          additionalProperties: false
+        },
+        notes: { type: "string", description: "Anteckningar och villkor" }
+      },
+      required: ["title", "workItems", "materials", "summary"],
+      additionalProperties: false
+    };
+
     const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
       method: 'POST',
       headers: {
@@ -279,6 +459,15 @@ serve(async (req) => {
       body: JSON.stringify({
         model: 'google/gemini-2.5-flash',
         temperature: 0,
+        tools: [{
+          type: "function",
+          function: {
+            name: "create_quote",
+            description: "Skapa en strukturerad offert baserat på jobbeskrivning och förutberäknade totaler",
+            parameters: quoteSchema
+          }
+        }],
+        tool_choice: { type: "function", function: { name: "create_quote" } },
         messages: [
           {
             role: 'system',
@@ -458,8 +647,7 @@ Viktig information:
             role: 'user',
             content: description
           }
-        ],
-        response_format: { type: "json_object" }
+        ]
       }),
     });
 
@@ -485,33 +673,139 @@ Viktig information:
     }
 
     const data = await response.json();
-    const generatedQuote = JSON.parse(data.choices[0].message.content);
+    
+    // Extract quote from tool call response
+    let generatedQuote;
+    if (data.choices[0].message.tool_calls && data.choices[0].message.tool_calls[0]) {
+      // Tool calling response format
+      generatedQuote = JSON.parse(data.choices[0].message.tool_calls[0].function.arguments);
+    } else {
+      // Fallback to old format if tool calling not used
+      generatedQuote = JSON.parse(data.choices[0].message.content);
+    }
+    
+    // VALIDATION STEP 1: Validate AI output against base totals
+    console.log('Validating quote output...');
+    const validation = validateQuoteOutput(generatedQuote, baseTotals);
+    const realismWarnings = validateRealism(generatedQuote, description);
+    
+    let finalQuote = generatedQuote;
+    let wasAutoCorrected = false;
+    let retryCount = 0;
+    
+    if (!validation.valid) {
+      console.error('Quote validation failed:', validation.errors);
+      retryCount = 1;
+      
+      // RETRY: Try one more time with more specific instructions about errors
+      console.log('Retrying with more specific instructions...');
+      const retryResponse = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${LOVABLE_API_KEY}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model: 'google/gemini-2.5-flash',
+          temperature: 0,
+          tools: [{
+            type: "function",
+            function: {
+              name: "create_quote",
+              description: "Skapa en strukturerad offert",
+              parameters: quoteSchema
+            }
+          }],
+          tool_choice: { type: "function", function: { name: "create_quote" } },
+          messages: [
+            {
+              role: 'system',
+              content: `Du misslyckades med valideringen förra gången. Felen var: ${validation.errors.join(', ')}
+              
+Korrigera detta och följ dessa EXAKTA totaler:
+${JSON.stringify(baseTotals, null, 2)}
+
+Du MÅSTE:
+- Fördela exakt ${Object.entries(baseTotals.workHours).map(([type, hours]) => `${hours}h ${type}`).join(', ')}
+- Total materialkostnad MÅSTE bli exakt ${baseTotals.materialCost + baseTotals.equipmentCost} kr
+- Ingen avvikelse accepteras!`
+            },
+            {
+              role: 'user',
+              content: description
+            }
+          ]
+        }),
+      });
+      
+      if (retryResponse.ok) {
+        const retryData = await retryResponse.json();
+        let retryQuote;
+        if (retryData.choices[0].message.tool_calls && retryData.choices[0].message.tool_calls[0]) {
+          retryQuote = JSON.parse(retryData.choices[0].message.tool_calls[0].function.arguments);
+        } else {
+          retryQuote = JSON.parse(retryData.choices[0].message.content);
+        }
+        
+        const retryValidation = validateQuoteOutput(retryQuote, baseTotals);
+        
+        if (retryValidation.valid) {
+          console.log('Retry successful!');
+          finalQuote = retryQuote;
+        } else {
+          console.warn('Retry also failed, applying auto-correction');
+          finalQuote = autoCorrectQuote(retryQuote, baseTotals);
+          wasAutoCorrected = true;
+        }
+      } else {
+        console.warn('Retry failed, applying auto-correction to original');
+        finalQuote = autoCorrectQuote(generatedQuote, baseTotals);
+        wasAutoCorrected = true;
+      }
+    }
     
     // Add deduction type to the quote
-    generatedQuote.deductionType = finalDeductionType;
+    finalQuote.deductionType = finalDeductionType;
 
     // Normalize deduction fields for consistent display
-    if (finalDeductionType === 'rot' && generatedQuote.summary.rotDeduction) {
-      generatedQuote.summary.deductionAmount = generatedQuote.summary.rotDeduction;
-      generatedQuote.summary.deductionType = 'rot';
-    } else if (finalDeductionType === 'rut' && generatedQuote.summary.rutDeduction) {
-      generatedQuote.summary.deductionAmount = generatedQuote.summary.rutDeduction;
-      generatedQuote.summary.deductionType = 'rut';
+    if (finalDeductionType === 'rot' && finalQuote.summary.rotDeduction) {
+      finalQuote.summary.deductionAmount = finalQuote.summary.rotDeduction;
+      finalQuote.summary.deductionType = 'rot';
+    } else if (finalDeductionType === 'rut' && finalQuote.summary.rutDeduction) {
+      finalQuote.summary.deductionAmount = finalQuote.summary.rutDeduction;
+      finalQuote.summary.deductionType = 'rut';
     } else {
-      generatedQuote.summary.deductionAmount = 0;
-      generatedQuote.summary.deductionType = 'none';
+      finalQuote.summary.deductionAmount = 0;
+      finalQuote.summary.deductionType = 'none';
     }
 
     console.log('Generated quote successfully with detail level:', detailLevel);
+    
+    // Prepare response with quality indicators
+    const responseData: any = {
+      quote: finalQuote,
+      hasCustomRates,
+      hasEquipment,
+      detailLevel,
+      deductionType: finalDeductionType
+    };
+    
+    // Add quality warnings if any
+    if (wasAutoCorrected) {
+      responseData.qualityWarning = 'auto_corrected';
+      responseData.warningMessage = 'Offerten har korrigerats automatiskt för att säkerställa korrekt matematik. Granska noggrannt.';
+    }
+    
+    if (!validation.valid && !wasAutoCorrected) {
+      responseData.validationErrors = validation.errors;
+    }
+    
+    if (realismWarnings.length > 0) {
+      responseData.realismWarnings = realismWarnings;
+    }
 
     return new Response(
-      JSON.stringify({ 
-        quote: generatedQuote,
-        hasCustomRates,
-        hasEquipment,
-        detailLevel,
-        deductionType: finalDeductionType
-      }),
+      JSON.stringify(responseData),
       { 
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         status: 200 

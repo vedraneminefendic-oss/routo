@@ -1,7 +1,7 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
-import { FileText, Download, Save, Edit, Send, ChevronDown, Trash2, Copy, Hammer, Sparkles } from "lucide-react";
+import { FileText, Download, Save, Edit, Send, ChevronDown, Trash2, Copy, Hammer, Sparkles, AlertCircle } from "lucide-react";
 import { AIInsightBadge } from "@/components/AIInsightBadge";
 import { toast } from "sonner";
 import jsPDF from "jspdf";
@@ -11,6 +11,7 @@ import { QuoteStatusManager } from "@/components/QuoteStatusManager";
 import { QuoteStatusTimeline } from "@/components/QuoteStatusTimeline";
 import { QuoteStatus } from "@/hooks/useQuoteStatus";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
   Dialog,
   DialogContent,
@@ -85,6 +86,10 @@ interface QuoteDisplayProps {
   onStatusChanged?: () => void;
   hasCustomRates?: boolean;
   hourlyRate?: number;
+  qualityWarning?: string;
+  warningMessage?: string;
+  realismWarnings?: string[];
+  validationErrors?: string[];
 }
 
 const QuoteDisplay = ({ 
@@ -99,7 +104,11 @@ const QuoteDisplay = ({
   currentStatus,
   onStatusChanged,
   hasCustomRates,
-  hourlyRate
+  hourlyRate,
+  qualityWarning,
+  warningMessage,
+  realismWarnings,
+  validationErrors
 }: QuoteDisplayProps) => {
   const [companySettings, setCompanySettings] = useState<any>(null);
   const [logoImage, setLogoImage] = useState<string | null>(null);
@@ -601,6 +610,74 @@ const QuoteDisplay = ({
           </div>
         </div>
       </CardHeader>
+
+      {/* AI Quality Warnings */}
+      {(qualityWarning || realismWarnings?.length || validationErrors?.length) && (
+        <div className="px-6 pb-4 space-y-3">
+          {/* Auto-correction warning */}
+          {qualityWarning === 'auto_corrected' && (
+            <Alert variant="default" className="border-amber-500 bg-amber-50 dark:bg-amber-950">
+              <AlertCircle className="h-4 w-4 text-amber-600" />
+              <AlertTitle className="text-amber-900 dark:text-amber-100">
+                Offerten har korrigerats automatiskt
+              </AlertTitle>
+              <AlertDescription className="text-amber-800 dark:text-amber-200">
+                {warningMessage || 'AI:n kunde inte skapa en matematiskt korrekt offert på första försöket. Offerten har korrigerats automatiskt. Granska noggrannt innan du skickar.'}
+              </AlertDescription>
+            </Alert>
+          )}
+          
+          {/* Validation errors */}
+          {validationErrors && validationErrors.length > 0 && (
+            <Alert variant="destructive">
+              <AlertCircle className="h-4 w-4" />
+              <AlertTitle>Valideringsfel</AlertTitle>
+              <AlertDescription>
+                <ul className="list-disc list-inside mt-2 space-y-1">
+                  {validationErrors.map((error, idx) => (
+                    <li key={idx} className="text-sm">{error}</li>
+                  ))}
+                </ul>
+              </AlertDescription>
+            </Alert>
+          )}
+          
+          {/* Realism warnings */}
+          {realismWarnings && realismWarnings.length > 0 && (
+            <Alert className="border-amber-500 bg-amber-50 dark:bg-amber-950">
+              <AlertCircle className="h-4 w-4 text-amber-600" />
+              <AlertTitle className="text-amber-900 dark:text-amber-100">
+                Branschvalidering
+              </AlertTitle>
+              <AlertDescription className="text-amber-800 dark:text-amber-200">
+                <ul className="list-disc list-inside mt-2 space-y-1">
+                  {realismWarnings.map((warning, idx) => (
+                    <li key={idx} className="text-sm">{warning}</li>
+                  ))}
+                </ul>
+              </AlertDescription>
+            </Alert>
+          )}
+        </div>
+      )}
+      
+      {/* General AI Warning - Always show */}
+      <div className="px-6 pb-4">
+        <Alert variant="default" className="border-blue-500 bg-blue-50 dark:bg-blue-950">
+          <AlertCircle className="h-4 w-4 text-blue-600" />
+          <AlertTitle className="text-blue-900 dark:text-blue-100">
+            🤖 AI-genererad offert
+          </AlertTitle>
+          <AlertDescription className="text-blue-800 dark:text-blue-200">
+            Denna offert är automatiskt skapad av AI. <strong>Granska alltid:</strong>
+            <ul className="list-disc list-inside mt-2 space-y-1">
+              <li>Tidsestimaten är realistiska för ditt projekt</li>
+              <li>Materialpriserna stämmer med aktuella priser</li>
+              <li>ROT/RUT-avdraget är korrekt beräknat ({deductionType?.toUpperCase() || 'INGET'})</li>
+            </ul>
+          </AlertDescription>
+        </Alert>
+      </div>
 
       <CardContent className="space-y-6">
         {/* Work Items */}

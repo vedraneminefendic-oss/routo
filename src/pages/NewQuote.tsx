@@ -28,6 +28,12 @@ const NewQuote = () => {
   const [showTemplatesSection, setShowTemplatesSection] = useState(showTemplates);
   const [hasCustomRates, setHasCustomRates] = useState(false);
   const [hourlyRate, setHourlyRate] = useState<number>(650);
+  
+  // Quality/validation state
+  const [qualityWarning, setQualityWarning] = useState<string | undefined>(undefined);
+  const [warningMessage, setWarningMessage] = useState<string | undefined>(undefined);
+  const [realismWarnings, setRealismWarnings] = useState<string[]>([]);
+  const [validationErrors, setValidationErrors] = useState<string[]>([]);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -53,6 +59,12 @@ const NewQuote = () => {
     setCurrentDescription(description);
     setCurrentCustomerId(customerId);
     
+    // Reset quality warnings
+    setQualityWarning(undefined);
+    setWarningMessage(undefined);
+    setRealismWarnings([]);
+    setValidationErrors([]);
+    
     try {
       const { data, error } = await supabase.functions.invoke('generate-quote', {
         body: { 
@@ -68,6 +80,20 @@ const NewQuote = () => {
       
       setCurrentQuote(data.quote);
       
+      // Store quality warnings
+      if (data.qualityWarning) {
+        setQualityWarning(data.qualityWarning);
+      }
+      if (data.warningMessage) {
+        setWarningMessage(data.warningMessage);
+      }
+      if (data.realismWarnings) {
+        setRealismWarnings(data.realismWarnings);
+      }
+      if (data.validationErrors) {
+        setValidationErrors(data.validationErrors);
+      }
+      
       setHasCustomRates(data.hasCustomRates || false);
       if (data.quote?.workItems?.[0]?.hourlyRate) {
         setHourlyRate(data.quote.workItems[0].hourlyRate);
@@ -76,6 +102,19 @@ const NewQuote = () => {
       if (!data.hasCustomRates) {
         toast.warning("Du har inte lagt in några timpriser i inställningarna. Använder standardpris 650 kr/h.", {
           duration: 5000
+        });
+      }
+      
+      // Show quality warnings as toasts
+      if (data.qualityWarning === 'auto_corrected') {
+        toast.warning(data.warningMessage || 'Offerten har korrigerats automatiskt', {
+          duration: 8000
+        });
+      }
+      
+      if (data.realismWarnings && data.realismWarnings.length > 0) {
+        toast.info('Branschvalidering: Vissa estimat kan behöva justeras', {
+          duration: 6000
         });
       }
       
@@ -260,6 +299,10 @@ const NewQuote = () => {
               isSaving={isSaving}
               hasCustomRates={hasCustomRates}
               hourlyRate={hourlyRate}
+              qualityWarning={qualityWarning}
+              warningMessage={warningMessage}
+              realismWarnings={realismWarnings}
+              validationErrors={validationErrors}
             />
           )}
 
