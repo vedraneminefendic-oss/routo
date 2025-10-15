@@ -3,8 +3,10 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
 import { Loader2, Plus, Trash2 } from "lucide-react";
+import { WORK_TYPES } from "@/lib/workTypes";
 
 interface HourlyRate {
   id: string;
@@ -22,6 +24,8 @@ const HourlyRatesManager = ({ userId }: HourlyRatesManagerProps) => {
   const [newWorkType, setNewWorkType] = useState("");
   const [newRate, setNewRate] = useState("");
   const [adding, setAdding] = useState(false);
+  const [customWorkType, setCustomWorkType] = useState("");
+  const [showCustomInput, setShowCustomInput] = useState(false);
 
   useEffect(() => {
     loadRates();
@@ -45,8 +49,28 @@ const HourlyRatesManager = ({ userId }: HourlyRatesManagerProps) => {
     }
   };
 
+  const handleWorkTypeChange = (value: string) => {
+    if (value === "custom") {
+      setShowCustomInput(true);
+      setNewWorkType("");
+      setCustomWorkType("");
+    } else {
+      setShowCustomInput(false);
+      setNewWorkType(value);
+      setCustomWorkType("");
+      
+      // Set suggested default rate
+      const workType = WORK_TYPES.find(wt => wt.value === value);
+      if (workType && !newRate) {
+        setNewRate(workType.defaultRate.toString());
+      }
+    }
+  };
+
   const handleAdd = async () => {
-    if (!newWorkType.trim() || !newRate) {
+    const finalWorkType = showCustomInput ? customWorkType : newWorkType;
+    
+    if (!finalWorkType.trim() || !newRate) {
       toast.error("Fyll i både arbetstyp och timpris");
       return;
     }
@@ -63,7 +87,7 @@ const HourlyRatesManager = ({ userId }: HourlyRatesManagerProps) => {
         .from('hourly_rates')
         .insert({
           user_id: userId,
-          work_type: newWorkType.trim(),
+          work_type: finalWorkType.trim(),
           rate: rateNum,
         });
 
@@ -72,6 +96,8 @@ const HourlyRatesManager = ({ userId }: HourlyRatesManagerProps) => {
       toast.success("Timpris tillagt!");
       setNewWorkType("");
       setNewRate("");
+      setCustomWorkType("");
+      setShowCustomInput(false);
       await loadRates();
     } catch (error: any) {
       console.error('Error adding rate:', error);
@@ -168,13 +194,39 @@ const HourlyRatesManager = ({ userId }: HourlyRatesManagerProps) => {
         <div className="grid grid-cols-2 gap-3">
           <div>
             <Label htmlFor="work_type" className="text-xs">Arbetstyp</Label>
-            <Input
-              id="work_type"
-              placeholder="t.ex. Snickare"
-              value={newWorkType}
-              onChange={(e) => setNewWorkType(e.target.value)}
-              className="mt-1"
-            />
+            <Select value={showCustomInput ? "custom" : newWorkType} onValueChange={handleWorkTypeChange}>
+              <SelectTrigger className="mt-1">
+                <SelectValue placeholder="Välj arbetstyp" />
+              </SelectTrigger>
+              <SelectContent>
+                {WORK_TYPES.map((workType) => {
+                  const Icon = workType.icon;
+                  return (
+                    <SelectItem key={workType.value} value={workType.value}>
+                      <div className="flex items-center gap-2">
+                        <Icon className="h-4 w-4" />
+                        <span>{workType.label}</span>
+                      </div>
+                    </SelectItem>
+                  );
+                })}
+                <SelectItem value="custom">
+                  <div className="flex items-center gap-2">
+                    <Plus className="h-4 w-4" />
+                    <span>Anpassad arbetstyp...</span>
+                  </div>
+                </SelectItem>
+              </SelectContent>
+            </Select>
+            
+            {showCustomInput && (
+              <Input
+                placeholder="Skriv din arbetstyp"
+                value={customWorkType}
+                onChange={(e) => setCustomWorkType(e.target.value)}
+                className="mt-2"
+              />
+            )}
           </div>
           <div>
             <Label htmlFor="rate" className="text-xs">Timpris (kr)</Label>

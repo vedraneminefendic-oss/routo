@@ -9,7 +9,7 @@ const corsHeaders = {
 };
 
 // Validation function to ensure AI output matches base totals
-function validateQuoteOutput(quote: any, baseTotals: any): { valid: boolean; errors: string[] } {
+function validateQuoteOutput(quote: any, baseTotals: any, hourlyRates?: any[] | null): { valid: boolean; errors: string[] } {
   const errors: string[] = [];
   
   // 1. Validate work hours by type
@@ -43,6 +43,21 @@ function validateQuoteOutput(quote: any, baseTotals: any): { valid: boolean; err
   
   if (Math.abs(quote.summary.materialCost - totalMaterialCost) > 1) {
     errors.push('summary.materialCost matchar inte summan av materials');
+  }
+  
+  // 4. Validate hourly rates match user's custom rates
+  if (hourlyRates && hourlyRates.length > 0) {
+    quote.workItems.forEach((item: any) => {
+      const workTypeName = item.name.split(' - ')[0]; // "Snickare - Rivning" → "Snickare"
+      const matchingRate = hourlyRates.find(r => r.work_type === workTypeName);
+      
+      if (matchingRate) {
+        const tolerance = 1; // Allow 1 kr difference
+        if (Math.abs(item.hourlyRate - matchingRate.rate) > tolerance) {
+          errors.push(`${workTypeName}: Förväntade timpris ${matchingRate.rate} kr/h men fick ${item.hourlyRate} kr/h`);
+        }
+      }
+    });
   }
   
   return { valid: errors.length === 0, errors };
@@ -478,43 +493,53 @@ ${equipmentText}
 ${customerHistoryText}
 ${pricingHistoryText}
 
-**TIMPRIS-MATCHNING:**
-När du skapar workItems, följ dessa regler:
+**KRITISKA REGLER FÖR TIMPRIS-MATCHNING:**
 
-1. Om arbetstypen (t.ex. "Snickare") finns i användarens timpriser → Använd EXAKT det priset
-2. Om arbetstypen (t.ex. "Städare") INTE finns i listan → Använd branschstandard-priser:
-   - Städare: 450-550 kr/h
-   - Arborist/Trädfällning: 800-1200 kr/h (komplext arbete)
-   - Trädgårdsskötare: 500-650 kr/h
-   - Målare: 650-750 kr/h
-   - Elektriker: 850-950 kr/h (om ej angiven)
-   - VVS: 900-1100 kr/h (om ej angiven)
-   - Fönsterputsare: 400-500 kr/h
+När du skapar workItems MÅSTE du följa dessa strikta regler:
 
-3. VIKTIGT: Matcha INTE fel arbetstyper! 
-   - Städning kräver INTE en snickare
-   - Trädfällning kräver INTE en elektriker
-   - Använd logiska arbetstyper baserat på uppdraget
+1. **Arbetstyp MÅSTE matchas exakt med användarens timpriser:**
+   - Om användaren har "Snickare: 799 kr/h" → använd EXAKT 799 kr/h för ALLA snickarposter
+   - Om användaren har "Städare: 500 kr/h" → använd EXAKT 500 kr/h för ALLA städposter
+   - workItem.name ska börja med arbetstypen: "Snickare - Rivning", "Snickare - Kakel" osv.
 
-Exempel på korrekt matching:
+2. **Matching-logik för workItem.name:**
+   - Första ordet före " - " i workItem.name MÅSTE matcha work_type från användarens timpriser
+   - Exempel: "Snickare - Rivning" → matchar work_type "Snickare"
+   - Exempel: "Städare - Hemstädning" → matchar work_type "Städare"
+   - Om arbetstypen "Snickare - Badrumsrenovering" används, använd "Snickare" rate
 
-❌ FEL:
+3. **Om arbetstyp INTE finns i användarens timpriser:**
+   Använd branschstandard-priser:
+   - Städare: 500 kr/h
+   - Arborist/Trädfällning: 1000 kr/h
+   - Trädgårdsskötare: 550 kr/h
+   - Målare: 700 kr/h
+   - Elektriker: 850 kr/h
+   - VVS: 900 kr/h
+   - Fönsterputsare: 450 kr/h
+
+4. **ABSOLUT FÖRBUD:**
+   - Använd ALDRIG fel arbetstyp för uppdraget
+   - Städning → "Städare" (INTE "Snickare")
+   - Trädfällning → "Arborist" (INTE "Snickare")
+   - Gräsklippning → "Trädgårdsskötare" (INTE "Snickare")
+
+✅ KORREKT EXEMPEL:
+Användaren har: "Snickare: 799 kr/h"
+Uppdrag: "Renovera badrum"
+workItems: [
+  { name: "Snickare - Rivning", hours: 8, hourlyRate: 799 },
+  { name: "Snickare - Underarbeten", hours: 12, hourlyRate: 799 },
+  { name: "Snickare - Kakelsättning", hours: 15, hourlyRate: 799 }
+]
+
+❌ FEL EXEMPEL:
+Användaren har: "Snickare: 799 kr/h"
 Uppdrag: "Städning 70 kvm"
-workItems: [{ name: "Snickare - Städning", hours: 8, hourlyRate: 799 }]
+workItems: [{ name: "Snickare - Städning", hours: 8, hourlyRate: 799 }]  ← FEL arbetstyp!
 
 ✅ RÄTT:
-Uppdrag: "Städning 70 kvm"
-workItems: [{ name: "Städare - Hemstädning", hours: 6, hourlyRate: 500 }]
-
----
-
-❌ FEL:
-Uppdrag: "Fälla två ekar"
-workItems: [{ name: "Snickare - Trädfällning", hours: 16, hourlyRate: 799 }]
-
-✅ RÄTT:
-Uppdrag: "Fälla två ekar"
-workItems: [{ name: "Arborist - Trädfällning", hours: 16, hourlyRate: 1100 }]
+workItems: [{ name: "Städare - Hemstädning", hours: 6, hourlyRate: 500 }]  ← Korrekt arbetstyp
 
 VIKTIGA PRINCIPER FÖR KONSEKVENTA OFFERTER:
 - Använd EXAKT de angivna timpriserna ovan för matchande arbetstyper
@@ -686,7 +711,7 @@ Viktig information:
     
     // VALIDATION STEP 1: Validate AI output against base totals
     console.log('Validating quote output...');
-    const validation = validateQuoteOutput(generatedQuote, baseTotals);
+    const validation = validateQuoteOutput(generatedQuote, baseTotals, hourlyRates);
     const realismWarnings = validateRealism(generatedQuote, description);
     
     let finalQuote = generatedQuote;
@@ -768,16 +793,27 @@ Du MÅSTE:
     finalQuote.deductionType = finalDeductionType;
 
     // Normalize deduction fields for consistent display
-    if (finalDeductionType === 'rot' && finalQuote.summary.rotDeduction) {
-      finalQuote.summary.deductionAmount = finalQuote.summary.rotDeduction;
+    if (finalDeductionType === 'rot') {
+      // ROT deduction
+      finalQuote.summary.deductionAmount = finalQuote.summary.rotDeduction || finalQuote.summary.deductionAmount || 0;
+      finalQuote.summary.rotDeduction = finalQuote.summary.deductionAmount;
       finalQuote.summary.deductionType = 'rot';
-    } else if (finalDeductionType === 'rut' && finalQuote.summary.rutDeduction) {
-      finalQuote.summary.deductionAmount = finalQuote.summary.rutDeduction;
+      delete finalQuote.summary.rutDeduction; // Remove RUT if exists
+    } else if (finalDeductionType === 'rut') {
+      // RUT deduction
+      finalQuote.summary.deductionAmount = finalQuote.summary.rutDeduction || finalQuote.summary.deductionAmount || 0;
+      finalQuote.summary.rutDeduction = finalQuote.summary.deductionAmount;
       finalQuote.summary.deductionType = 'rut';
+      delete finalQuote.summary.rotDeduction; // Remove ROT if exists
     } else {
+      // No deduction
       finalQuote.summary.deductionAmount = 0;
       finalQuote.summary.deductionType = 'none';
+      delete finalQuote.summary.rotDeduction;
+      delete finalQuote.summary.rutDeduction;
     }
+    
+    console.log('Final quote summary after normalization:', finalQuote.summary);
 
     console.log('Generated quote successfully with detail level:', detailLevel);
     
