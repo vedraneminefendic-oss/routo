@@ -4,6 +4,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Plus, Trash2, AlertCircle, CheckCircle2 } from "lucide-react";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { toast } from "sonner";
 
 export interface Recipient {
@@ -17,9 +18,10 @@ interface RecipientsManagerProps {
   recipients: Recipient[];
   onChange: (recipients: Recipient[]) => void;
   deductionType: 'rot' | 'rut' | 'none';
+  mode?: 'required' | 'optional';
 }
 
-const RecipientsManager = ({ recipients, onChange, deductionType }: RecipientsManagerProps) => {
+const RecipientsManager = ({ recipients, onChange, deductionType, mode = 'optional' }: RecipientsManagerProps) => {
   const maxDeduction = deductionType === 'rut' ? 75000 : 50000;
 
   const formatCurrency = (amount: number) => {
@@ -91,7 +93,9 @@ const RecipientsManager = ({ recipients, onChange, deductionType }: RecipientsMa
       <CardHeader>
         <CardTitle>Mottagare för {deductionType.toUpperCase()}-avdrag</CardTitle>
         <CardDescription>
-          Lägg till alla personer som ska dela på avdraget. Skatteverket fördelar automatiskt baserat på ägarandel.
+          {mode === 'optional' 
+            ? "Personnummer kan läggas till senare, men krävs vid signering av offerten."
+            : "Lägg till alla personer som ska dela på avdraget. Skatteverket fördelar automatiskt baserat på ägarandel."}
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -114,7 +118,9 @@ const RecipientsManager = ({ recipients, onChange, deductionType }: RecipientsMa
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <Label htmlFor={`name-${recipient.id}`}>Namn *</Label>
+                  <Label htmlFor={`name-${recipient.id}`}>
+                    Namn{mode === 'required' ? ' *' : ''}
+                  </Label>
                   <Input
                     id={`name-${recipient.id}`}
                     value={recipient.customer_name}
@@ -126,7 +132,7 @@ const RecipientsManager = ({ recipients, onChange, deductionType }: RecipientsMa
 
                 <div>
                   <Label htmlFor={`personnummer-${recipient.id}`}>
-                    Personnummer *
+                    Personnummer{mode === 'required' ? ' *' : ''}
                     {recipient.customer_personnummer && (
                       validatePersonnummer(recipient.customer_personnummer) ? (
                         <CheckCircle2 className="inline-block h-4 w-4 ml-2 text-green-600" />
@@ -197,7 +203,18 @@ const RecipientsManager = ({ recipients, onChange, deductionType }: RecipientsMa
           </div>
         </div>
 
-        {!isValidTotal && (
+        {mode === 'optional' && (
+          <Alert className="bg-muted/50">
+            <AlertCircle className="h-4 w-4" />
+            <AlertTitle>Personnummer krävs vid signering</AlertTitle>
+            <AlertDescription>
+              Du kan lämna personnummer tomt nu och fylla i det senare. 
+              Personnummer måste finnas innan kunden kan signera offerten.
+            </AlertDescription>
+          </Alert>
+        )}
+
+        {!isValidTotal && mode === 'required' && (
           <div className="bg-destructive/10 border border-destructive/20 rounded-lg p-3">
             <p className="text-sm text-destructive">
               <AlertCircle className="inline-block h-4 w-4 mr-1" />

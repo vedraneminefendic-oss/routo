@@ -9,8 +9,9 @@ import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { toast } from "sonner";
-import { FileText, Building2, Mail, Phone, MapPin, CheckCircle2, XCircle, Loader2, Download } from "lucide-react";
+import { FileText, Building2, Mail, Phone, MapPin, CheckCircle2, XCircle, Loader2, Download, AlertCircle } from "lucide-react";
 import jsPDF from "jspdf";
 import { z } from "zod";
 
@@ -36,7 +37,10 @@ interface Summary {
   totalBeforeVAT: number;
   vat: number;
   totalWithVAT: number;
-  rotDeduction: number;
+  rotDeduction?: number;
+  rutDeduction?: number;
+  deductionAmount?: number;
+  deductionType?: 'rot' | 'rut' | 'none';
   customerPays: number;
 }
 
@@ -118,6 +122,11 @@ const PublicQuote = () => {
       const quoteInfo = data[0] as unknown as QuoteInfo;
       setQuote(quoteInfo);
 
+      // Pre-fill customer information if available
+      if (quoteInfo.customer_name) {
+        setSignerName(quoteInfo.customer_name);
+      }
+
       // Log view if not already viewed
       if (!hasViewed) {
         await logView(quoteInfo.id);
@@ -146,20 +155,43 @@ const PublicQuote = () => {
   const handleSubmit = async () => {
     if (!quote) return;
 
+    // Detect if quote has ROT/RUT deduction
+    const quoteData = quote.edited_quote || quote.generated_quote;
+    const hasRotRutDeduction = (quoteData.summary?.rotDeduction && quoteData.summary.rotDeduction > 0) || 
+                                (quoteData.summary?.rutDeduction && quoteData.summary.rutDeduction > 0) ||
+                                (quoteData.summary?.deductionAmount && quoteData.summary.deductionAmount > 0);
+
     // Customers must now enter their own details for security
     const finalSignerName = signerName || quote.customer_name || "";
     const finalSignerEmail = signerEmail || "";
     const finalPersonnummer = signerPersonnummer || "";
     const finalPropertyDesignation = propertyDesignation || quote.customer_property_designation || "";
 
-    // Validate inputs with zod
-    const validation = quoteResponseSchema.safeParse({
-      signerName: finalSignerName,
-      signerEmail: finalSignerEmail,
-      signerPersonnummer: finalPersonnummer,
-      propertyDesignation: finalPropertyDesignation,
-      message
+    // Enhanced validation schema for ROT/RUT
+    const rotRutSchema = z.object({
+      signerName: z.string().trim().min(1, "Namn krävs").max(100, "Namn får vara max 100 tecken"),
+      signerEmail: z.string().trim().email("Ogiltig e-postadress").max(255, "E-post får vara max 255 tecken"),
+      signerPersonnummer: z.string().regex(/^\d{6,8}-?\d{4}$/, "Ogiltigt personnummer (ÅÅÅÅMMDD-XXXX)"),
+      propertyDesignation: z.string().max(100, "Fastighetsbeteckning får vara max 100 tecken").optional().or(z.literal('')),
+      message: z.string().max(1000, "Meddelande får vara max 1000 tecken").optional().or(z.literal(''))
     });
+
+    // Validate inputs with zod - require personnummer for ROT/RUT
+    const validation = hasRotRutDeduction 
+      ? rotRutSchema.safeParse({
+          signerName: finalSignerName,
+          signerEmail: finalSignerEmail,
+          signerPersonnummer: finalPersonnummer,
+          propertyDesignation: finalPropertyDesignation,
+          message
+        })
+      : quoteResponseSchema.safeParse({
+          signerName: finalSignerName,
+          signerEmail: finalSignerEmail,
+          signerPersonnummer: finalPersonnummer,
+          propertyDesignation: finalPropertyDesignation,
+          message
+        });
 
     if (!validation.success) {
       toast.error(validation.error.issues[0].message);
@@ -603,6 +635,22 @@ const PublicQuote = () => {
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
+            {(() => {
+              const quoteData = quote.edited_quote || quote.generated_quote;
+              const hasRotRut = (quoteData.summary?.rotDeduction && quoteData.summary.rotDeduction > 0) || 
+                               (quoteData.summary?.rutDeduction && quoteData.summary.rutDeduction > 0) ||
+                               (quoteData.summary?.deductionAmount && quoteData.summary.deductionAmount > 0);
+              return hasRotRut ? (
+                <Alert className="bg-muted/50">
+                  <AlertCircle className="h-4 w-4" />
+                  <AlertTitle>ROT/RUT-avdrag kräver personnummer</AlertTitle>
+                  <AlertDescription>
+                    Denna offert innehåller skatteavdrag. För att kunna godkänna offerten måste du ange ditt personnummer så att avdraget kan rapporteras till Skatteverket.
+                  </AlertDescription>
+                </Alert>
+              ) : null;
+            })()}
+            
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="signerName">Namn *</Label>
@@ -627,13 +675,32 @@ const PublicQuote = () => {
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="signerPersonnummer">Personnummer (valfritt)</Label>
+                <Label htmlFor="signerPersonnummer">
+                  Personnummer{(() => {
+                    const quoteData = quote.edited_quote || quote.generated_quote;
+                    const hasRotRut = (quoteData.summary?.rotDeduction && quoteData.summary.rotDeduction > 0) || 
+                                     (quoteData.summary?.rutDeduction && quoteData.summary.rutDeduction > 0) ||
+                                     (quoteData.summary?.deductionAmount && quoteData.summary.deductionAmount > 0);
+                    return hasRotRut ? ' *' : ' (valfritt)';
+                  })()}
+                </Label>
                 <Input
                   id="signerPersonnummer"
                   placeholder="ÅÅÅÅMMDD-XXXX"
                   value={signerPersonnummer}
                   onChange={(e) => setSignerPersonnummer(e.target.value)}
                 />
+                {(() => {
+                  const quoteData = quote.edited_quote || quote.generated_quote;
+                  const hasRotRut = (quoteData.summary?.rotDeduction && quoteData.summary.rotDeduction > 0) || 
+                                   (quoteData.summary?.rutDeduction && quoteData.summary.rutDeduction > 0) ||
+                                   (quoteData.summary?.deductionAmount && quoteData.summary.deductionAmount > 0);
+                  return hasRotRut ? (
+                    <p className="text-xs text-muted-foreground">
+                      Personnummer krävs för ROT/RUT-avdrag
+                    </p>
+                  ) : null;
+                })()}
               </div>
               <div className="space-y-2">
                 <Label htmlFor="propertyDesignation">Fastighetsbeteckning (valfritt)</Label>

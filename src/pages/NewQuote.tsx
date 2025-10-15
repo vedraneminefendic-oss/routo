@@ -78,7 +78,12 @@ const NewQuote = () => {
 
       if (error) throw error;
       
-      setCurrentQuote(data.quote);
+      // Ensure deductionType is set on the quote object
+      const quoteWithDeduction = {
+        ...data.quote,
+        deductionType: data.deductionType || data.quote.deductionType || 'none'
+      };
+      setCurrentQuote(quoteWithDeduction);
       
       // Store quality warnings
       if (data.qualityWarning) {

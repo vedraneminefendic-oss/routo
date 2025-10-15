@@ -249,18 +249,22 @@ const QuoteEditor = ({ quote, onSave, onCancel, isSaving, quoteId }: QuoteEditor
         return;
       }
 
-      // Check if all recipients have names and personnummer
-      const invalidRecipient = recipients.find(r => !r.customer_name || !r.customer_personnummer);
-      if (invalidRecipient) {
-        toast.error("Alla mottagare måste ha namn och personnummer");
-        return;
+      // Warn about incomplete recipients but allow saving
+      const hasIncompleteRecipients = recipients.some(r => !r.customer_name || !r.customer_personnummer);
+      
+      if (hasIncompleteRecipients) {
+        // Show warning instead of blocking
+        toast.warning("Tips: Personnummer behövs vid signering av offerten, men du kan lägga till det senare");
       }
-
-      // Check if total ownership is 100%
-      const totalShare = recipients.reduce((sum, r) => sum + r.ownership_share, 0);
-      if (Math.abs(totalShare - 1) > 0.01) {
-        toast.error("Ägarandelarna måste summera till 100%");
-        return;
+      
+      // Only validate ownership shares if some recipients have personnummer
+      const recipientsWithPersonnummer = recipients.filter(r => r.customer_personnummer);
+      if (recipientsWithPersonnummer.length > 0) {
+        const totalShare = recipients.reduce((sum, r) => sum + r.ownership_share, 0);
+        if (Math.abs(totalShare - 1) > 0.01) {
+          toast.error("Ägarandelarna måste summera till 100%");
+          return;
+        }
       }
 
       // Save recipients to database
@@ -388,6 +392,7 @@ const QuoteEditor = ({ quote, onSave, onCancel, isSaving, quoteId }: QuoteEditor
             recipients={recipients}
             onChange={setRecipients}
             deductionType={effectiveDeductionType}
+            mode="optional"
           />
         )}
 

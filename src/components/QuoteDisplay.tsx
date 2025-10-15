@@ -273,7 +273,9 @@ const QuoteDisplay = ({
 
   // Support both old and new deduction field names
   const deductionAmount = quote.summary.deductionAmount ?? quote.summary.rotDeduction ?? quote.summary.rutDeduction ?? 0;
-  const deductionType = quote.summary.deductionType || quote.deductionType || 'rot';
+  const deductionType = quote.deductionType ?? quote.summary.deductionType ?? 
+    (quote.summary.rotDeduction ? 'rot' : 
+     quote.summary.rutDeduction ? 'rut' : 'none');
   const maxDeduction = deductionType === 'rut' ? 75000 : 50000;
 
   const checkPageBreak = (doc: jsPDF, currentY: number, requiredSpace: number): number => {
@@ -673,7 +675,11 @@ const QuoteDisplay = ({
             <ul className="list-disc list-inside mt-2 space-y-1">
               <li>Tidsestimaten är realistiska för ditt projekt</li>
               <li>Materialpriserna stämmer med aktuella priser</li>
-              <li>ROT/RUT-avdraget är korrekt beräknat ({deductionType?.toUpperCase() || 'INGET'})</li>
+              <li>ROT/RUT-avdraget är korrekt beräknat (
+                {deductionType === 'rot' ? 'ROT-avdrag' : 
+                 deductionType === 'rut' ? 'RUT-avdrag' : 
+                 deductionType === 'none' ? 'Inget avdrag' : 'OKÄNT'}
+              )</li>
             </ul>
           </AlertDescription>
         </Alert>
