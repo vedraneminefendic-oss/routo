@@ -11,3 +11,6 @@ verify_jwt = false
 
 [functions.check-pending-quotes]
 verify_jwt = false
+
+[functions.aggregate-industry-data]
+verify_jwt = false

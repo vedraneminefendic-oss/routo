@@ -34,6 +34,10 @@ const NewQuote = () => {
   const [warningMessage, setWarningMessage] = useState<string | undefined>(undefined);
   const [realismWarnings, setRealismWarnings] = useState<string[]>([]);
   const [validationErrors, setValidationErrors] = useState<string[]>([]);
+  
+  // Reference metadata
+  const [usedReference, setUsedReference] = useState<boolean | undefined>(undefined);
+  const [referenceTitle, setReferenceTitle] = useState<string | undefined>(undefined);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -54,7 +58,7 @@ const NewQuote = () => {
     return () => subscription.unsubscribe();
   }, [navigate]);
 
-  const handleGenerateQuote = async (description: string, customerId?: string, detailLevel?: string, deductionType?: string) => {
+  const handleGenerateQuote = async (description: string, customerId?: string, detailLevel?: string, deductionType?: string, referenceQuoteId?: string) => {
     setIsGenerating(true);
     setCurrentDescription(description);
     setCurrentCustomerId(customerId);
@@ -72,7 +76,8 @@ const NewQuote = () => {
           user_id: user?.id,
           customer_id: customerId,
           detailLevel: detailLevel || 'standard',
-          deductionType: deductionType || 'auto'
+          deductionType: deductionType || 'auto',
+          referenceQuoteId: referenceQuoteId
         }
       });
 
@@ -102,6 +107,15 @@ const NewQuote = () => {
       setHasCustomRates(data.hasCustomRates || false);
       if (data.quote?.workItems?.[0]?.hourlyRate) {
         setHourlyRate(data.quote.workItems[0].hourlyRate);
+      }
+      
+      // Store reference metadata
+      if (data.usedReference) {
+        setUsedReference(true);
+        setReferenceTitle(data.referenceTitle);
+      } else {
+        setUsedReference(false);
+        setReferenceTitle(undefined);
       }
       
       if (!data.hasCustomRates) {
@@ -308,6 +322,8 @@ const NewQuote = () => {
               warningMessage={warningMessage}
               realismWarnings={realismWarnings}
               validationErrors={validationErrors}
+              usedReference={usedReference}
+              referenceTitle={referenceTitle}
             />
           )}
 

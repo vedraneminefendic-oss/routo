@@ -225,7 +225,8 @@ serve(async (req) => {
       description: z.string().trim().min(10, "Description too short").max(5000, "Description too long"),
       customer_id: z.string().uuid().optional(),
       detailLevel: z.enum(['quick', 'standard', 'detailed', 'construction']).default('standard'),
-      deductionType: z.enum(['rot', 'rut', 'none', 'auto']).default('auto')
+      deductionType: z.enum(['rot', 'rut', 'none', 'auto']).default('auto'),
+      referenceQuoteId: z.string().optional()
     });
 
     // Parse and validate request body
@@ -263,7 +264,7 @@ serve(async (req) => {
     }
 
     const user_id = user.id;
-    const { description, customer_id, detailLevel, deductionType } = validatedData;
+    const { description, customer_id, detailLevel, deductionType, referenceQuoteId } = validatedData;
 
     console.log('Generating quote for user:', user_id);
     console.log('Description:', description);
@@ -281,6 +282,52 @@ serve(async (req) => {
       console.log('Auto-detecting deduction type...');
       finalDeductionType = await detectDeductionType(description, LOVABLE_API_KEY);
       console.log('Detected deduction type:', finalDeductionType);
+    }
+
+    // Hämta referensofferter om användaren valt det
+    let referenceQuotes: any[] = [];
+    if (referenceQuoteId) {
+      if (referenceQuoteId === 'auto') {
+        console.log('Auto-selecting similar quotes...');
+        const { data: similar, error: similarError } = await supabaseClient
+          .rpc('find_similar_quotes', {
+            user_id_param: user_id,
+            description_param: description,
+            limit_param: 3
+          });
+        
+        if (similarError) {
+          console.error('Error finding similar quotes:', similarError);
+        } else if (similar && similar.length > 0) {
+          referenceQuotes = similar.map((q: any) => ({
+            id: q.quote_id,
+            title: q.title,
+            description: q.description,
+            quote_data: q.quote_data
+          }));
+          console.log(`Found ${referenceQuotes.length} similar quotes`);
+        }
+      } else {
+        console.log('Using specific reference quote:', referenceQuoteId);
+        const { data: specific, error: specificError } = await supabaseClient
+          .from('quotes')
+          .select('id, title, description, generated_quote, edited_quote')
+          .eq('id', referenceQuoteId)
+          .eq('user_id', user_id)
+          .single();
+        
+        if (specificError) {
+          console.error('Error fetching specific quote:', specificError);
+        } else if (specific) {
+          referenceQuotes = [{
+            id: specific.id,
+            title: specific.title,
+            description: specific.description,
+            quote_data: specific.edited_quote || specific.generated_quote
+          }];
+          console.log('Using reference quote:', specific.title);
+        }
+      }
     }
 
     // Hämta användarens timpriser
@@ -394,6 +441,58 @@ serve(async (req) => {
       console.log('Using equipment rates:', equipmentRates);
     }
 
+    // Hämta bransch-benchmarks
+    const { data: benchmarks, error: benchmarksError } = await supabaseClient
+      .from('industry_benchmarks')
+      .select('*')
+      .order('last_updated', { ascending: false });
+
+    if (benchmarksError) {
+      console.error('Error fetching benchmarks:', benchmarksError);
+    }
+
+    const benchmarkData = benchmarks || [];
+    console.log(`Loaded ${benchmarkData.length} industry benchmarks`);
+
+    // Analysera användarens stil från tidigare offerter
+    function analyzeUserStyle(userQuotes: any[]): any {
+      if (!userQuotes || userQuotes.length === 0) return null;
+      
+      const descriptions = userQuotes.flatMap(q => {
+        const quote = q.edited_quote || q.generated_quote;
+        if (!quote || !quote.workItems) return [];
+        return quote.workItems.map((w: any) => w.description || w.name);
+      }).filter(Boolean);
+      
+      if (descriptions.length === 0) return null;
+      
+      const usesEmojis = descriptions.some(d => /[\p{Emoji}]/u.test(d));
+      const avgLength = descriptions.reduce((sum, d) => sum + d.length, 0) / descriptions.length;
+      
+      return {
+        usesEmojis,
+        avgDescriptionLength: Math.round(avgLength),
+        sampleSize: userQuotes.length
+      };
+    }
+
+    const { data: userQuotes, error: userQuotesError } = await supabaseClient
+      .from('quotes')
+      .select('generated_quote, edited_quote')
+      .eq('user_id', user_id)
+      .in('status', ['accepted', 'completed', 'sent'])
+      .order('created_at', { ascending: false })
+      .limit(10);
+
+    if (userQuotesError) {
+      console.error('Error fetching user quotes for style analysis:', userQuotesError);
+    }
+
+    const userStyle = analyzeUserStyle(userQuotes || []);
+    if (userStyle) {
+      console.log('User style analyzed:', userStyle);
+    }
+
     // Build deduction info based on type
     const deductionInfo = finalDeductionType === 'rot' 
       ? `ROT-avdrag: 50% av arbetskostnaden (max 50 000 kr per person/år). Gäller renovering, reparation, ombyggnad.`
@@ -492,6 +591,91 @@ ${ratesText}
 ${equipmentText}
 ${customerHistoryText}
 ${pricingHistoryText}
+
+${referenceQuotes.length > 0 ? `
+
+**═══════════════════════════════════════════════════════════════**
+**VIKTIGT - ANVÄND DESSA TIDIGARE OFFERTER SOM REFERENS**
+**═══════════════════════════════════════════════════════════════**
+
+Du har tillgång till ${referenceQuotes.length} tidigare liknande offert(er) från SAMMA användare.
+Använd dessa för att hålla KONSEKVENT prissättning, omfattning och stil.
+
+${referenceQuotes.map((ref, idx) => {
+  const quoteData = ref.quote_data;
+  if (!quoteData) return '';
+  const summary = quoteData.summary;
+  
+  return `
+════════════════════════════════════════════════════════════════
+REFERENS ${idx + 1}: ${ref.title}
+════════════════════════════════════════════════════════════════
+Beskrivning: ${ref.description}
+
+PRISER:
+• Totalt: ${summary.totalWithVAT} kr (inkl. moms)
+• Kund betalar: ${summary.customerPays} kr (efter ${summary.deductionType?.toUpperCase() || 'inget'}-avdrag)
+• Arbete: ${summary.workCost} kr
+• Material: ${summary.materialCost} kr
+• Avdrag: ${summary.deductionAmount || 0} kr
+
+ARBETSPOSTER:
+${quoteData.workItems?.map((w: any) => `• ${w.name}: ${w.hours}h × ${w.hourlyRate} kr/h = ${w.subtotal} kr`).join('\n') || 'Inga arbetsposter'}
+
+MATERIALPOSTER:
+${quoteData.materials?.map((m: any) => `• ${m.name}: ${m.quantity} ${m.unit} × ${m.pricePerUnit} kr = ${m.subtotal} kr`).join('\n') || 'Inga materialposter'}
+`;
+}).join('\n')}
+
+**MATCHNINGSREGLER FÖR REFERENSER:**
+1. Om nya uppdraget är MINDRE än referensen → Skala ner proportionellt men håll struktur
+2. Om nya uppdraget är STÖRRE → Skala upp men håll EXAKT samma timpris
+3. Om materialnivå skiljer sig (budget/mellan/premium) → Justera materialpriser, ALDRIG timpriser
+4. Behåll SAMMA timpris som i referensen för matchande arbetstyper
+5. Om nya uppdraget är NÄSTAN identiskt → använd nästan exakt samma struktur och fördelning
+6. Matcha arbetstyper: Om referens använder "Snickare" → använd samma arbetstyp i nya offerten
+
+` : ''}
+
+${benchmarkData.length > 0 ? `
+
+**═══════════════════════════════════════════════════════════════**
+**BRANSCH-KONTEXT (för validering och kvalitetskontroll)**
+**═══════════════════════════════════════════════════════════════**
+
+Följande data är baserad på ANONYMISERAD statistik från hela plattformen:
+
+${benchmarkData.map((b: any) => `
+• ${b.work_category} (${b.metric_type}):
+  - Medianvärde: ${b.median_value}
+  - Spann: ${b.min_value} - ${b.max_value}
+  - Baserat på ${b.sample_size} offerter
+`).join('\n')}
+
+**ANVÄNDNING AV BRANSCHDATA:**
+✓ Använd för att validera rimlighet i dina estimat
+✓ Om användarens priser AVVIKER >30% från median → var extra noggrann
+✓ ALLTID prioritera användarens egna priser (ovan) över branschdata
+✓ Branschdata är ENDAST för att säkerställa kvalitet, aldrig för att ersätta användarens priser
+
+` : ''}
+
+${userStyle ? `
+
+**═══════════════════════════════════════════════════════════════**
+**STIL-ANPASSNING (matcha användarens tidigare offerter)**
+**═══════════════════════════════════════════════════════════════**
+
+Analys av användarens senaste ${userStyle.sampleSize} offerter visar:
+• ${userStyle.usesEmojis ? '✅ Använder emojis och ikoner i beskrivningar' : '❌ Använder ren text utan emojis'}
+• Genomsnittlig beskrivningslängd: ~${userStyle.avgDescriptionLength} tecken
+
+**INSTRUKTION:**
+${userStyle.usesEmojis ? 'Inkludera relevanta emojis i workItems-beskrivningar och notes.' : 'Håll texten professionell och emoji-fri.'}
+Håll beskrivningslängder runt ${userStyle.avgDescriptionLength} tecken.
+Matcha tonen och stilen från användarens tidigare offerter.
+
+` : ''}
 
 **KRITISKA REGLER FÖR TIMPRIS-MATCHNING:**
 
@@ -823,7 +1007,9 @@ Du MÅSTE:
       hasCustomRates,
       hasEquipment,
       detailLevel,
-      deductionType: finalDeductionType
+      deductionType: finalDeductionType,
+      usedReference: referenceQuotes.length > 0,
+      referenceTitle: referenceQuotes[0]?.title || undefined
     };
     
     // Add quality warnings if any

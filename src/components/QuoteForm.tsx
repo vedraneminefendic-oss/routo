@@ -3,14 +3,15 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue, SelectSeparator } from "@/components/ui/select";
 import { Sparkles, Loader2, Plus } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { Customer } from "@/pages/Customers";
 import { ContextualHelp } from "@/components/ContextualHelp";
+import { Switch } from "@/components/ui/switch";
 
 interface QuoteFormProps {
-  onGenerate: (description: string, customerId?: string, detailLevel?: string, deductionType?: string) => Promise<void>;
+  onGenerate: (description: string, customerId?: string, detailLevel?: string, deductionType?: string, referenceQuoteId?: string) => Promise<void>;
   isGenerating: boolean;
 }
 
@@ -29,10 +30,14 @@ const QuoteForm = ({ onGenerate, isGenerating }: QuoteFormProps) => {
   const [selectedTemplateId, setSelectedTemplateId] = useState<string>("");
   const [detailLevel, setDetailLevel] = useState<string>("standard");
   const [deductionType, setDeductionType] = useState<string>("auto");
+  const [useReference, setUseReference] = useState<boolean>(false);
+  const [selectedReferenceId, setSelectedReferenceId] = useState<string>("");
+  const [previousQuotes, setPreviousQuotes] = useState<any[]>([]);
 
   useEffect(() => {
     loadCustomers();
     loadTemplates();
+    loadPreviousQuotes();
   }, []);
 
   const loadCustomers = async () => {
@@ -57,6 +62,19 @@ const QuoteForm = ({ onGenerate, isGenerating }: QuoteFormProps) => {
     }
   };
 
+  const loadPreviousQuotes = async () => {
+    const { data } = await supabase
+      .from('quotes')
+      .select('id, title, description, generated_quote, edited_quote, created_at')
+      .in('status', ['accepted', 'completed', 'sent'])
+      .order('created_at', { ascending: false })
+      .limit(20);
+    
+    if (data) {
+      setPreviousQuotes(data);
+    }
+  };
+
   const handleTemplateChange = (templateId: string) => {
     setSelectedTemplateId(templateId);
     
@@ -74,7 +92,13 @@ const QuoteForm = ({ onGenerate, isGenerating }: QuoteFormProps) => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (description.trim()) {
-      await onGenerate(description, selectedCustomerId || undefined, detailLevel, deductionType);
+      await onGenerate(
+        description, 
+        selectedCustomerId || undefined, 
+        detailLevel, 
+        deductionType,
+        useReference ? (selectedReferenceId || 'auto') : undefined
+      );
     }
   };
 
@@ -212,6 +236,59 @@ const QuoteForm = ({ onGenerate, isGenerating }: QuoteFormProps) => {
             <p className="text-sm text-muted-foreground">
               AI:n kan automatiskt avgöra om arbetet klassas som ROT eller RUT
             </p>
+          </div>
+
+          <div className="space-y-2">
+            <div className="flex items-center gap-2">
+              <Label htmlFor="reference">Använd tidigare offert som referens (valfritt)</Label>
+              <ContextualHelp content="Låt AI:n lära av dina tidigare offerter för att hålla konsekvent prissättning och stil. Välj en specifik offert eller låt AI:n hitta liknande automatiskt." />
+            </div>
+            
+            <div className="flex items-center gap-2 mb-2">
+              <Switch 
+                checked={useReference} 
+                onCheckedChange={setUseReference}
+                id="useReferenceSwitch"
+              />
+              <Label htmlFor="useReferenceSwitch" className="text-sm font-normal cursor-pointer">
+                Använd tidigare offert som referens
+              </Label>
+            </div>
+            
+            {useReference && (
+              <Select value={selectedReferenceId} onValueChange={setSelectedReferenceId}>
+                <SelectTrigger id="reference" aria-label="Välj referensoffert">
+                  <SelectValue placeholder="Välj tidigare offert" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="auto">
+                    <div className="flex items-center gap-2">
+                      <Sparkles className="h-3 w-3" />
+                      <span>Automatisk - Låt AI:n hitta liknande offerter</span>
+                    </div>
+                  </SelectItem>
+                  <SelectSeparator />
+                  {previousQuotes.map((quote) => {
+                    const summary = quote.edited_quote?.summary || quote.generated_quote?.summary;
+                    return (
+                      <SelectItem key={quote.id} value={quote.id}>
+                        <div className="flex flex-col">
+                          <span className="font-medium">{quote.title}</span>
+                          <span className="text-xs text-muted-foreground">
+                            {summary?.customerPays?.toLocaleString('sv-SE')} kr • {new Date(quote.created_at).toLocaleDateString('sv-SE')}
+                          </span>
+                        </div>
+                      </SelectItem>
+                    );
+                  })}
+                </SelectContent>
+              </Select>
+            )}
+            {useReference && previousQuotes.length === 0 && (
+              <p className="text-xs text-muted-foreground">
+                Inga tidigare accepterade eller skickade offerter hittades. Skapa några offerter först.
+              </p>
+            )}
           </div>
           
           <div className="space-y-2">

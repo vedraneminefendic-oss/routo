@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { FileText, Download, Save, Edit, Send, ChevronDown, Trash2, Copy, Hammer, Sparkles, AlertCircle } from "lucide-react";
 import { AIInsightBadge } from "@/components/AIInsightBadge";
+import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import jsPDF from "jspdf";
 import { supabase } from "@/integrations/supabase/client";
@@ -90,6 +91,8 @@ interface QuoteDisplayProps {
   warningMessage?: string;
   realismWarnings?: string[];
   validationErrors?: string[];
+  usedReference?: boolean;
+  referenceTitle?: string;
 }
 
 const QuoteDisplay = ({ 
@@ -108,7 +111,9 @@ const QuoteDisplay = ({
   qualityWarning,
   warningMessage,
   realismWarnings,
-  validationErrors
+  validationErrors,
+  usedReference,
+  referenceTitle
 }: QuoteDisplayProps) => {
   const [companySettings, setCompanySettings] = useState<any>(null);
   const [logoImage, setLogoImage] = useState<string | null>(null);
@@ -591,6 +596,14 @@ const QuoteDisplay = ({
             <CardDescription className="mt-1">
               Genererad offert - granska och spara
             </CardDescription>
+            
+            {/* Reference badge */}
+            {usedReference && referenceTitle && (
+              <Badge variant="outline" className="mt-3">
+                <Sparkles className="h-3 w-3 mr-1" />
+                Baserad på tidigare offert: {referenceTitle}
+              </Badge>
+            )}
             
             <div className="mt-3">
               <AIInsightBadge 

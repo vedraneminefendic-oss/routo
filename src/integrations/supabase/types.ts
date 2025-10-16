@@ -203,6 +203,39 @@ export type Database = {
         }
         Relationships: []
       }
+      industry_benchmarks: {
+        Row: {
+          id: string
+          last_updated: string | null
+          max_value: number | null
+          median_value: number | null
+          metric_type: string
+          min_value: number | null
+          sample_size: number | null
+          work_category: string
+        }
+        Insert: {
+          id?: string
+          last_updated?: string | null
+          max_value?: number | null
+          median_value?: number | null
+          metric_type: string
+          min_value?: number | null
+          sample_size?: number | null
+          work_category: string
+        }
+        Update: {
+          id?: string
+          last_updated?: string | null
+          max_value?: number | null
+          median_value?: number | null
+          metric_type?: string
+          min_value?: number | null
+          sample_size?: number | null
+          work_category?: string
+        }
+        Relationships: []
+      }
       quote_email_logs: {
         Row: {
           clicked_at: string | null
@@ -629,6 +662,20 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      find_similar_quotes: {
+        Args: {
+          description_param: string
+          limit_param?: number
+          user_id_param: string
+        }
+        Returns: {
+          description: string
+          quote_data: Json
+          quote_id: string
+          similarity_score: number
+          title: string
+        }[]
+      }
       get_quote_by_token: {
         Args: { token_param: string }
         Returns: {
