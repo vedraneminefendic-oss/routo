@@ -9,7 +9,7 @@ const corsHeaders = {
 };
 
 // Validation function to ensure AI output matches base totals
-function validateQuoteOutput(quote: any, baseTotals: any, hourlyRates?: any[] | null): { valid: boolean; errors: string[] } {
+function validateQuoteOutput(quote: any, baseTotals: any, hourlyRates?: any[] | null, detailLevel?: string): { valid: boolean; errors: string[] } {
   const errors: string[] = [];
   
   // 1. Validate work hours by type
@@ -58,6 +58,73 @@ function validateQuoteOutput(quote: any, baseTotals: any, hourlyRates?: any[] | 
         }
       }
     });
+  }
+  
+  // 5. Validate detail level requirements
+  if (detailLevel) {
+    const workItemCount = quote.workItems.length;
+    const materialCount = quote.materials.length;
+    const notesLength = quote.notes?.length || 0;
+    
+    switch (detailLevel) {
+      case 'quick':
+        if (workItemCount < 2 || workItemCount > 3) {
+          errors.push(`Quick: Ska ha 2-3 arbetsposter, har ${workItemCount}`);
+        }
+        if (materialCount < 3 || materialCount > 5) {
+          errors.push(`Quick: Ska ha 3-5 materialposter, har ${materialCount}`);
+        }
+        if (notesLength > 100) {
+          errors.push(`Quick: Notes ska vara max 100 tecken, är ${notesLength}`);
+        }
+        break;
+        
+      case 'standard':
+        if (workItemCount < 4 || workItemCount > 6) {
+          errors.push(`Standard: Ska ha 4-6 arbetsposter, har ${workItemCount}`);
+        }
+        if (materialCount < 5 || materialCount > 10) {
+          errors.push(`Standard: Ska ha 5-10 materialposter, har ${materialCount}`);
+        }
+        if (notesLength < 200 || notesLength > 300) {
+          errors.push(`Standard: Notes ska vara 200-300 tecken, är ${notesLength}`);
+        }
+        break;
+        
+      case 'detailed':
+        if (workItemCount < 6 || workItemCount > 10) {
+          errors.push(`Detailed: Ska ha 6-10 arbetsposter, har ${workItemCount}`);
+        }
+        if (materialCount < 10 || materialCount > 15) {
+          errors.push(`Detailed: Ska ha 10-15 materialposter, har ${materialCount}`);
+        }
+        if (notesLength < 500 || notesLength > 800) {
+          errors.push(`Detailed: Notes ska vara 500-800 tecken, är ${notesLength}`);
+        }
+        if (!quote.notes?.includes('Fas ')) {
+          errors.push('Detailed: Notes ska innehålla fasindelning (Fas 1, Fas 2...)');
+        }
+        break;
+        
+      case 'construction':
+        if (workItemCount < 10 || workItemCount > 15) {
+          errors.push(`Construction: Ska ha 10-15 arbetsposter, har ${workItemCount}`);
+        }
+        if (materialCount < 15 || materialCount > 25) {
+          errors.push(`Construction: Ska ha 15-25 materialposter, har ${materialCount}`);
+        }
+        if (notesLength < 1200 || notesLength > 2000) {
+          errors.push(`Construction: Notes ska vara 1200-2000 tecken, är ${notesLength}`);
+        }
+        const requiredTerms = ['projektledning', 'tidsplan', 'garanti', 'besiktning'];
+        const missingTerms = requiredTerms.filter(term => 
+          !quote.notes?.toLowerCase().includes(term)
+        );
+        if (missingTerms.length > 0) {
+          errors.push(`Construction: Notes saknar: ${missingTerms.join(', ')}`);
+        }
+        break;
+    }
   }
   
   return { valid: errors.length === 0, errors };
@@ -158,6 +225,31 @@ async function calculateBaseTotals(
     ? `\n\nTillgänglig utrustning: ${equipmentRates.map(e => `${e.name} (${e.price_per_day || e.price_per_hour} kr/${e.price_per_day ? 'dag' : 'tim'})`).join(', ')}`
     : '';
 
+  const equipmentKnowledge = `
+
+BRANSCH-STANDARD VERKTYG/MASKINER (lägg alltid till dessa om relevant):
+
+Arborist/Trädfällning:
+- Motorsåg: 200-300 kr/tim (ägd) eller 800-1200 kr/dag (hyrd)
+- Flishugg: 1500-2500 kr/dag (hyrd)
+- Säkerhetsutrustning: 500 kr (engångskostnad)
+
+Grävarbete/Markarbete:
+- Minigrävare (1-3 ton): 800-1200 kr/dag
+- Grävmaskin (5+ ton): 1500-2500 kr/dag
+
+Kakel/Plattsättning:
+- Kakelskärare: 150 kr/dag (hyrd)
+- Blandare/mixxer: 100 kr/dag (hyrd)
+
+Målning/Fasadarbete:
+- Ställning: 200-400 kr/dag per sektion
+- Sprututrustning: 300-500 kr/dag (hyrd)
+
+Om användaren INTE har lagt in dessa verktyg i sina inställningar,
+lägg ändå till dem i equipmentCost med branschstandardpriser.
+`;
+
   const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
     method: 'POST',
     headers: {
@@ -171,6 +263,8 @@ async function calculateBaseTotals(
         {
           role: 'system',
           content: `Du beräknar ENDAST total arbetstid och materialkostnad för projekt. 
+
+${equipmentKnowledge}
 
 VIKTIGT: Identifiera vilka FAKTISKA arbetstyper som krävs för detta uppdrag.
 
@@ -427,19 +521,38 @@ serve(async (req) => {
     let equipmentText = '';
     let hasEquipment = false;
     
-    if (equipmentRates && equipmentRates.length > 0) {
+    // Bygg lista över användarens verktyg
+    const userEquipment = equipmentRates || [];
+    
+    // Lägg till bransch-standard verktyg som fallback
+    const standardEquipment = `
+
+OM PROJEKTET KRÄVER VERKTYG SOM INTE FINNS I LISTAN OVAN:
+Lägg till dem i materials-array med dessa standardpriser:
+- Motorsåg (arborist): 250 kr/tim eller 1000 kr/dag
+- Flishugg: 2000 kr/dag
+- Minigrävare: 1000 kr/dag
+- Grävmaskin: 2000 kr/dag
+- Kakelskärare: 150 kr/dag
+- Ställning: 300 kr/dag per sektion
+- Blandare: 100 kr/dag
+- Sprututrustning: 400 kr/dag
+`;
+    
+    if (userEquipment.length > 0) {
       equipmentText = '\n\nAnvändarens maskiner och utrustning:\n' + 
-        equipmentRates.map(e => {
+        userEquipment.map(e => {
           const priceInfo = e.price_per_day 
             ? `${e.price_per_day} kr/dag`
             : `${e.price_per_hour} kr/timme`;
           const status = e.is_rented ? 'hyrd' : 'ägd';
           return `- ${e.name} (${e.equipment_type}): ${priceInfo} (${status}, standard antal: ${e.default_quantity})`;
-        }).join('\n') +
-        '\n\nOm uppdraget kräver maskiner eller utrustning, använd dessa och lägg till dem i offerten. Lägg maskinkostnader under materials-array med lämplig beskrivning.';
+        }).join('\n');
       hasEquipment = true;
       console.log('Using equipment rates:', equipmentRates);
     }
+    
+    equipmentText += standardEquipment;
 
     // Hämta bransch-benchmarks
     const { data: benchmarks, error: benchmarksError } = await supabaseClient
@@ -751,37 +864,42 @@ Fördela dessa EXAKTA totaler över arbetsposter och material enligt detaljnivå
 
 DETALJNIVÅ OCH INNEHÅLL (användarens val: ${detailLevel}):
 
+⚠️ DESSA KRAV ÄR OBLIGATORISKA OCH KOMMER VALIDERAS:
+
 **QUICK (Snabboffert - 5 min arbete):**
-- Dela upp baseTotals.workHours över 2-3 huvudarbetsmoment
-  * Exempel: Om totalt 40h Snickare → skapa 2 poster à 20h vardera
-- Dela upp baseTotals.materialCost över 3-5 huvudmaterial
-  * Exempel: Om totalt 18 500 kr → fördela på "Kakel 8000 kr", "VVS-delar 7000 kr", "Övrigt 3500 kr"
-- Notes: Max 2 korta meningar
-- Total längd notes: Max 100 tecken
+✓ EXAKT 2-3 arbetsposter (inte fler, inte färre)
+✓ EXAKT 3-5 materialposter
+✓ Notes: Max 100 tecken (hårda gränsen!)
+✓ Fördelning: Dela baseTotals.workHours på 2-3 poster
+✓ Exempel notes: "Offert giltig 30 dagar. ROT-avdrag ingår."
 
 **STANDARD (Normal offert - 15 min arbete):**
-- Dela upp baseTotals.workHours över 4-6 arbetsposter med korta beskrivningar (1 mening per post)
-  * Exempel: Om totalt 40h Snickare → "Rivning 8h", "Underarbeten 12h", "Kakelsättning 15h", "Slutarbete 5h"
-- Dela upp baseTotals.materialCost över 5-10 material med kategorisering
-  * Exempel: Om totalt 18 500 kr → specificera "Kakel Cementi Grå 30x60: 8000 kr", "Weber Flex kakellim: 2500 kr", etc.
-- Notes: 3-5 meningar (giltighetstid, betalning, ROT-info)
-- Total längd notes: 200-300 tecken
+✓ EXAKT 4-6 arbetsposter med korta beskrivningar (1 mening per post)
+✓ EXAKT 5-10 materialposter med kategorisering
+✓ Notes: EXAKT 200-300 tecken (mäts!)
+✓ Fördelning: Dela baseTotals.workHours proportionellt
+✓ Notes måste innehålla: Giltighetstid, Betalningsvillkor, ROT/RUT-info
 
 **DETAILED (Detaljerad offert - 30 min arbete):**
-- Dela upp baseTotals.workHours över 6-10 arbetsposter med utförliga beskrivningar (2-3 meningar per post)
-  * Exempel: Om totalt 40h Snickare → dela upp i 8 poster med detaljerade beskrivningar av metod
-- Dela upp baseTotals.materialCost över 10-15 material med fullständiga specifikationer
-- Fasindelning i notes med tidsplan (Fas 1-4)
-- Notes ska inkludera: Arbetsgång, garantier, betalplan
-- Total längd notes: 500-800 tecken
+✓ EXAKT 6-10 arbetsposter med utförliga beskrivningar (2-3 meningar per post)
+✓ EXAKT 10-15 materialposter med fullständiga specifikationer
+✓ Notes: EXAKT 500-800 tecken
+✓ MÅSTE innehålla fasindelning: "Fas 1: ...", "Fas 2: ...", etc.
+✓ Notes måste inkludera: Arbetsgång, Garantier, Betalplan
+✓ Fördelning: Mer detaljerad uppdelning av baseTotals
 
 **CONSTRUCTION (Byggprojekt - 60 min arbete):**
-- Dela upp baseTotals.workHours över 10-15 arbetsposter inklusive projektledning
-  * Exempel: Om totalt 40h Snickare → dela upp i 12-15 poster inkl. "Projektledning 8h", detaljerade delfaser
-- Dela upp baseTotals.materialCost över 15-25 material med artikelnummer och leverantör
-- Notes ska vara en komplett projektplan (1200-2000 tecken)
-  * Projektorganisation, tidsplan, bygglov, försäkringar, besiktningar, garantier, avtal, överlämning
-- Total längd notes: 1200-2000 tecken
+✓ EXAKT 10-15 arbetsposter inkl. "Projektledning" (obligatoriskt)
+✓ EXAKT 15-25 materialposter med artikelnummer
+✓ Notes: EXAKT 1200-2000 tecken (komplett projektplan)
+✓ Notes MÅSTE innehålla ALLA dessa termer:
+  - "projektledning" eller "projektansvarig"
+  - "tidsplan" eller "tidplan"
+  - "garanti" eller "garantier"
+  - "besiktning" eller "slutbesiktning"
+✓ Fördelning: Inklusive projektledning (10-15% av totala timmar)
+
+Om du inte följer dessa krav kommer offerten att valideras och returneras för korrigering.
 
 **🎯 ABSOLUT KRAV - MATEMATIK MÅSTE STÄMMA:**
 - Summan av alla workItems.hours PER arbetstyp MÅSTE exakt matcha baseTotals.workHours
@@ -895,12 +1013,23 @@ Viktig information:
     
     // VALIDATION STEP 1: Validate AI output against base totals
     console.log('Validating quote output...');
-    const validation = validateQuoteOutput(generatedQuote, baseTotals, hourlyRates);
+    const validation = validateQuoteOutput(generatedQuote, baseTotals, hourlyRates, detailLevel);
     const realismWarnings = validateRealism(generatedQuote, description);
     
     let finalQuote = generatedQuote;
     let wasAutoCorrected = false;
     let retryCount = 0;
+    
+    // Helper function for detail level requirements
+    const getDetailLevelRequirements = (level: string): string => {
+      const reqs: Record<string, string> = {
+        quick: '• 2-3 arbetsposter\n• 3-5 materialposter\n• Notes max 100 tecken',
+        standard: '• 4-6 arbetsposter\n• 5-10 materialposter\n• Notes 200-300 tecken\n• Inkludera giltighetstid',
+        detailed: '• 6-10 arbetsposter\n• 10-15 materialposter\n• Notes 500-800 tecken\n• Måste ha fasindelning',
+        construction: '• 10-15 arbetsposter (inkl. projektledning)\n• 15-25 materialposter\n• Notes 1200-2000 tecken\n• Måste innehålla: projektledning, tidsplan, garanti, besiktning'
+      };
+      return reqs[level] || '';
+    };
     
     if (!validation.valid) {
       console.error('Quote validation failed:', validation.errors);
@@ -908,6 +1037,25 @@ Viktig information:
       
       // RETRY: Try one more time with more specific instructions about errors
       console.log('Retrying with more specific instructions...');
+      
+      // Ge AI:n EXAKT vad som är fel
+      const errorFeedback = `
+DIN FÖREGÅENDE OFFERT VALIDERADES OCH FÖLJANDE FEL UPPTÄCKTES:
+
+${validation.errors.map((err, i) => `${i + 1}. ${err}`).join('\n')}
+
+KRAV SOM MÅSTE UPPFYLLAS:
+- Arbetsposter MÅSTE summera till EXAKT dessa timmar per arbetstyp:
+  ${Object.entries(baseTotals.workHours).map(([type, hours]) => `${type}: ${hours}h`).join(', ')}
+  
+- Materialkostnad MÅSTE vara EXAKT: ${baseTotals.materialCost + baseTotals.equipmentCost} kr
+
+- Detaljnivå "${detailLevel}" kräver:
+  ${getDetailLevelRequirements(detailLevel)}
+
+SKAPA OM OFFERTEN OCH FÖLJ DESSA EXAKTA KRAV.
+`;
+      
       const retryResponse = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
         method: 'POST',
         headers: {
@@ -941,7 +1089,7 @@ Du MÅSTE:
             },
             {
               role: 'user',
-              content: description
+              content: description + '\n\n' + errorFeedback
             }
           ]
         }),
@@ -956,7 +1104,7 @@ Du MÅSTE:
           retryQuote = JSON.parse(retryData.choices[0].message.content);
         }
         
-        const retryValidation = validateQuoteOutput(retryQuote, baseTotals);
+        const retryValidation = validateQuoteOutput(retryQuote, baseTotals, hourlyRates, detailLevel);
         
         if (retryValidation.valid) {
           console.log('Retry successful!');
