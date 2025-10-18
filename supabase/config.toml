@@ -14,3 +14,6 @@ verify_jwt = false
 
 [functions.aggregate-industry-data]
 verify_jwt = false
+
+[functions.manage-conversation]
+verify_jwt = true

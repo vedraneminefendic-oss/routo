@@ -320,7 +320,11 @@ serve(async (req) => {
       customer_id: z.string().uuid().optional(),
       detailLevel: z.enum(['quick', 'standard', 'detailed', 'construction']).default('standard'),
       deductionType: z.enum(['rot', 'rut', 'none', 'auto']).default('auto'),
-      referenceQuoteId: z.string().optional()
+      referenceQuoteId: z.string().optional(),
+      conversation_history: z.array(z.object({
+        role: z.enum(['user', 'assistant']),
+        content: z.string()
+      })).optional()
     });
 
     // Parse and validate request body
@@ -358,11 +362,12 @@ serve(async (req) => {
     }
 
     const user_id = user.id;
-    const { description, customer_id, detailLevel, deductionType, referenceQuoteId } = validatedData;
+    const { description, customer_id, detailLevel, deductionType, referenceQuoteId, conversation_history } = validatedData;
 
     console.log('Generating quote for user:', user_id);
     console.log('Description:', description);
     console.log('Deduction type requested:', deductionType);
+    console.log('Conversation history length:', conversation_history?.length || 0);
 
     // Skapa Supabase-klient för att hämta timpriser
     const supabaseClient = createClient(
@@ -617,6 +622,90 @@ Lägg till dem i materials-array med dessa standardpriser:
     console.log('Step 1: Calculating base totals for price consistency...');
     const baseTotals = await calculateBaseTotals(description, LOVABLE_API_KEY!, hourlyRates, equipmentRates);
     console.log('Base totals calculated:', baseTotals);
+
+    // Check if this is the first message in a conversation (no history)
+    const isFirstMessage = !conversation_history || conversation_history.length === 0;
+    
+    if (isFirstMessage) {
+      // FÖRSTA MEDDELANDET - Ställ motfrågor istället för att generera komplett offert
+      console.log('First message detected - generating clarification questions');
+      
+      const clarificationPrompt = `Du är en AI-assistent som hjälper hantverkare att skapa professionella offerter.
+
+Användaren har skrivit: "${description}"
+
+Din uppgift är INTE att generera en komplett offert ännu. Istället ska du:
+
+1. Bekräfta att du förstått grunderna i projektet
+2. Ställ 2-4 KONKRETA motfrågor för att få mer detaljer
+
+**Viktiga frågeområden:**
+- Materialval och kvalitetsnivå (budget/mellan/premium)
+- Tidram och deadline
+- Specifika detaljer om arbetet (t.ex. storlek i kvm, antal enheter, etc.)
+- Tillstånd eller förberedelser som behövs
+- Kundönskemål kring utförande
+
+Returnera ett JSON-objekt med detta format:
+{
+  "needs_clarification": true,
+  "clarification_questions": [
+    "Fråga 1 här",
+    "Fråga 2 här",
+    "Fråga 3 här"
+  ],
+  "initial_estimate": {
+    "estimated_hours": ${baseTotals.workHours ? (Object.values(baseTotals.workHours) as number[]).reduce((a, b) => a + b, 0) : 40},
+    "estimated_cost": ${Math.round(baseTotals.materialCost + baseTotals.equipmentCost || 10000)}
+  }
+}
+
+GENERERA INGEN KOMPLETT OFFERT ÄNNU. Returnera endast JSON-objektet ovan.`;
+
+      const clarificationResponse = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${LOVABLE_API_KEY}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model: 'google/gemini-2.5-flash',
+          messages: [
+            { role: 'system', content: clarificationPrompt },
+            { role: 'user', content: description }
+          ],
+          response_format: { type: "json_object" },
+          temperature: 0.7
+        }),
+      });
+
+      if (!clarificationResponse.ok) {
+        console.error('Clarification API error:', clarificationResponse.status);
+        // Fallback - fortsätt med normal offertgenerering
+      } else {
+        const clarificationData = await clarificationResponse.json();
+        const result = JSON.parse(clarificationData.choices[0].message.content);
+        
+        if (result.needs_clarification) {
+          console.log('Returning clarification questions');
+          return new Response(
+            JSON.stringify({
+              type: 'clarification',
+              questions: result.clarification_questions,
+              initial_estimate: result.initial_estimate
+            }),
+            { 
+              headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+              status: 200 
+            }
+          );
+        }
+      }
+    }
+
+    // Om vi kommer hit har vi antingen historik eller clarification misslyckades
+    // Fortsätt med normal offertgenerering
+    console.log('Generating complete quote...');
 
     // Define strict JSON schema for tool calling
     const quoteSchema = {
