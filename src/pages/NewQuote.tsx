@@ -11,6 +11,9 @@ import QuoteEditor from "@/components/QuoteEditor";
 import { QuoteTemplates, QuoteTemplate } from "@/components/QuoteTemplates";
 import { ContextualHelp } from "@/components/ContextualHelp";
 import { AIProgressIndicator } from "@/components/AIProgressIndicator";
+import { ChatInterface } from "@/components/chat/ChatInterface";
+import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
 
 const NewQuote = () => {
   const navigate = useNavigate();
@@ -28,6 +31,7 @@ const NewQuote = () => {
   const [showTemplatesSection, setShowTemplatesSection] = useState(showTemplates);
   const [hasCustomRates, setHasCustomRates] = useState(false);
   const [hourlyRate, setHourlyRate] = useState<number>(650);
+  const [useChatInterface, setUseChatInterface] = useState(false);
   
   // Quality/validation state
   const [qualityWarning, setQualityWarning] = useState<string | undefined>(undefined);
@@ -274,8 +278,31 @@ const NewQuote = () => {
       {/* Main Content */}
       <main className="container mx-auto px-4 py-8">
         <div className="max-w-4xl mx-auto space-y-6">
-          {/* Quick Templates Section */}
+          {/* Interface Toggle */}
           {!currentQuote && (
+            <Card className="bg-accent/10 border-accent/20">
+              <CardContent className="pt-6">
+                <div className="flex items-center justify-between">
+                  <div className="space-y-1">
+                    <Label htmlFor="chat-mode" className="text-base font-medium">
+                      Chat-läge (Beta)
+                    </Label>
+                    <p className="text-sm text-muted-foreground">
+                      Prata med AI:n istället för att fylla i formulär
+                    </p>
+                  </div>
+                  <Switch
+                    id="chat-mode"
+                    checked={useChatInterface}
+                    onCheckedChange={setUseChatInterface}
+                  />
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Quick Templates Section */}
+          {!currentQuote && !useChatInterface && (
             <Card className="border-2 border-dashed border-primary/20 bg-primary/5">
               <CardHeader>
                 <div className="flex items-center justify-between">
@@ -306,8 +333,15 @@ const NewQuote = () => {
           {/* AI Progress Indicator */}
           {isGenerating && <AIProgressIndicator isGenerating={isGenerating} />}
 
-          {/* Quote Form */}
-          <QuoteForm onGenerate={handleGenerateQuote} isGenerating={isGenerating} />
+          {/* Quote Interface - Chat or Form */}
+          {useChatInterface ? (
+            <ChatInterface 
+              onGenerateQuote={handleGenerateQuote} 
+              isGenerating={isGenerating} 
+            />
+          ) : (
+            <QuoteForm onGenerate={handleGenerateQuote} isGenerating={isGenerating} />
+          )}
           
           {/* Generated Quote Display */}
           {currentQuote && !isEditing && (
