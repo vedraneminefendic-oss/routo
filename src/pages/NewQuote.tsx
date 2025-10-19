@@ -32,6 +32,7 @@ const NewQuote = () => {
   const [hasCustomRates, setHasCustomRates] = useState(false);
   const [hourlyRate, setHourlyRate] = useState<number>(650);
   const [useChatInterface, setUseChatInterface] = useState(false);
+  const [chatGeneratedQuote, setChatGeneratedQuote] = useState<any>(null);
   
   // Quality/validation state
   const [qualityWarning, setQualityWarning] = useState<string | undefined>(undefined);
@@ -216,6 +217,14 @@ const NewQuote = () => {
     setIsEditing(false);
   };
 
+  const handleChatGenerateQuote = (quote: any) => {
+    // Denna kallas när chat-interfacet får en komplett offert från backend
+    setChatGeneratedQuote(quote);
+    setCurrentQuote(quote);
+    setIsGenerating(false);
+    toast.success("Offert genererad och klar att granskas!");
+  };
+
   const handleLogout = async () => {
     await supabase.auth.signOut();
     navigate("/auth");
@@ -334,14 +343,14 @@ const NewQuote = () => {
           {isGenerating && <AIProgressIndicator isGenerating={isGenerating} />}
 
           {/* Quote Interface - Chat or Form */}
-          {useChatInterface ? (
-            <ChatInterface 
-              onGenerateQuote={handleGenerateQuote} 
-              isGenerating={isGenerating} 
-            />
-          ) : (
-            <QuoteForm onGenerate={handleGenerateQuote} isGenerating={isGenerating} />
-          )}
+            {useChatInterface ? (
+              <ChatInterface 
+                onQuoteGenerated={handleChatGenerateQuote}
+                isGenerating={isGenerating} 
+              />
+            ) : (
+              <QuoteForm onGenerate={handleGenerateQuote} isGenerating={isGenerating} />
+            )}
           
           {/* Generated Quote Display */}
           {currentQuote && !isEditing && (
