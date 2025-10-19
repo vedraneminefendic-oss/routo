@@ -90,12 +90,13 @@ export const ChatInterface = ({ onQuoteGenerated, isGenerating }: ChatInterfaceP
         }
       });
 
-      // Bygg conversation_history från messages
+      // Bygg conversation_history från messages (INTE inklusive det nya meddelandet)
+      // Backend kommer att läsa description som det nya meddelandet
       const conversationHistory = messages.map(m => ({
         role: m.role,
         content: m.content
       }));
-      conversationHistory.push({ role: 'user', content });
+      // OBS: Vi lägger INTE till det nya meddelandet här eftersom backend läser description
 
       // Anropa generate-quote med conversation_history
       const { data, error } = await supabase.functions.invoke('generate-quote', {
@@ -107,10 +108,15 @@ export const ChatInterface = ({ onQuoteGenerated, isGenerating }: ChatInterfaceP
         }
       });
 
-      if (error) throw error;
+      if (error) {
+        console.error('Generate quote error:', error);
+        throw error;
+      }
+
+      console.log('Generate quote response:', data);
 
       // Hantera olika response-typer
-      if (data.type === 'clarification') {
+      if (data?.type === 'clarification') {
         // AI:n behöver mer info
         const aiMessage: Message = {
           id: (Date.now() + 1).toString(),
@@ -159,13 +165,17 @@ export const ChatInterface = ({ onQuoteGenerated, isGenerating }: ChatInterfaceP
           title: "Offert genererad!",
           description: "Din offert är klar att granskas."
         });
+      } else {
+        // Okänd response-typ eller fel struktur
+        console.error('Unexpected response format:', data);
+        throw new Error('Oväntat response-format från server');
       }
       
     } catch (error) {
       console.error('Error:', error);
       toast({
         title: "Fel",
-        description: "Något gick fel. Försök igen.",
+        description: error instanceof Error ? error.message : "Något gick fel. Försök igen.",
         variant: "destructive"
       });
     } finally {

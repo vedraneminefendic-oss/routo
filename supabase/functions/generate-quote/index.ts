@@ -1240,6 +1240,7 @@ Du MÅSTE:
     
     // Prepare response with quality indicators
     const responseData: any = {
+      type: 'complete_quote',  // VIKTIGT: Lägg till type för frontend
       quote: finalQuote,
       hasCustomRates,
       hasEquipment,
