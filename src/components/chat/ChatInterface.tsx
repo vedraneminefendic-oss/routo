@@ -4,7 +4,10 @@ import { Button } from "@/components/ui/button";
 import { MessageBubble } from "./MessageBubble";
 import { ChatInput } from "./ChatInput";
 import { ConversationStarter } from "./ConversationStarter";
-import { Loader2, RotateCcw } from "lucide-react";
+import { Loader2, RotateCcw, Send, Save, Edit3 } from "lucide-react";
+import { EstimateSection } from "@/components/estimate/EstimateSection";
+import { EstimateSummary } from "@/components/estimate/EstimateSummary";
+import { LineItemData } from "@/components/estimate/LineItem";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 
@@ -26,6 +29,7 @@ export const ChatInterface = ({ onQuoteGenerated, isGenerating }: ChatInterfaceP
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [needsClarification, setNeedsClarification] = useState(false);
   const [clarificationQuestions, setClarificationQuestions] = useState<string[]>([]);
+  const [generatedQuote, setGeneratedQuote] = useState<any>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const chatContainerRef = useRef<HTMLDivElement>(null);
   const { toast } = useToast();
@@ -137,17 +141,19 @@ export const ChatInterface = ({ onQuoteGenerated, isGenerating }: ChatInterfaceP
           }
         });
         
-      } else if (data.type === 'complete_quote') {
-        // Komplett offert genererad
+      } else if (data?.type === 'complete_quote') {
+        // Komplett offert genererad - visa inline
+        setNeedsClarification(false);
+        setClarificationQuestions([]);
+        setGeneratedQuote(data.quote);
+        
         const aiMessage: Message = {
           id: (Date.now() + 1).toString(),
           role: 'assistant',
-          content: 'Jag har genererat en komplett offert baserat på dina svar. Du kan se den nedan.',
+          content: 'Här är din offert! Du kan skicka den till kunden, spara som utkast eller redigera den.',
           timestamp: new Date()
         };
         setMessages(prev => [...prev, aiMessage]);
-        setNeedsClarification(false);
-        setClarificationQuestions([]);
         
         // Spara AI-svar
         await supabase.functions.invoke('manage-conversation', {
@@ -157,9 +163,6 @@ export const ChatInterface = ({ onQuoteGenerated, isGenerating }: ChatInterfaceP
             message: { role: 'assistant', content: aiMessage.content }
           }
         });
-        
-        // Anropa callback för att visa offerten
-        onQuoteGenerated(data.quote);
         
         toast({
           title: "Offert genererad!",
@@ -207,6 +210,7 @@ export const ChatInterface = ({ onQuoteGenerated, isGenerating }: ChatInterfaceP
         setMessages([]);
         setNeedsClarification(false);
         setClarificationQuestions([]);
+        setGeneratedQuote(null);
         toast({
           title: "Ny konversation",
           description: "Börja om med en ny offertförfrågan."
@@ -220,6 +224,44 @@ export const ChatInterface = ({ onQuoteGenerated, isGenerating }: ChatInterfaceP
         variant: "destructive"
       });
     }
+  };
+
+  const handleSendQuote = async () => {
+    if (!generatedQuote) return;
+    onQuoteGenerated(generatedQuote);
+    toast({
+      title: "Öppnar offert",
+      description: "Nu kan du skicka offerten till kunden."
+    });
+  };
+
+  const handleSaveAsDraft = async () => {
+    if (!generatedQuote) return;
+    onQuoteGenerated(generatedQuote);
+    toast({
+      title: "Sparar offert",
+      description: "Offerten sparas och kan skickas senare."
+    });
+  };
+
+  const handleEditQuote = () => {
+    if (!generatedQuote) return;
+    onQuoteGenerated(generatedQuote);
+  };
+
+  // Mappa backend quote sections till LineItemData format
+  const mapQuoteSections = (sections: any[]): { title: string; items: LineItemData[] }[] => {
+    if (!sections || !Array.isArray(sections)) return [];
+    
+    return sections.map(section => ({
+      title: section.title || 'Arbete',
+      items: (section.items || []).map((item: any) => ({
+        name: item.name || item.description || 'Post',
+        quantity: item.quantity || 1,
+        unit: item.unit || 'st',
+        unitPrice: item.unitPrice || item.rate || 0
+      }))
+    }));
   };
 
   const handleStarterClick = (text: string) => {
@@ -272,6 +314,86 @@ export const ChatInterface = ({ onQuoteGenerated, isGenerating }: ChatInterfaceP
                   <span className="text-sm">AI:n tänker...</span>
                 </div>
               )}
+
+              {/* Visa genererad offert inline */}
+              {generatedQuote && (
+                <div className="animate-in fade-in-50 slide-in-from-bottom-4">
+                  <div className="bg-card border-2 border-primary/20 rounded-lg p-6 space-y-6">
+                    {/* Offert Header */}
+                    <div className="flex items-center justify-between border-b pb-4">
+                      <div>
+                        <h3 className="text-xl font-semibold text-foreground">Offert</h3>
+                        <p className="text-sm text-muted-foreground mt-1">
+                          Giltig till: {generatedQuote.validUntil ? new Date(generatedQuote.validUntil).toLocaleDateString('sv-SE') : 'Ej angivet'}
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Sections (Arbete, Material, etc.) */}
+                    <div className="space-y-4">
+                      {generatedQuote.sections && mapQuoteSections(generatedQuote.sections).map((section, index) => (
+                        <EstimateSection
+                          key={index}
+                          title={section.title}
+                          items={section.items}
+                          onItemUpdate={() => {}}
+                          onItemDelete={() => {}}
+                          defaultOpen={true}
+                        />
+                      ))}
+                    </div>
+
+                    {/* Summary */}
+                    {generatedQuote.summary && (
+                      <EstimateSummary
+                        subtotal={generatedQuote.summary.totalBeforeVAT || 0}
+                        rotRutDeduction={generatedQuote.summary.deductionType !== 'none' ? {
+                          type: generatedQuote.summary.deductionType?.toUpperCase() as 'ROT' | 'RUT',
+                          laborCost: generatedQuote.summary.workCost || 0,
+                          deductionAmount: generatedQuote.summary.deductionAmount || 0,
+                          priceAfterDeduction: generatedQuote.summary.customerPays || 0
+                        } : undefined}
+                        total={generatedQuote.summary.customerPays || generatedQuote.summary.totalWithVAT || 0}
+                      />
+                    )}
+
+                    {/* Notes */}
+                    {generatedQuote.notes && (
+                      <div className="bg-muted/50 rounded-lg p-4">
+                        <p className="text-sm text-muted-foreground">{generatedQuote.notes}</p>
+                      </div>
+                    )}
+
+                    {/* Action Buttons */}
+                    <div className="flex flex-wrap gap-3 pt-4 border-t">
+                      <Button 
+                        onClick={handleSendQuote}
+                        className="flex items-center gap-2"
+                      >
+                        <Send className="h-4 w-4" />
+                        Skicka till kund
+                      </Button>
+                      <Button 
+                        onClick={handleSaveAsDraft}
+                        variant="outline"
+                        className="flex items-center gap-2"
+                      >
+                        <Save className="h-4 w-4" />
+                        Spara som utkast
+                      </Button>
+                      <Button 
+                        onClick={handleEditQuote}
+                        variant="outline"
+                        className="flex items-center gap-2"
+                      >
+                        <Edit3 className="h-4 w-4" />
+                        Redigera
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               <div ref={messagesEndRef} />
             </>
           )}
