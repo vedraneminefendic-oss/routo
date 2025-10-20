@@ -35,6 +35,12 @@ function validateQuoteOutput(quote: any, baseTotals: any, hourlyRates?: any[] | 
     errors.push(`Material: Förväntade ${expectedMaterialCost} kr men fick ${totalMaterialCost} kr`);
   }
   
+  // 2b. Validate that NO materials have pricePerUnit = 0
+  const materialsWithZeroPrice = quote.materials.filter((m: any) => m.pricePerUnit === 0 || m.subtotal === 0);
+  if (materialsWithZeroPrice.length > 0) {
+    errors.push(`Material med pris 0 kr: ${materialsWithZeroPrice.map((m: any) => m.name).join(', ')} - ALLA material MÅSTE ha realistiska priser!`);
+  }
+  
   // 3. Validate summary calculations
   const actualWorkCost = quote.workItems.reduce((sum: number, w: any) => sum + w.subtotal, 0);
   if (Math.abs(quote.summary.workCost - actualWorkCost) > 1) {
@@ -250,6 +256,70 @@ Om användaren INTE har lagt in dessa verktyg i sina inställningar,
 lägg ändå till dem i equipmentCost med branschstandardpriser.
 `;
 
+  const materialPriceKnowledge = `
+
+**KRITISKT - MATERIAL MÅSTE ALLTID HA REALISTISKA PRISER!**
+
+BADRUMSRENOVERING (priser per kvm):
+Budget-nivå (5 kvm):
+- Kakel vägg: 150-250 kr/kvm → 5 kvm = 1000 kr
+- Klinker golv: 200-300 kr/kvm → 5 kvm = 1250 kr
+- Tätskikt: 800-1200 kr totalt
+- VVS-material (rör, kopplingar): 3000-5000 kr
+- El-material (kablar, dosor): 1500-2500 kr
+- Golvvärmesystem: 2000-3500 kr
+- Fästmassor och fog: 800-1200 kr
+Total materialkostnad budget: 10 000-15 000 kr
+
+Mellan-nivå (5 kvm):
+- Kakel vägg: 300-450 kr/kvm → 5 kvm = 1875 kr
+- Klinker golv: 350-500 kr/kvm → 5 kvm = 2125 kr
+- Tätskikt: 1200-1800 kr totalt
+- VVS-material: 5000-7000 kr
+- El-material: 2500-3500 kr
+- Golvvärmesystem: 3500-5000 kr
+- Fästmassor och fog: 1200-1800 kr
+Total materialkostnad mellan: 18 000-25 000 kr
+
+Premium (5 kvm):
+- Kakel vägg: 500-800 kr/kvm → 5 kvm = 3250 kr
+- Klinker golv: 600-900 kr/kvm → 5 kvm = 3750 kr
+- Tätskikt: 1800-2500 kr totalt
+- VVS-material premium: 7000-10000 kr
+- El-material premium: 3500-5000 kr
+- Golvvärmesystem premium: 5000-7000 kr
+- Fästmassor och fog premium: 1800-2500 kr
+Total materialkostnad premium: 28 000-38 000 kr
+
+ALTANBYGGE (priser per kvm):
+Budget tryckimpregnerat (25 kvm):
+- Virke (reglar, bärbalkar): 250-350 kr/kvm → 25 kvm = 7500 kr
+- Altangolv (träribbor): 150-250 kr/kvm → 25 kvm = 5000 kr
+- Räcke (stolpar, spjälor): 500-800 kr/löpmeter → 15m = 10500 kr
+- Trappa: 3000-5000 kr
+- Fästmaterial (skruv, beslag): 2000-3000 kr
+Total materialkostnad budget altan: 28 000-36 000 kr
+
+MÅLNING (rum):
+Budget färg (120 kvm yta):
+- Vägfärg: 80-120 kr/liter → 30 liter = 3000 kr
+- Spackel: 500-800 kr
+- Grundfärg: 1000-1500 kr
+- Målartejp, presenning: 500-800 kr
+Total materialkostnad målning budget: 5 000-6 500 kr
+
+Mellan-nivå färg (120 kvm):
+- Vägfärg premium: 150-200 kr/liter → 30 liter = 5250 kr
+- Spackel premium: 800-1200 kr
+- Grundfärg: 1500-2000 kr
+- Målartillbehör: 800-1200 kr
+Total materialkostnad målning mellan: 8 500-10 500 kr
+
+**VIKTIG REGEL:**
+Om projektet kräver material, materialCost FÅR ALDRIG vara 0!
+Använd prisguiderna ovan och räkna realistiskt.
+`;
+
   const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
     method: 'POST',
     headers: {
@@ -266,30 +336,38 @@ lägg ändå till dem i equipmentCost med branschstandardpriser.
 
 ${equipmentKnowledge}
 
+${materialPriceKnowledge}
+
 VIKTIGT: Identifiera vilka FAKTISKA arbetstyper som krävs för detta uppdrag.
 
 Exempel:
 - Städning → "Städare"
 - Fönsterputsning → "Fönsterputsare"
 - Trädfällning → "Arborist" eller "Trädvård"
-- Badrumsrenovering → "Snickare", "VVS", "Elektriker"
+- Badrumsrenovering → "Snickare", "VVS", "Elektriker", "Plattsättare"
 - Målning → "Målare"
 - Gräsklippning → "Trädgårdsskötare"
+- Altanbygge → "Snickare"
 
 ${ratesContext}${equipmentContext}
 
 Returnera ENDAST JSON i detta format:
 {
   "workHours": { "Städare": 8, "Fönsterputsare": 2 },
-  "materialCost": 500,
+  "materialCost": 5000,
   "equipmentCost": 0
 }
 
-Regler:
-- workHours: Total arbetstid per FAKTISK arbetstyp som projektet kräver (använd svenska yrkestitlar)
-- materialCost: Total materialkostnad i kronor (realistiska 2025 priser)
-- equipmentCost: Total kostnad för maskiner/utrustning om projektet kräver det (annars 0)
-- Använd INTE "Snickare" för städning eller "VVS" för trädgårdsskötsel - var specifik!`
+**KRITISKA REGLER:**
+1. workHours: Total arbetstid per FAKTISK arbetstyp som projektet kräver (svenska yrkestitlar)
+2. materialCost: MÅSTE VARA REALISTISKT! Använd prisguiderna ovan. FÅR EJ vara 0 om projektet kräver material!
+3. equipmentCost: Kostnad för maskiner/utrustning (0 om inget behövs)
+4. Var specifik med arbetstyper - använd INTE "Snickare" för städning!
+
+**EXEMPEL:**
+"Renovera badrum 5 kvm, mellan-nivå" → materialCost: 20000 (se prisguiden ovan)
+"Bygga altan 25 kvm, tryckimpregnerat" → materialCost: 32000 (se prisguiden ovan)
+"Måla 3 rum, budget-färg" → materialCost: 5500 (se prisguiden ovan)`
         },
         {
           role: 'user',
@@ -946,8 +1024,40 @@ ${JSON.stringify(baseTotals, null, 2)}
 - Ändra materialkostnaden
 - "Anpassa" priserna
 
-**DIN ENDA UPPGIFT:**
+**DIN UPPGIFT:**
 Fördela dessa EXAKTA totaler över arbetsposter och material enligt detaljnivån nedan.
+
+**📦 KRITISKT - MATERIAL MÅSTE HA REALISTISKA PRISER:**
+
+ALLA material-poster i "materials"-arrayen MÅSTE ha:
+- pricePerUnit > 0 (FÅR ALDRIG vara 0!)
+- quantity > 0
+- subtotal = quantity × pricePerUnit
+- subtotal-summan MÅSTE matcha baseTotals.materialCost + baseTotals.equipmentCost
+
+**EXEMPEL PÅ KORREKT MATERIAL-FÖRDELNING:**
+
+Om baseTotals.materialCost = 20000 kr och projektet är badrumsrenovering:
+{
+  "materials": [
+    { "name": "Kakel vägg", "quantity": 5, "unit": "kvm", "pricePerUnit": 350, "subtotal": 1750 },
+    { "name": "Klinker golv", "quantity": 5, "unit": "kvm", "pricePerUnit": 425, "subtotal": 2125 },
+    { "name": "Tätskikt", "quantity": 1, "unit": "st", "pricePerUnit": 1500, "subtotal": 1500 },
+    { "name": "VVS-material (rör, kopplingar)", "quantity": 1, "unit": "set", "pricePerUnit": 6000, "subtotal": 6000 },
+    { "name": "El-material (kablar, dosor)", "quantity": 1, "unit": "set", "pricePerUnit": 3000, "subtotal": 3000 },
+    { "name": "Golvvärmesystem", "quantity": 5, "unit": "kvm", "pricePerUnit": 800, "subtotal": 4000 },
+    { "name": "Fästmassor och fog", "quantity": 1, "unit": "set", "pricePerUnit": 1625, "subtotal": 1625 }
+  ]
+}
+Total: 1750 + 2125 + 1500 + 6000 + 3000 + 4000 + 1625 = 20000 kr ✓
+
+**FÖRBJUDET EXEMPEL (fel):**
+{
+  "materials": [
+    { "name": "Kakel", "quantity": 1, "unit": "st", "pricePerUnit": 0, "subtotal": 0 },  ← FEL! pricePerUnit får EJ vara 0!
+    { "name": "VVS-material", "quantity": 1, "unit": "st", "pricePerUnit": 0, "subtotal": 0 }  ← FEL!
+  ]
+}
 
 ---
 
