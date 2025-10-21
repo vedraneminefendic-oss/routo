@@ -946,19 +946,6 @@ Lägg till dem i materials-array med dessa standardpriser:
     
     equipmentText += standardEquipment;
 
-    // Hämta bransch-benchmarks
-    const { data: benchmarks, error: benchmarksError } = await supabaseClient
-      .from('industry_benchmarks')
-      .select('*')
-      .order('last_updated', { ascending: false });
-
-    if (benchmarksError) {
-      console.error('Error fetching benchmarks:', benchmarksError);
-    }
-
-    const benchmarkData = benchmarks || [];
-    console.log(`Loaded ${benchmarkData.length} industry benchmarks`);
-
     // Analysera användarens stil från tidigare offerter
     function analyzeUserStyle(userQuotes: any[]): any {
       if (!userQuotes || userQuotes.length === 0) return null;
@@ -993,10 +980,71 @@ Lägg till dem i materials-array med dessa standardpriser:
       console.error('Error fetching user quotes for style analysis:', userQuotesError);
     }
 
+    // Fetch industry benchmarks for learning context
+    const { data: industryBenchmarks, error: benchmarksError } = await supabaseClient
+      .from('industry_benchmarks')
+      .select('*')
+      .order('last_updated', { ascending: false })
+      .limit(50);
+
+    if (benchmarksError) {
+      console.error('Error fetching industry benchmarks:', benchmarksError);
+    }
+
+    console.log('📈 Industry benchmarks loaded:', industryBenchmarks?.length || 0, 'entries');
+
     const userStyle = analyzeUserStyle(userQuotes || []);
     if (userStyle) {
       console.log('User style analyzed:', userStyle);
     }
+
+    // Build learning context from industry benchmarks
+    const buildLearningContext = (benchmarks: any[] | null) => {
+      if (!benchmarks || benchmarks.length === 0) {
+        return '';
+      }
+
+      // Group by work category
+      const byCategory: Record<string, any[]> = {};
+      benchmarks.forEach(b => {
+        if (!byCategory[b.work_category]) {
+          byCategory[b.work_category] = [];
+        }
+        byCategory[b.work_category].push(b);
+      });
+
+      let context = '\n\n**═══════════════════════════════════════════════════════════════**\n';
+      context += '**BRANSCHKUNSKAP (aggregerad från historiska offerter)**\n';
+      context += '**═══════════════════════════════════════════════════════════════**\n';
+      
+      for (const [category, data] of Object.entries(byCategory)) {
+        context += `\n📊 ${category.toUpperCase()}:\n`;
+        
+        const hourlyRateData = data.find(d => d.metric_type === 'hourly_rate');
+        const materialRatioData = data.find(d => d.metric_type === 'material_to_work_ratio');
+        const totalHoursData = data.find(d => d.metric_type === 'total_hours');
+
+        if (hourlyRateData) {
+          context += `  • Timpriser: ${Math.round(hourlyRateData.min_value)}-${Math.round(hourlyRateData.max_value)} kr/h (median: ${Math.round(hourlyRateData.median_value)} kr/h)\n`;
+        }
+        if (materialRatioData) {
+          context += `  • Material/arbete-ratio: ${(materialRatioData.min_value * 100).toFixed(0)}-${(materialRatioData.max_value * 100).toFixed(0)}% (median: ${(materialRatioData.median_value * 100).toFixed(0)}%)\n`;
+        }
+        if (totalHoursData) {
+          context += `  • Typiska timmar för projekt: ${Math.round(totalHoursData.min_value)}-${Math.round(totalHoursData.max_value)}h (median: ${Math.round(totalHoursData.median_value)}h)\n`;
+        }
+      }
+
+      context += `\n**ANVÄND BRANSCHDATA FÖR:**\n`;
+      context += `• Jämföra dina priser mot marknadsstandarder\n`;
+      context += `• Varna om stora avvikelser från median (>20% kan indikera fel eller särskilda förutsättningar)\n`;
+      context += `• Göra rimliga antaganden när exakt info saknas\n`;
+      context += `• Säkerställa att material/arbete-ratio är inom normala intervall\n`;
+
+      return context;
+    };
+
+    const learningContext = buildLearningContext(industryBenchmarks);
 
     // Build deduction info based on type
     const deductionInfo = finalDeductionType === 'rot' 
@@ -1225,6 +1273,7 @@ Lägg till dem i materials-array med dessa standardpriser:
    ${detailLevel === 'detailed' ? '→ 6-10 arbetsposter, 10-15 material, notes 500-800 tecken med fasindelning' : ''}
    ${detailLevel === 'construction' ? '→ 10-15 arbetsposter (inkl. projektledning), 15-25 material, notes 1200-2000 tecken med projektledning+tidsplan+garanti+besiktning' : ''}
 
+${learningContext}
 
 **═══════════════════════════════════════════════════════════════**
 **PROJEKTSPECIFIK KONTEXT**
@@ -1277,29 +1326,6 @@ ${quoteData.materials?.map((m: any) => `• ${m.name}: ${m.quantity} ${m.unit} �
 4. Behåll SAMMA timpris som i referensen för matchande arbetstyper
 5. Om nya uppdraget är NÄSTAN identiskt → använd nästan exakt samma struktur och fördelning
 6. Matcha arbetstyper: Om referens använder "Snickare" → använd samma arbetstyp i nya offerten
-
-` : ''}
-
-${benchmarkData.length > 0 ? `
-
-**═══════════════════════════════════════════════════════════════**
-**BRANSCH-KONTEXT (för validering och kvalitetskontroll)**
-**═══════════════════════════════════════════════════════════════**
-
-Följande data är baserad på ANONYMISERAD statistik från hela plattformen:
-
-${benchmarkData.map((b: any) => `
-• ${b.work_category} (${b.metric_type}):
-  - Medianvärde: ${b.median_value}
-  - Spann: ${b.min_value} - ${b.max_value}
-  - Baserat på ${b.sample_size} offerter
-`).join('\n')}
-
-**ANVÄNDNING AV BRANSCHDATA:**
-✓ Använd för att validera rimlighet i dina estimat
-✓ Om användarens priser AVVIKER >30% från median → var extra noggrann
-✓ ALLTID prioritera användarens egna priser (ovan) över branschdata
-✓ Branschdata är ENDAST för att säkerställa kvalitet, aldrig för att ersätta användarens priser
 
 ` : ''}
 
