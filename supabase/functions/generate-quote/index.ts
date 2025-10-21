@@ -328,7 +328,7 @@ async function handleConversation(
 Analysera HELA konversationen och bestäm EN av följande:
 
 1. **ASK MODE** - Om KRITISK information saknas:
-   - Returnera 1-3 smarta, relevanta frågor
+   - Returnera MAX 2 smarta, relevanta frågor
    - Fokusera ENDAST på sådant du MÅSTE veta för att kunna prissätta
    - Aldrig fråga om något användaren redan nämnt
    - Var naturlig och konversationell
@@ -336,6 +336,27 @@ Analysera HELA konversationen och bestäm EN av följande:
 2. **GENERATE MODE** - Om du har tillräcklig information:
    - Returnera tom questions-array
    - Du kan göra rimliga antaganden för icke-kritiska detaljer
+
+**EXEMPEL PÅ BRA KONVERSATION:**
+
+🟢 KUND: "Fälla två ekar, 15m höga, nära huset"
+✅ DU FRÅGAR: "Ska vi forsla bort virket och fräsa stubbarna, eller tar ni hand om det själva?"
+❌ FRÅGA INTE: "Hur höga är träden?" (redan besvarat!)
+
+🟢 KUND: "Måla vardagsrum och kök"
+✅ DU FRÅGAR: "Ungefär hur många kvadratmeter är det sammanlagt? Och ska vi måla taken också?"
+❌ FRÅGA INTE: "Vilka rum?" (redan besvarat!)
+
+🟢 KUND: "Renovera badrum"
+✅ DU FRÅGAR: "Hur stort är badrummet ungefär? Och ska vi riva det gamla kaklet?"
+❌ FRÅGA INTE: "Vilket rum?" (självklart badrum!)
+
+**SMART INFERENS - FRÅGA INTE OM:**
+- "15m träd nära hus" → Höjd OCH närhet redan känd
+- "jag forslar virket" → Bortforsling = JA (implicit)
+- "50 kvm vardagsrum" → Area finns
+- "måla bara väggar" → Tak = NEJ (implicit)
+- "total renovering badrum" → Omfattning klar
 
 **VAD ÄR KRITISK INFORMATION?**
 
@@ -371,9 +392,16 @@ Analysera HELA konversationen och bestäm EN av följande:
 - "jag tar bortforsling och fräser stubbar" → båda besvarade
 - "måla vardagsrum 25 kvm, bara väggar" → area finns, tak=nej
 
-✅ **Max 2 konversationsrundor**
+✅ **Max 2 konversationsrundor - MAX 2 FRÅGOR PER GÅNG**
 - Om detta är andra gången du frågar → var extra generös med antaganden
 - Generera hellre offert än ställa fler frågor
+- Fråga om det MEST kritiska först
+
+✅ **Hantera osäkra svar**
+- Om kunden säger "vet inte", "ungefär", "ca" → använd branschstandarder
+- T.ex. "vet inte höjden" → Antag 12-15m för "stor ek"
+- T.ex. "ca 30 kvm" → Använd det som estimat
+- Generera offert med anteckning: "Estimat baserat på typiska värden"
 
 ✅ **Naturlig ton**
 - Inte: "Närhet till byggnader eller hinder?"
@@ -405,13 +433,12 @@ Analysera detta och bestäm: Ska du fråga mer eller generera offert?`;
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'openai/gpt-4o-mini',
+        model: 'google/gemini-2.5-flash',
         messages: [
           { role: 'system', content: systemPrompt },
           { role: 'user', content: userPrompt }
         ],
-        response_format: { type: "json_object" },
-        temperature: 0.3
+        response_format: { type: "json_object" }
       }),
     });
 
@@ -425,6 +452,39 @@ Analysera detta och bestäm: Ska du fråga mer eller generera offert?`;
     const result = JSON.parse(data.choices[0].message.content);
     
     console.log('🤖 AI Decision:', result);
+    
+    // Quality check: Filter out questions that are already answered in conversation
+    if (result.action === 'ask' && result.questions && result.questions.length > 0) {
+      const conversationText = conversationHistory && conversationHistory.length > 0
+        ? conversationHistory.map(m => m.content.toLowerCase()).join(' ')
+        : description.toLowerCase();
+      
+      const filteredQuestions = result.questions.filter((q: string) => {
+        const qLower = q.toLowerCase();
+        
+        // Filter out questions about things already mentioned
+        if (qLower.includes('hur höga') && conversationText.match(/\d+\s*m(eter)?/)) return false;
+        if (qLower.includes('forsla') && conversationText.match(/forsla|borttransport|ta bort|själv/)) return false;
+        if (qLower.includes('area') && conversationText.match(/kvm|kvadrat|m2|\d+\s*x\s*\d+/)) return false;
+        if (qLower.includes('tak') && conversationText.match(/bara vägg|utan tak|väggar/)) return false;
+        if (qLower.includes('storlek') && conversationText.match(/\d+\s*kvm|\d+\s*m2/)) return false;
+        
+        return true;
+      });
+      
+      console.log('📝 Filtered questions:', { original: result.questions.length, filtered: filteredQuestions.length });
+      
+      // If all questions were filtered out, generate instead
+      if (filteredQuestions.length === 0) {
+        console.log('✅ All questions already answered → generating quote');
+        return { action: 'generate' };
+      }
+      
+      return {
+        action: 'ask',
+        questions: filteredQuestions
+      };
+    }
     
     return {
       action: result.action === 'ask' ? 'ask' : 'generate',
@@ -613,8 +673,7 @@ Om du inte hittar exakt projekttyp i guiderna ovan:
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
-      model: 'openai/gpt-4o-mini',
-      temperature: 0,
+      model: 'google/gemini-2.5-flash',
       messages: [
         {
           role: 'system',
@@ -1353,6 +1412,17 @@ Lägg till dem i materials-array med dessa standardpriser:
 
     // FAS 17: Ask questions if under 2 rounds AND user doesn't want quote now
     if (!userWantsQuoteNow && exchangeCount < 2) {
+      const lastUserMessage = conversation_history && conversation_history.length > 0
+        ? conversation_history.filter((m: any) => m.role === 'user').pop()?.content
+        : description;
+      
+      console.log('📝 Conversation state:', {
+        exchangeCount,
+        historyLength: conversation_history?.length || 0,
+        lastUserMessage: lastUserMessage?.slice(0, 80) + (lastUserMessage && lastUserMessage.length > 80 ? '...' : ''),
+        userWantsQuoteNow: !!userWantsQuoteNow
+      });
+      
       console.log(`💬 Running AI conversation handler (exchange ${exchangeCount}/2)...`);
       
       const decision = await handleConversation(
@@ -1625,8 +1695,7 @@ Lägg till dem i materials-array med dessa standardpriser:
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'openai/gpt-4o-mini',
-        temperature: 0,
+        model: 'google/gemini-2.5-flash',
         tools: [{
           type: "function",
           function: {
@@ -2275,7 +2344,7 @@ async function detectDeductionType(description: string, apiKey: string): Promise
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'openai/gpt-4o-mini',
+        model: 'google/gemini-2.5-flash',
         messages: [
           {
             role: 'system',
@@ -2327,8 +2396,7 @@ Returnera ENDAST ett JSON-objekt med detta format:
             content: `Klassificera följande arbete: "${description}"`
           }
         ],
-        response_format: { type: "json_object" },
-        temperature: 0
+        response_format: { type: "json_object" }
       }),
     });
 
