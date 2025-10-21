@@ -324,12 +324,141 @@ function normalizeText(text: string): string {
     .trim();
 }
 
+// Extract measurements with structured data
+async function extractMeasurements(
+  description: string,
+  apiKey: string
+): Promise<{
+  quantity?: number;
+  height?: string;
+  diameter?: string;
+  area?: string;
+  appliesTo?: string;
+  ambiguous: boolean;
+  clarificationNeeded?: string;
+}> {
+  try {
+    const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: 'google/gemini-2.5-flash',
+        messages: [{
+          role: 'user',
+          content: `Extrahera mått och kvantiteter från denna beskrivning: "${description}"
+
+VIKTIGT: Om flera objekt nämns med flera mått, anta att samma mått gäller för alla objekt såvida inte explicit annat anges.
+
+Exempel:
+- "två ekar på 15 meter och 5 meter diameter" → quantity=2, height="15 meter", diameter="5 meter", appliesTo="all"
+- "ena är 15m, andra 8m" → quantity=2, height="15 meter och 8 meter", ambiguous=true`
+        }],
+        tools: [{
+          type: 'function',
+          function: {
+            name: 'extract_measurements',
+            description: 'Extrahera kvantitet och mått från beskrivning',
+            parameters: {
+              type: 'object',
+              properties: {
+                quantity: { 
+                  type: 'number', 
+                  description: 'Antal objekt (träd, rum, etc)' 
+                },
+                height: { 
+                  type: 'string', 
+                  description: 'Höjd med enhet, t.ex. "15 meter". Om flera olika höjder, lista dem.' 
+                },
+                diameter: { 
+                  type: 'string', 
+                  description: 'Diameter/bredd med enhet, t.ex. "5 meter"' 
+                },
+                area: { 
+                  type: 'string', 
+                  description: 'Area med enhet, t.ex. "25 kvm"' 
+                },
+                appliesTo: {
+                  type: 'string',
+                  enum: ['all', 'individual'],
+                  description: 'Om samma mått gäller alla objekt (all) eller individuellt (individual)'
+                },
+                ambiguous: {
+                  type: 'boolean',
+                  description: 'true om mått kan tolkas på flera sätt eller är otydliga'
+                },
+                clarificationNeeded: {
+                  type: 'string',
+                  description: 'Fråga för att klargöra tvetydighet om ambiguous=true'
+                }
+              },
+              required: ['ambiguous']
+            }
+          }
+        }],
+        tool_choice: { 
+          type: 'function', 
+          function: { name: 'extract_measurements' } 
+        }
+      })
+    });
+
+    if (!response.ok) {
+      console.warn('Measurement extraction failed, continuing without structured data');
+      return { ambiguous: false };
+    }
+
+    const data = await response.json();
+    const toolCall = data.choices[0].message.tool_calls?.[0];
+    
+    if (toolCall) {
+      const parsed = JSON.parse(toolCall.function.arguments);
+      console.log('📏 Extracted measurements:', parsed);
+      return parsed;
+    }
+    
+    return { ambiguous: false };
+  } catch (error) {
+    console.warn('Measurement extraction error:', error);
+    return { ambiguous: false };
+  }
+}
+
 // FAS 17: Single AI Decision Point - handleConversation
 async function handleConversation(
   description: string,
   conversationHistory: any[] | undefined,
   apiKey: string
 ): Promise<{ action: 'ask' | 'generate'; questions?: string[] }> {
+  
+  // STEG 1: Extrahera mått strukturerat
+  const measurements = await extractMeasurements(description, apiKey);
+  
+  // Om tvetydigt → tvinga clarification
+  if (measurements.ambiguous && measurements.clarificationNeeded) {
+    console.log('⚠️ Ambiguous measurements detected → asking for clarification');
+    return {
+      action: 'ask',
+      questions: [measurements.clarificationNeeded]
+    };
+  }
+  
+  // Bygg strukturerad context för AI:n
+  let structuredContext = '';
+  if (measurements.quantity) {
+    structuredContext += `Antal objekt: ${measurements.quantity}\n`;
+  }
+  if (measurements.height) {
+    structuredContext += `Höjd: ${measurements.height}${measurements.appliesTo === 'all' ? ' (gäller för alla objekt)' : ''}\n`;
+  }
+  if (measurements.diameter) {
+    structuredContext += `Diameter: ${measurements.diameter}${measurements.appliesTo === 'all' ? ' (gäller för alla objekt)' : ''}\n`;
+  }
+  if (measurements.area) {
+    structuredContext += `Area: ${measurements.area}\n`;
+  }
   
   // Calculate conversation state
   const exchangeCount = conversationHistory 
@@ -414,6 +543,33 @@ Analysera HELA konversationen och bestäm EN av följande:
 - Omfattning av arbetet
 - Befintlig standard
 
+**CHAIN-OF-THOUGHT FÖR MÅTT OCH KVANTITETER:**
+
+När användaren nämner flera objekt OCH flera mått, RESONERA STEG-FÖR-STEG:
+
+1. **Identifiera antal:** "två ekar" → quantity = 2
+2. **Identifiera alla mått:** "15 meter och 5 meter diameter" → höjd?, diameter?
+3. **Matcha mått till attribut:**
+   - "X meter" utan kontext → troligen höjd
+   - "X meter diameter/bred/tjock" → diameter/bredd
+   - "X kvm/kvadratmeter" → area
+4. **Bestäm scope:** Gäller samma mått för alla objekt?
+   - DEFAULT: JA, såvida inte explicit "ena är X, andra är Y"
+   - "två ekar 15m höga och 5m diameter" = båda är 15m OCH 5m diameter
+5. **Validera logik:**
+   - Träd 15m höjd + 5m diameter → RIMLIGT ✅
+   - Träd 5m höjd + 15m diameter → ORIMLIGT ⚠️ → FRÅGA
+   - Rum 25 kvm → RIMLIGT ✅
+   - Rum 500 kvm → ORIMLIGT för bostadsrum ⚠️ → FRÅGA
+6. **Om NÅGON osäkerhet om hur mått ska tolkas → FRÅGA för bekräftelse**
+
+EXEMPEL PÅ RÄTT TOLKNING:
+❌ FEL: "två ekar 15m och 5m" → tolka som "ena 15m hög, andra 5m hög"
+✅ RÄTT: Fråga: "Menar du att båda ekarna är 15 meter höga och 5 meter i diameter?"
+
+❌ FEL: "måla 3 rum 20 kvm" → tolka som totalt 20 kvm
+✅ RÄTT: Tolka som 3 rum × 20 kvm = 60 kvm ELLER fråga om det är totalt eller per rum
+
 **VIKTIGA REGLER:**
 
 ✅ **Läs HELA konversationen innan du frågar**
@@ -452,7 +608,7 @@ Analysera HELA konversationen och bestäm EN av följande:
       ).join('\n\n')
     : `👤 Du (hantverkare): ${description}`;
 
-  const userPrompt = `HELA KONVERSATIONEN HITTILLS:
+  const userPrompt = `${structuredContext ? `**STRUKTURERADE MÅTT:**\n${structuredContext}\n` : ''}HELA KONVERSATIONEN HITTILLS:
 
 ${conversationText}
 
@@ -510,16 +666,18 @@ Som professionell hantverkare-assistent: Analysera detta och bestäm om du behö
         console.log(`💬 Detected ${isYes ? 'YES' : 'NO'} answer to last question:`, lastAssistantMessage.substring(0, 100));
       }
       
-      // Topic patterns for smart filtering
+      // Topic patterns for smart filtering (updated with better measurement patterns)
       const topics = {
         removal: /(bortf?orsl|borttransport|ta bort|forsla|transport)/,
         stump: /(stubb|fras)/,
-        height: /(hur.*hog|hoga|hogt|meter|m\b)/,
-        area: /(kvm|kvadrat|m2|area|\d+\s*x\s*\d+|storlek)/,
+        height: /(hojd|hur.*hog|hoga|hogt|meter.*hog|m\s*hog|\d+\s*m(eter)?\s)/,
+        diameter: /(diameter|tjock|bred|omkrets|stamdiameter|\d+\s*m(eter)?\s*diameter)/,
+        area: /(kvm|kvadrat|m2|area|\d+\s*x\s*\d+|storlek.*rum|rum.*storlek)/,
         ceiling: /\btak\b/,
         proximity: /(nara|bebyggelse|hinder|hus|ledning|vag|byggnad)/,
         demolition: /(riv|ta bort|demonter)/,
-        surface: /(underlag|yta|tapet|gammal)/
+        surface: /(underlag|yta|tapet|gammal)/,
+        quantity: /(antal|hur.*manga|\d+\s*(st|stycken|trad|rum|objekt))/
       };
       
       let filteredQuestions = result.questions.filter((q: string) => {
@@ -641,6 +799,17 @@ async function calculateBaseTotals(
   equipmentCost: number;
   hourlyRatesByType: { [workType: string]: number };
 }> {
+  
+  // Extract structured measurements for better calculation accuracy
+  console.log('📊 Calculating base totals with description:', description);
+  const measurements = await extractMeasurements(description, apiKey);
+  console.log('📐 Structured measurements for calculation:', {
+    quantity: measurements.quantity || 'not specified',
+    height: measurements.height || 'not specified',
+    diameter: measurements.diameter || 'not specified',
+    area: measurements.area || 'not specified',
+    appliesTo: measurements.appliesTo || 'not specified'
+  });
   const ratesContext = hourlyRates && hourlyRates.length > 0
     ? `Timpriserna är: ${hourlyRates.map(r => `${r.work_type}: ${r.rate} kr/h`).join(', ')}`
     : 'Standardpris: 650 kr/h';
