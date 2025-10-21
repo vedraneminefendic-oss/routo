@@ -470,7 +470,20 @@ async function generateFollowUpQuestions(
     }
   }
   
-  const questionsPrompt = `Du är en professionell hantverkare som skapar offerter. 
+  const questionsPrompt = `Du är en AI-assistent som hjälper en professionell hantverkare att skapa offerter.
+
+**VIKTIGT PERSPEKTIV:**
+- Du pratar MED hantverkaren (användaren), inte med deras kund
+- Hantverkaren skriver in vad kunden vill ha, och du hjälper till att ta fram detaljer
+- Använd "du" = hantverkaren, "kunden" = hantverkarens kund
+
+**EXEMPEL PÅ RÄTT FORMULERING:**
+✅ "Tar du själv bortforslingen eller ansvarar kunden för det?"
+✅ "Ska du fräsa stubbarna eller gör kunden det?"
+✅ "Behöver kunden ha klart till ett visst datum?"
+
+❌ INTE: "Vill du att vi tar hand om bortforslingen?"
+❌ INTE: "Ska vi fräsa stubbarna?"
 
 NUVARANDE KONVERSATION:
 ${fullDescription}
@@ -489,9 +502,27 @@ ${exchangeCount === 0 ? `
 
 Exempel för trädfällning:
 - "Hur höga är träden ungefär?"
-- "Finns det byggnader eller elledningar i närheten?"
-- "Vill du att vi tar hand om bortforslingen också?"
-- "Behöver stubbarna fräsas?"
+- "Finns det byggnader eller elledningar i närheten som kan påverka arbetet?"
+- "Tar du själv bortforslingen av virket eller ansvarar kunden för det?"
+- "Ska du fräsa stubbarna eller gör kunden det själv?"
+
+Exempel för badrumsrenovering:
+- "Vilken storlek har badrummet (kvm)?"
+- "Ska du riva befintliga kakel och plattor eller finns det redan gjort?"
+- "Behöver kunden nya rör eller kan du återanvända befintligt?"
+- "Vill kunden ha golvvärme eller standard elradiator?"
+
+Exempel för målning:
+- "Hur många rum ska du måla?"
+- "Behöver du spackling och slipning eller är väggarna klara?"
+- "Ska du måla tak också eller bara väggar?"
+- "Tar du med färg i offerten eller fixar kunden det själv?"
+
+Exempel för städning:
+- "Hur stor yta (kvm) ska du städa?"
+- "Ska du göra fönsterputs också eller bara ordinarie städning?"
+- "Behöver kunden engångsstädning eller återkommande uppdrag?"
+- "Tar du med städmaterial i priset eller använder kundens produkter?"
 ` : `
 **UPPFÖLJNINGSFRÅGOR - Fördjupa:**
 - Material/kvalitet
@@ -514,6 +545,7 @@ Returnera JSON med array av frågor:
 - Var SPECIFIK och RELEVANT för just detta projekt
 - Ställ INTE generiska frågor
 - Ställ ALDRIG frågor om saker som redan besvarats i "TIDIGARE FRÅGOR OCH SVAR"
+- **PERSPEKTIV: Kom ihåg att "du" = hantverkaren som skapar offerten, "kunden" = hantverkarens kund**
 - Om användaren svarar "generera offerten nu" → sätt readyToGenerate: true`;
 
   try {
