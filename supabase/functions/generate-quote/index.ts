@@ -284,67 +284,66 @@ function autoCorrectQuote(quote: any, baseTotals: any): any {
   return correctedQuote;
 }
 
-// Industry standard validation
-function validateRealism(quote: any, description: string): string[] {
-  const warnings: string[] = [];
-  const descLower = description.toLowerCase();
+// Helper function to build intelligent conversation summary
+function buildConversationSummary(history: any[]): string {
+  if (!history || history.length === 0) return '';
   
-  // Bathroom renovation should take at least 30h
-  if ((descLower.includes('badrum') || descLower.includes('våtrum')) && 
-      descLower.includes('renovering')) {
-    const totalHours = quote.workItems.reduce((sum: number, w: any) => sum + w.hours, 0);
-    if (totalHours < 30) {
-      warnings.push(`Badrumsrenovering: ${totalHours}h verkar orealistiskt lågt (branschstandard: 40-80h)`);
-    }
+  const userMessages = history.filter(m => m.role === 'user');
+  
+  if (userMessages.length === 1) {
+    return userMessages[0].content;
   }
   
-  // Tree felling should cost at least 800 kr/h
-  if (descLower.includes('träd') && (descLower.includes('fälla') || descLower.includes('fällning'))) {
-    const treeWorkItem = quote.workItems.find((w: any) => 
-      w.name.toLowerCase().includes('träd') || w.name.toLowerCase().includes('arborist')
-    );
-    if (treeWorkItem && treeWorkItem.hourlyRate < 800) {
-      warnings.push(`Trädfällning: ${treeWorkItem.hourlyRate} kr/h är för lågt (branschstandard: 800-1200 kr/h)`);
-    }
-  }
+  // Första meddelandet är huvudbeskrivningen
+  const mainRequest = userMessages[0].content;
   
-  // Cleaning should not use carpenter rates
-  if ((descLower.includes('städ') || descLower.includes('rengör')) && 
-      !descLower.includes('renovering')) {
-    const carpenterItem = quote.workItems.find((w: any) => 
-      w.name.toLowerCase().includes('snickare')
-    );
-    if (carpenterItem) {
-      warnings.push('Städning kräver inte snickare - kontrollera arbetstyper');
-    }
-  }
+  // Övriga svar är kompletteringar (filtrera bort korta/icke-informativa svar)
+  const clarifications = userMessages.slice(1)
+    .map(m => m.content)
+    .filter(c => c.length > 5 && !['nej', 'ja', 'ok', 'okej'].includes(c.toLowerCase().trim()))
+    .join('. ');
   
-  return warnings;
+  return clarifications 
+    ? `${mainRequest}. Ytterligare info: ${clarifications}`
+    : mainRequest;
 }
 
-// Pre-flight check: Validate context before generating quote
+// Pre-flight check: Can I proceed with quote generation?
 async function performPreflightCheck(
   description: string,
   conversationHistory: any[] | undefined,
   apiKey: string
-): Promise<{ valid: boolean; errors: string[]; projectType?: string }> {
+): Promise<{ canProceed: boolean; projectType: string; missingCritical: string[] }> {
   console.log('🛫 Running pre-flight check...');
   
-  const userRequest = conversationHistory && conversationHistory.length > 0
-    ? conversationHistory.filter((m: any) => m.role === 'user').map((m: any) => m.content).join(' → ')
-    : description;
+  const fullDescription = buildConversationSummary(conversationHistory || [{ role: 'user', content: description }]);
   
-  const checkPrompt = `Analysera följande kundförfrågan och identifiera vad de FAKTISKT ber om.
+  const checkPrompt = `Analysera denna jobbeskrivning och avgör om du kan skapa en offert:
 
-Kundförfrågan: "${userRequest}"
+"${fullDescription}"
 
 Returnera JSON:
 {
-  "projectType": "målning|altan|kök|badrum|städning|trädfällning|trädgård|annat",
-  "confidence": 0.0-1.0,
-  "keywords": ["lista", "av", "nyckelord"],
-  "potentialConflicts": ["eventuella motsägelser i förfrågan"]
-}`;
+  "canProceed": true/false,  // false ENDAST om kritisk info saknas
+  "projectType": "trädfällning/målning/badrum/etc",
+  "missingCritical": []  // ENDAST kritiska saker som MÅSTE ha svar
+}
+
+**VIKTIGT:**
+- canProceed = true om du kan göra rimliga antaganden baserat på erfarenhet
+- missingCritical = tom array om projektet är tydligt nog
+- Var INTE överdrivet försiktig - hantverkare gör antaganden hela tiden
+- Fokusera på VEM/VAD/VAR, inte detaljerade specifikationer
+
+**Exempel:**
+"Fälla två ekar 15m" 
+→ canProceed: true (kan anta normalsvårighet, bortforsling, stubbfräsning)
+
+"Renovera något"
+→ canProceed: false, missingCritical: ["Vad ska renoveras? (badrum/kök/etc)"]
+
+"Måla om vardagsrum"
+→ canProceed: true (kan anta normalstorlek ~20 kvm, standardfärg)`;
 
   try {
     const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
@@ -357,7 +356,7 @@ Returnera JSON:
         model: 'google/gemini-2.5-flash',
         messages: [
           { role: 'system', content: checkPrompt },
-          { role: 'user', content: userRequest }
+          { role: 'user', content: fullDescription }
         ],
         response_format: { type: "json_object" },
         temperature: 0
@@ -366,7 +365,7 @@ Returnera JSON:
 
     if (!response.ok) {
       console.error('Pre-flight check API error:', response.status);
-      return { valid: true, errors: [] }; // Fallback: allow generation
+      return { canProceed: true, projectType: 'okänt', missingCritical: [] }; // Fallback
     }
 
     const data = await response.json();
@@ -374,29 +373,21 @@ Returnera JSON:
     
     console.log('Pre-flight result:', result);
     
-    // Check for low confidence or conflicts
-    if (result.confidence < 0.5) {
-      return {
-        valid: false,
-        errors: [`Osäker projekttyp (${Math.round(result.confidence * 100)}% säkerhet). Be om mer specifika detaljer.`],
-        projectType: result.projectType
-      };
+    if (!result.canProceed && result.missingCritical.length > 0) {
+      console.log(`⚠️ Pre-flight check failed: ${JSON.stringify(result.missingCritical)}`);
+    } else {
+      console.log(`✅ Pre-flight OK: Projekttyp "${result.projectType}"`);
     }
     
-    if (result.potentialConflicts && result.potentialConflicts.length > 0) {
-      return {
-        valid: false,
-        errors: result.potentialConflicts,
-        projectType: result.projectType
-      };
-    }
-    
-    console.log(`✅ Pre-flight OK: Projekttyp "${result.projectType}" (${Math.round(result.confidence * 100)}%)`);
-    return { valid: true, errors: [], projectType: result.projectType };
+    return {
+      canProceed: result.canProceed !== false, // Default to true if not explicitly false
+      projectType: result.projectType || 'okänt',
+      missingCritical: result.missingCritical || []
+    };
     
   } catch (error) {
     console.error('Pre-flight check error:', error);
-    return { valid: true, errors: [] }; // Fallback: allow generation
+    return { canProceed: true, projectType: 'okänt', missingCritical: [] }; // Fallback
   }
 }
 
@@ -1065,116 +1056,40 @@ Lägg till dem i materials-array med dessa standardpriser:
       console.log('AI_FALLBACK aktiverad - granska material noga i resulterande offert!');
     }
 
+    // STEG 2: PRE-FLIGHT CHECK - Kör innan första meddelandet
+    console.log('Step 2: Running pre-flight check...');
+    const preflightCheck = await performPreflightCheck(description, conversation_history, LOVABLE_API_KEY!);
+    console.log('✅ Base totals calculated:', baseTotals);
+    
     // Check if this is the first message in a conversation (no history)
     const isFirstMessage = !conversation_history || conversation_history.length === 0;
     
     if (isFirstMessage) {
-      // FÖRSTA MEDDELANDET - Ställ motfrågor istället för att generera komplett offert
-      console.log('First message detected - generating clarification questions');
-      
-      // Build conversation summary for context
-      const conversationSummary = conversation_history && conversation_history.length > 0
-        ? conversation_history.filter((m: any) => m.role === 'user').map((m: any) => m.content).join(' → ')
-        : description;
-      
-      console.log(`📝 Konversationssammanfattning: ${conversationSummary}`);
-      
-      const clarificationPrompt = `Du är en AI-assistent som hjälper hantverkare att skapa professionella offerter.
-
-Användaren har skrivit: "${description}"
-
-Din uppgift är INTE att generera en komplett offert ännu. Istället ska du:
-
-1. Bekräfta att du förstått grunderna i projektet
-2. Ställ 2-4 KONKRETA motfrågor för att få mer detaljer
-
-**Viktiga frågeområden:**
-- Materialval och kvalitetsnivå (budget/mellan/premium)
-- Tidram och deadline
-- Specifika detaljer om arbetet (t.ex. storlek i kvm, antal enheter, etc.)
-- Tillstånd eller förberedelser som behövs
-- Kundönskemål kring utförande
-
-Returnera ett JSON-objekt med detta format:
-{
-  "needs_clarification": true,
-  "clarification_questions": [
-    "Fråga 1 här",
-    "Fråga 2 här",
-    "Fråga 3 här"
-  ],
-  "initial_estimate": {
-    "estimated_hours": ${baseTotals.workHours ? (Object.values(baseTotals.workHours) as number[]).reduce((a, b) => a + b, 0) : 40},
-    "estimated_cost": ${Math.round(baseTotals.materialCost + baseTotals.equipmentCost || 10000)}
-  }
-}
-
-GENERERA INGEN KOMPLETT OFFERT ÄNNU. Returnera endast JSON-objektet ovan.`;
-
-      const clarificationResponse = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${LOVABLE_API_KEY}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          model: 'google/gemini-2.5-flash',
-          messages: [
-            { role: 'system', content: clarificationPrompt },
-            { role: 'user', content: description }
-          ],
-          response_format: { type: "json_object" },
-          temperature: 0.7
-        }),
-      });
-
-      if (!clarificationResponse.ok) {
-        console.error('Clarification API error:', clarificationResponse.status);
-        // Fallback - fortsätt med normal offertgenerering
+      // FÖRSTA MEDDELANDET - Kolla om vi kan generera direkt eller behöver frågor
+      if (preflightCheck.canProceed) {
+        console.log('✅ First message has sufficient info - generating quote directly');
+        // Fortsätt med offertgenerering (kod fortsätter nedan)
       } else {
-        const clarificationData = await clarificationResponse.json();
-        const result = JSON.parse(clarificationData.choices[0].message.content);
+        // Behöver mer info - ställ MAX 1-2 kritiska frågor
+        console.log('⚠️ First message needs clarification:', preflightCheck.missingCritical);
         
-        if (result.needs_clarification) {
-          console.log('Returning clarification questions');
-          return new Response(
-            JSON.stringify({
-              type: 'clarification',
-              questions: result.clarification_questions,
-              initial_estimate: result.initial_estimate
-            }),
-            { 
-              headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-              status: 200 
-            }
-          );
-        }
+        const limitedQuestions = preflightCheck.missingCritical.slice(0, 2); // Max 2 frågor
+        
+        return new Response(
+          JSON.stringify({
+            type: 'clarification',
+            message: 'Jag behöver veta lite mer för att kunna göra en bra offert:',
+            questions: limitedQuestions
+          }),
+          { 
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+            status: 200 
+          }
+        );
       }
     }
-
-    // STEG 2: PRE-FLIGHT CHECK - Validera kontext innan generering
-    console.log('Step 2: Running pre-flight check...');
-    const preflightCheck = await performPreflightCheck(description, conversation_history, LOVABLE_API_KEY!);
     
-    if (!preflightCheck.valid) {
-      console.warn('⚠️ Pre-flight check failed:', preflightCheck.errors);
-      return new Response(
-        JSON.stringify({
-          type: 'clarification',
-          message: 'Jag behöver lite mer information för att skapa en korrekt offert.',
-          questions: [
-            preflightCheck.errors.join('\n'),
-            'Kan du ge mer specifika detaljer om vad du vill ha gjort?',
-            'Finns det några särskilda krav eller önskemål?'
-          ],
-          currentData: { projectType: preflightCheck.projectType }
-        }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
-      );
-    }
-    
-    // Om vi kommer hit har vi antingen historik eller clarification misslyckades
-    // Fortsätt med normal offertgenerering
+    // Om vi kommer hit ska vi generera offert (antingen första meddelande med canProceed=true, eller senare i konversationen)
     console.log('Generating complete quote...');
 
     // Define strict JSON schema for tool calling
@@ -1257,7 +1172,28 @@ GENERERA INGEN KOMPLETT OFFERT ÄNNU. Returnera endast JSON-objektet ovan.`;
         messages: [
           {
             role: 'system',
-            content: `Du är en expert på att skapa professionella offerter för svenska hantverkare.
+            content: `Du är en erfaren svensk hantverkare som skapar offerter åt dig själv till dina kunder.
+
+**DIN ROLL:**
+- Du är INTE en assistent som samlar krav
+- Du är EN HANTVERKARE som ska skapa en offert
+- Användaren är DIG (hantverkaren), INTE kunden
+- Du ska göra rimliga antaganden baserat på erfarenhet
+
+**DIN APPROACH:**
+1. Ta emot projektbeskrivning (kan vara kortfattad)
+2. Gör professionella antaganden baserat på branschstandard
+3. Skapa offerten DIREKT med de förutberäknade totalerna
+4. Använd din branscherfarenhet för att fylla i detaljer
+
+**KOMMUNIKATIONSTON:**
+- Professionell och erfaren
+- Gör antaganden där det behövs
+- Fokusera på att leverera en korrekt offert
+
+**═══════════════════════════════════════════════════════════════**
+**KRITISKT - FÖR SVENSKA HANTVERKARE**
+**═══════════════════════════════════════════════════════════════**
 
 **═══════════════════════════════════════════════════════════════**
 **DE 5 ABSOLUTA REGLERNA (BRYT ALDRIG DESSA!)**
@@ -1677,190 +1613,51 @@ Viktig information:
       console.log('ℹ️ Sanity check skipped: Kunde inte identifiera specifik projekttyp');
     }
     
-    // VALIDATION STEP 1: Validate AI output against base totals
+    // VALIDATION: Only mathematical validation (no retry loop)
     console.log('Validating quote output...');
     const validation = validateQuoteOutput(generatedQuote, baseTotals, baseTotals.hourlyRatesByType, detailLevel);
-    const realismWarnings = validateRealism(generatedQuote, description);
     
     let finalQuote = generatedQuote;
-    let wasAutoCorrected = false;
-    let retryCount = 0;
-    
-    // Helper function for detail level requirements
-    const getDetailLevelRequirements = (level: string): string => {
-      const reqs: Record<string, string> = {
-        quick: '• 2-3 arbetsposter\n• 3-5 materialposter\n• Notes max 100 tecken',
-        standard: '• 4-6 arbetsposter\n• 5-10 materialposter\n• Notes 200-300 tecken\n• Inkludera giltighetstid',
-        detailed: '• 6-10 arbetsposter\n• 10-15 materialposter\n• Notes 500-800 tecken\n• Måste ha fasindelning',
-        construction: '• 10-15 arbetsposter (inkl. projektledning)\n• 15-25 materialposter\n• Notes 1200-2000 tecken\n• Måste innehålla: projektledning, tidsplan, garanti, besiktning'
-      };
-      return reqs[level] || '';
-    };
     
     if (!validation.valid) {
       console.error('Quote validation failed:', validation.errors);
-      retryCount = 1;
       
-      // RETRY: Try one more time with more specific instructions about errors
-      console.log('Retrying with more specific instructions...');
+      // Check if errors are minor and can be auto-corrected
+      const hasOnlyMinorErrors = validation.errors.every(err => 
+        err.includes('Material: Förväntade') || 
+        err.includes('Notes ska vara') ||
+        (err.includes('Ska ha') && err.includes('poster'))
+      );
       
-      // Ge AI:n EXAKT vad som är fel
-      const errorFeedback = `
-DIN FÖREGÅENDE OFFERT VALIDERADES OCH FÖLJANDE FEL UPPTÄCKTES:
-
-${validation.errors.map((err, i) => `${i + 1}. ${err}`).join('\n')}
-
-KRAV SOM MÅSTE UPPFYLLAS:
-- Arbetsposter MÅSTE summera till EXAKT dessa timmar per arbetstyp:
-  ${Object.entries(baseTotals.workHours).map(([type, hours]) => `${type}: ${hours}h`).join(', ')}
-  
-- Materialkostnad MÅSTE vara EXAKT: ${baseTotals.materialCost + baseTotals.equipmentCost} kr
-
-- Detaljnivå "${detailLevel}" kräver:
-  ${getDetailLevelRequirements(detailLevel)}
-
-SKAPA OM OFFERTEN OCH FÖLJ DESSA EXAKTA KRAV.
-`;
-      
-      const retryResponse = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${LOVABLE_API_KEY}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          model: 'google/gemini-2.5-flash',
-          temperature: 0,
-          tools: [{
-            type: "function",
-            function: {
-              name: "create_quote",
-              description: "Skapa en strukturerad offert",
-              parameters: quoteSchema
-            }
-          }],
-          tool_choice: { type: "function", function: { name: "create_quote" } },
-          messages: [
-            {
-              role: 'system',
-              content: `Du misslyckades med valideringen förra gången. Felen var: ${validation.errors.join(', ')}
-              
-Korrigera detta och följ dessa EXAKTA totaler:
-${JSON.stringify(baseTotals, null, 2)}
-
-Du MÅSTE:
-- Fördela exakt ${Object.entries(baseTotals.workHours).map(([type, hours]) => `${hours}h ${type}`).join(', ')}
-- Total materialkostnad MÅSTE bli exakt ${baseTotals.materialCost + baseTotals.equipmentCost} kr
-- Ingen avvikelse accepteras!`
-            },
-            {
-              role: 'user',
-              content: description + '\n\n' + errorFeedback
-            }
-          ]
-        }),
-      });
-      
-      if (retryResponse.ok) {
-        const retryData = await retryResponse.json();
-        let retryQuote;
-        if (retryData.choices[0].message.tool_calls && retryData.choices[0].message.tool_calls[0]) {
-          retryQuote = JSON.parse(retryData.choices[0].message.tool_calls[0].function.arguments);
-        } else {
-          retryQuote = JSON.parse(retryData.choices[0].message.content);
+      if (hasOnlyMinorErrors) {
+        console.log('→ Applying auto-correction for minor errors...');
+        
+        // Fix material cost if needed
+        if (validation.errors.some(e => e.includes('Material: Förväntade'))) {
+          const expectedMaterialCost = baseTotals.materialCost + baseTotals.equipmentCost;
+          console.log(`→ Korrigerar materialkostnad till ${expectedMaterialCost} kr`);
+          finalQuote.summary.materialCost = expectedMaterialCost;
+          finalQuote.summary.totalBeforeVAT = finalQuote.summary.workCost + expectedMaterialCost;
+          finalQuote.summary.vat = Math.round(finalQuote.summary.totalBeforeVAT * 0.25);
+          finalQuote.summary.totalWithVAT = finalQuote.summary.totalBeforeVAT + finalQuote.summary.vat;
         }
         
-        const retryValidation = validateQuoteOutput(retryQuote, baseTotals, baseTotals.hourlyRatesByType, detailLevel);
-        
-        if (retryValidation.valid) {
-          console.log('✅ Retry successful!');
-          finalQuote = retryQuote;
-        } else {
-          console.error('⚠️ Retry also failed. Validation errors:', retryValidation.errors);
-          
-          // Check if errors are minor and can be auto-corrected
-          const hasOnlyMinorErrors = retryValidation.errors.every(err => 
-            err.includes('Material: Förväntade') || 
-            err.includes('Notes ska vara') ||
-            err.includes('Ska ha') && err.includes('poster')
-          );
-          
-          if (hasOnlyMinorErrors) {
-            console.log('→ Applying intelligent auto-correction for minor errors...');
-            
-            // Fix material cost if needed
-            if (retryValidation.errors.some(e => e.includes('Material: Förväntade'))) {
-              const expectedMaterialCost = baseTotals.materialCost + baseTotals.equipmentCost;
-              console.log(`→ Korrigerar materialkostnad till ${expectedMaterialCost} kr`);
-              retryQuote.summary.materialCost = expectedMaterialCost;
-              retryQuote.summary.totalBeforeVAT = retryQuote.summary.workCost + expectedMaterialCost;
-              retryQuote.summary.vat = Math.round(retryQuote.summary.totalBeforeVAT * 0.25);
-              retryQuote.summary.totalWithVAT = retryQuote.summary.totalBeforeVAT + retryQuote.summary.vat;
-            }
-            
-            // Fix notes length if needed
-            if (retryValidation.errors.some(e => e.includes('Notes ska vara'))) {
-              const targetLength = detailLevel === 'standard' ? 250 : detailLevel === 'detailed' ? 650 : 75;
-              if (retryQuote.notes && retryQuote.notes.length > targetLength) {
-                console.log(`→ Trimmar notes till ${targetLength} tecken`);
-                retryQuote.notes = retryQuote.notes.substring(0, targetLength - 3) + '...';
-              }
-            }
-            
-            finalQuote = retryQuote;
-            wasAutoCorrected = true;
-            console.log('✅ Auto-correction applied successfully');
-          } else {
-            console.error('❌ Retry failed with major errors. Returning error to user.');
-            
-            // Check if error is about 0 hours when baseTotals expected hours
-            const hasZeroHoursError = retryValidation.errors.some((err: string) => 
-              err.includes('Förväntade') && err.includes('men fick 0h')
-            );
-            
-            if (hasZeroHoursError) {
-              return new Response(
-                JSON.stringify({ 
-                  type: 'clarification',
-                  message: 'Jag behöver lite mer information för att kunna skapa en korrekt offert.',
-                  questions: [
-                    'Kan du berätta mer detaljerat om vilka arbetsmoment som ingår?',
-                    'Finns det några specifika krav eller önskemål för hur arbetet ska utföras?',
-                    'Är det något särskilt jag bör tänka på för detta projekt?'
-                  ]
-                }),
-                {
-                  status: 200,
-                  headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-                }
-              );
-            }
-            
-            return new Response(
-              JSON.stringify({ 
-                error: 'Validering misslyckades',
-                message: 'AI:n kunde inte generera en korrekt offert efter flera försök. Försök omformulera din förfrågan eller ge mer specifika detaljer.',
-                validationErrors: retryValidation.errors,
-                needsClarification: true
-              }),
-              {
-                status: 500,
-                headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-              }
-            );
-          }
-        }
+        console.log('✅ Auto-correction applied');
       } else {
-        console.error('❌ Retry request failed. Returning error to user.');
+        // Major errors - return clarification instead of retry
+        console.error('❌ Major validation errors. Requesting clarification.');
         
         return new Response(
           JSON.stringify({ 
-            error: 'AI-generering misslyckades',
-            message: 'Kunde inte generera offert efter flera försök. Försök igen eller kontakta support.',
-            needsClarification: true
+            type: 'clarification',
+            message: 'Jag behöver lite mer information för att skapa en korrekt offert.',
+            questions: [
+              'Kan du berätta mer detaljerat om vilka arbetsmoment som ingår?',
+              'Finns det några specifika mått eller kvantiteter jag bör känna till?'
+            ]
           }),
           {
-            status: 500,
+            status: 200,
             headers: { ...corsHeaders, 'Content-Type': 'application/json' },
           }
         );
@@ -1927,28 +1724,7 @@ Du MÅSTE:
       referenceTitle: referenceQuotes[0]?.title || undefined
     };
     
-    // Add quality warnings if any
-    if (wasAutoCorrected) {
-      responseData.qualityWarning = 'auto_corrected';
-      responseData.warningMessage = 'Offerten har korrigerats automatiskt för att säkerställa korrekt matematik. Granska noggrannt.';
-    }
-    
-    if (!validation.valid && !wasAutoCorrected) {
-      responseData.validationErrors = validation.errors;
-    }
-    
-    if (realismWarnings.length > 0) {
-      responseData.realismWarnings = realismWarnings;
-    }
-    
-    // Add reality check warning if failed
-    if (!realityCheckResult.valid && realityCheckResult.reason) {
-      responseData.realityCheckWarning = realityCheckResult.reason;
-      if (!responseData.realismWarnings) {
-        responseData.realismWarnings = [];
-      }
-      responseData.realismWarnings.push(realityCheckResult.reason);
-    }
+    // Quality metadata (simplified - no warnings in new flow)
 
     return new Response(
       JSON.stringify(responseData),
