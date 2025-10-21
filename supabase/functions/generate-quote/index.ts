@@ -322,6 +322,84 @@ function validateRealism(quote: any, description: string): string[] {
   return warnings;
 }
 
+// Pre-flight check: Validate context before generating quote
+async function performPreflightCheck(
+  description: string,
+  conversationHistory: any[],
+  apiKey: string
+): Promise<{ valid: boolean; errors: string[]; projectType?: string }> {
+  console.log('🛫 Running pre-flight check...');
+  
+  const userRequest = conversationHistory && conversationHistory.length > 0
+    ? conversationHistory.filter((m: any) => m.role === 'user').map((m: any) => m.content).join(' → ')
+    : description;
+  
+  const checkPrompt = `Analysera följande kundförfrågan och identifiera vad de FAKTISKT ber om.
+
+Kundförfrågan: "${userRequest}"
+
+Returnera JSON:
+{
+  "projectType": "målning|altan|kök|badrum|städning|trädfällning|trädgård|annat",
+  "confidence": 0.0-1.0,
+  "keywords": ["lista", "av", "nyckelord"],
+  "potentialConflicts": ["eventuella motsägelser i förfrågan"]
+}`;
+
+  try {
+    const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: 'google/gemini-2.5-flash',
+        messages: [
+          { role: 'system', content: checkPrompt },
+          { role: 'user', content: userRequest }
+        ],
+        response_format: { type: "json_object" },
+        temperature: 0
+      }),
+    });
+
+    if (!response.ok) {
+      console.error('Pre-flight check API error:', response.status);
+      return { valid: true, errors: [] }; // Fallback: allow generation
+    }
+
+    const data = await response.json();
+    const result = JSON.parse(data.choices[0].message.content);
+    
+    console.log('Pre-flight result:', result);
+    
+    // Check for low confidence or conflicts
+    if (result.confidence < 0.5) {
+      return {
+        valid: false,
+        errors: [`Osäker projekttyp (${Math.round(result.confidence * 100)}% säkerhet). Be om mer specifika detaljer.`],
+        projectType: result.projectType
+      };
+    }
+    
+    if (result.potentialConflicts && result.potentialConflicts.length > 0) {
+      return {
+        valid: false,
+        errors: result.potentialConflicts,
+        projectType: result.projectType
+      };
+    }
+    
+    console.log(`✅ Pre-flight OK: Projekttyp "${result.projectType}" (${Math.round(result.confidence * 100)}%)`);
+    return { valid: true, errors: [], projectType: result.projectType };
+    
+  } catch (error) {
+    console.error('Pre-flight check error:', error);
+    return { valid: true, errors: [] }; // Fallback: allow generation
+  }
+}
+
 async function calculateBaseTotals(
   description: string, 
   apiKey: string,
@@ -1074,6 +1152,22 @@ GENERERA INGEN KOMPLETT OFFERT ÄNNU. Returnera endast JSON-objektet ovan.`;
       }
     }
 
+    // STEG 2: PRE-FLIGHT CHECK - Validera kontext innan generering
+    console.log('Step 2: Running pre-flight check...');
+    const preflightCheck = await performPreflightCheck(description, conversation_history, LOVABLE_API_KEY!);
+    
+    if (!preflightCheck.valid) {
+      console.warn('⚠️ Pre-flight check failed:', preflightCheck.errors);
+      return new Response(
+        JSON.stringify({
+          type: 'clarification',
+          message: `Innan jag skapar offerten behöver jag förtydligande:\n\n${preflightCheck.errors.map(e => `• ${e}`).join('\n')}\n\nKan du ge mer specifika detaljer om vad du vill ha gjort?`,
+          currentData: { projectType: preflightCheck.projectType }
+        }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
+      );
+    }
+    
     // Om vi kommer hit har vi antingen historik eller clarification misslyckades
     // Fortsätt med normal offertgenerering
     console.log('Generating complete quote...');
@@ -1161,21 +1255,31 @@ GENERERA INGEN KOMPLETT OFFERT ÄNNU. Returnera endast JSON-objektet ovan.`;
             content: `Du är en expert på att skapa professionella offerter för svenska hantverkare.
 
 **═══════════════════════════════════════════════════════════════**
-**KRITISKT - FÖLJ EXAKT VAD ANVÄNDAREN BER OM**
+**DE 5 ABSOLUTA REGLERNA (BRYT ALDRIG DESSA!)**
 **═══════════════════════════════════════════════════════════════**
 
-Användarens önskemål: "${conversation_history && conversation_history.length > 0 ? conversation_history.filter((m: any) => m.role === 'user').map((m: any) => m.content).join(' → ') : description}"
+1. **MATCHA ANVÄNDARENS FÖRFRÅGAN EXAKT**
+   Användaren bad om: "${conversation_history && conversation_history.length > 0 ? conversation_history.filter((m: any) => m.role === 'user').map((m: any) => m.content).join(' → ') : description}"
+   → Skapa offert för EXAKT detta (om "målning" → målningsoffert, INTE altan/kök)
 
-Din uppgift är att skapa en offert som EXAKT matchar användarens beskrivning.
+2. **LÅS FÖRUTBERÄKNADE TOTALER**
+   Arbetstimmar: ${JSON.stringify(baseTotals.workHours)}
+   Material: ${baseTotals.materialCost} kr | Utrustning: ${baseTotals.equipmentCost} kr
+   → FÅR INTE ändras, endast fördelas över poster!
 
-**ABSOLUTA REGLER:**
-- Om användaren säger "målning" → skapa EN MÅLNINGSOFFERT (INTE altan, kök, eller annat)
-- Om användaren säger "altan" → skapa EN ALTANOFFERT (INTE målning)  
-- Om användaren säger "kök" → skapa EN KÖKSOFFERT (INTE målning, altan eller annat)
-- Om användaren säger "badrum" → skapa EN BADRUMSOFFERT (INTE målning, kök eller annat)
+3. **ANVÄND EXAKTA TIMPRISER**
+   ${JSON.stringify(baseTotals.hourlyRatesByType, null, 2)}
+   → Använd EXAKT dessa priser för matchande arbetstyper
 
-**VIKTIGT:** Kontrollera att ALLA arbetsmoment, material och beskrivningar matchar det användaren faktiskt begärt!
-Om användaren bad om målning får det INTE finnas rivning av tak, altanbygge eller annat i offerten.
+4. **MATERIAL MÅSTE HA REALISTISKA PRISER**
+   → ALDRIG pricePerUnit = 0 kr
+   → Total materials.subtotal = ${baseTotals.materialCost + baseTotals.equipmentCost} kr
+
+5. **FÖLJ DETALJNIVÅ "${detailLevel}"**
+   ${detailLevel === 'quick' ? '→ 2-3 arbetsposter, 3-5 material, notes <100 tecken' : ''}
+   ${detailLevel === 'standard' ? '→ 4-6 arbetsposter, 5-10 material, notes 200-300 tecken' : ''}
+   ${detailLevel === 'detailed' ? '→ 6-10 arbetsposter, 10-15 material, notes 500-800 tecken med fasindelning' : ''}
+   ${detailLevel === 'construction' ? '→ 10-15 arbetsposter (inkl. projektledning), 15-25 material, notes 1200-2000 tecken med projektledning+tidsplan+garanti+besiktning' : ''}
 
 **═══════════════════════════════════════════════════════════════**
             
@@ -1269,206 +1373,28 @@ Matcha tonen och stilen från användarens tidigare offerter.
 
 ` : ''}
 
-**KRITISKA REGLER FÖR TIMPRIS-MATCHNING:**
+**══════════════════════════════════════════════════════════════**
+**PROJEKTSPECIFIK KONTEXT**
+**══════════════════════════════════════════════════════════════**
 
-När du skapar workItems MÅSTE du följa dessa strikta regler:
+**TIMPRIS-MATCHNING (workItem.name → hourlyRate):**
+• "Snickare - Rivning" → använd ${baseTotals.hourlyRatesByType['Snickare'] || 650} kr/h
+• "Målare - Målning" → använd ${baseTotals.hourlyRatesByType['Målare'] || 700} kr/h
+• workItem.name MÅSTE börja med arbetstypen från baseTotals.hourlyRatesByType
+• Fallback (om arbetstyp saknas): Städare 500, Arborist 1000, Trädgård 550, Elektriker 850, VVS 900
 
-1. **Arbetstyp MÅSTE matchas exakt med användarens timpriser:**
-   - Om användaren har "Snickare: 799 kr/h" → använd EXAKT 799 kr/h för ALLA snickarposter
-   - Om användaren har "Städare: 500 kr/h" → använd EXAKT 500 kr/h för ALLA städposter
-   - workItem.name ska börja med arbetstypen: "Snickare - Rivning", "Snickare - Kakel" osv.
+**MATERIAL-FÖRDELNING:**
+• ALDRIG pricePerUnit = 0 kr!
+• Total materials.subtotal = ${baseTotals.materialCost + baseTotals.equipmentCost} kr exakt
+• Exempel badrum 5 kvm: Kakel vägg (1750 kr) + Klinker golv (2125 kr) + VVS (6000 kr) = 20000 kr ✓
 
-2. **Matching-logik för workItem.name:**
-   - Första ordet före " - " i workItem.name MÅSTE matcha work_type från användarens timpriser
-   - Exempel: "Snickare - Rivning" → matchar work_type "Snickare"
-   - Exempel: "Städare - Hemstädning" → matchar work_type "Städare"
-   - Om arbetstypen "Snickare - Badrumsrenovering" används, använd "Snickare" rate
+**══════════════════════════════════════════════════════════════**
+**MATEMATIK MÅSTE STÄMMA**
+**══════════════════════════════════════════════════════════════**
 
-3. **Om arbetstyp INTE finns i användarens timpriser:**
-   Använd branschstandard-priser:
-   - Städare: 500 kr/h
-   - Arborist/Trädfällning: 1000 kr/h
-   - Trädgårdsskötare: 550 kr/h
-   - Målare: 700 kr/h
-   - Elektriker: 850 kr/h
-   - VVS: 900 kr/h
-   - Fönsterputsare: 450 kr/h
-
-4. **ABSOLUT FÖRBUD:**
-   - Använd ALDRIG fel arbetstyp för uppdraget
-   - Städning → "Städare" (INTE "Snickare")
-   - Trädfällning → "Arborist" (INTE "Snickare")
-   - Gräsklippning → "Trädgårdsskötare" (INTE "Snickare")
-
-✅ KORREKT EXEMPEL:
-Användaren har: "Snickare: 799 kr/h"
-Uppdrag: "Renovera badrum"
-workItems: [
-  { name: "Snickare - Rivning", hours: 8, hourlyRate: 799 },
-  { name: "Snickare - Underarbeten", hours: 12, hourlyRate: 799 },
-  { name: "Snickare - Kakelsättning", hours: 15, hourlyRate: 799 }
-]
-
-❌ FEL EXEMPEL:
-Användaren har: "Snickare: 799 kr/h"
-Uppdrag: "Städning 70 kvm"
-workItems: [{ name: "Snickare - Städning", hours: 8, hourlyRate: 799 }]  ← FEL arbetstyp!
-
-✅ RÄTT:
-workItems: [{ name: "Städare - Hemstädning", hours: 6, hourlyRate: 500 }]  ← Korrekt arbetstyp
-
-VIKTIGA PRINCIPER FÖR KONSEKVENTA OFFERTER:
-- Använd EXAKT de angivna timpriserna ovan för matchande arbetstyper
-- Basera tidsestimat på branschstandarder och erfarenhet
-- Samma beskrivning ska alltid ge samma resultat - var konsekvent!
-- Avrunda alltid timmar till närmaste heltal
-- Använd realistiska och konsekventa materialpriser baserat på 2025 års priser
-- Specificera tydligt vad som ingår och inte ingår i offerten
-
-**🔒 KRITISKT - LÅS DESSA FÖRUTBERÄKNADE TOTALER:**
-
-Du MÅSTE använda EXAKT dessa värden som redan beräknats för projektet:
-Arbetstimmar: ${JSON.stringify(baseTotals.workHours, null, 2)}
-Materialkostnad: ${baseTotals.materialCost} kr
-Utrustningskostnad: ${baseTotals.equipmentCost} kr
-
-**KRITISKT - DU MÅSTE ANVÄNDA EXAKT DESSA TIMPRISER:**
-${JSON.stringify(baseTotals.hourlyRatesByType, null, 2)}
-
-Du MÅSTE använda exakt dessa timpriser för varje arbetstyp. INGEN avvikelse tillåts!
-
-**DU FÅR ABSOLUT INTE:**
-- Ändra totalsumman
-- Lägga till eller ta bort arbetstimmar
-- Ändra materialkostnaden
-- Ändra timpriserna
-- "Anpassa" priserna
-
-**DIN UPPGIFT:**
-Fördela dessa EXAKTA totaler över arbetsposter och material enligt detaljnivån nedan.
-
-**═══════════════════════════════════════════════════════════════**
-**CHAIN-OF-THOUGHT PRISSÄTTNING (för att säkerställa realism)**
-**═══════════════════════════════════════════════════════════════**
-
-INNAN du skapar offerten, tänk igenom dessa steg:
-
-**STEG 1 - PROJEKTETS OMFATTNING:**
-• Vad ska faktiskt göras? (Lista alla moment)
-• Hur många kvadratmeter/enheter?
-• Finns dolda kostnader? (rivning, transport, bortforsling)
-• Vilka yrkesgrupper behövs?
-
-**STEG 2 - BRANSCHKONTROLL:**
-Badrum 5 kvm renovering:
-→ Branschnorm: 15,000-30,000 kr/m² = 75,000-150,000 kr totalt
-→ Material: 15,000-25,000 kr minimum
-→ Arbete: 50-80 timmar
-
-Altan 25 kvm:
-→ Branschnorm: 2,500-5,000 kr/m² = 62,500-125,000 kr totalt
-→ Material: 30,000-50,000 kr
-→ Arbete: 120-180 timmar
-
-Kök 15 kvm renovering:
-→ Branschnorm: 20,000-40,000 kr/m² = 300,000-600,000 kr totalt
-→ Material: 150,000-300,000 kr
-→ Arbete: 120-200 timmar
-
-**STEG 3 - VERKLIGHETSKOLL:**
-• Jämför dina baseTotals mot branschnormen ovan
-• Om baseTotals är <60% av norm → FLAGGA FÖR ANVÄNDARENS GRANSKNING
-• Om baseTotals är >150% av norm → FLAGGA FÖR ANVÄNDARENS GRANSKNING
-• Detta är AUTOMATISKT - du ska INTE ändra priserna, bara följa baseTotals
-
-**EXEMPEL PÅ REALISTISK PRISSÄTTNING:**
-Projekt: "Renovera badrum 5 kvm"
-baseTotals: { workHours: { "Plattsättare": 32, "VVS": 16, "Elektriker": 12, "Snickare": 8 }, materialCost: 20000 }
-
-→ TÄNK: "68 timmar totalt för 5 kvm = 13.6 h/m² - detta är INOM branschnorm (10-15 h/m²) ✓"
-→ TÄNK: "Material 20,000 kr för 5 kvm = 4,000 kr/m² - detta är INOM branschnorm (3,000-5,000 kr/m²) ✓"
-→ RESULTAT: Fortsätt med dessa totaler!
-
-**═══════════════════════════════════════════════════════════════**
-
-**📦 KRITISKT - MATERIAL MÅSTE HA REALISTISKA PRISER:**
-
-ALLA material-poster i "materials"-arrayen MÅSTE ha:
-- pricePerUnit > 0 (FÅR ALDRIG vara 0!)
-- quantity > 0
-- subtotal = quantity × pricePerUnit
-- subtotal-summan MÅSTE matcha baseTotals.materialCost + baseTotals.equipmentCost
-
-**EXEMPEL PÅ KORREKT MATERIAL-FÖRDELNING:**
-
-Om baseTotals.materialCost = 20000 kr och projektet är badrumsrenovering:
-{
-  "materials": [
-    { "name": "Kakel vägg", "quantity": 5, "unit": "kvm", "pricePerUnit": 350, "subtotal": 1750 },
-    { "name": "Klinker golv", "quantity": 5, "unit": "kvm", "pricePerUnit": 425, "subtotal": 2125 },
-    { "name": "Tätskikt", "quantity": 1, "unit": "st", "pricePerUnit": 1500, "subtotal": 1500 },
-    { "name": "VVS-material (rör, kopplingar)", "quantity": 1, "unit": "set", "pricePerUnit": 6000, "subtotal": 6000 },
-    { "name": "El-material (kablar, dosor)", "quantity": 1, "unit": "set", "pricePerUnit": 3000, "subtotal": 3000 },
-    { "name": "Golvvärmesystem", "quantity": 5, "unit": "kvm", "pricePerUnit": 800, "subtotal": 4000 },
-    { "name": "Fästmassor och fog", "quantity": 1, "unit": "set", "pricePerUnit": 1625, "subtotal": 1625 }
-  ]
-}
-Total: 1750 + 2125 + 1500 + 6000 + 3000 + 4000 + 1625 = 20000 kr ✓
-
-**FÖRBJUDET EXEMPEL (fel):**
-{
-  "materials": [
-    { "name": "Kakel", "quantity": 1, "unit": "st", "pricePerUnit": 0, "subtotal": 0 },  ← FEL! pricePerUnit får EJ vara 0!
-    { "name": "VVS-material", "quantity": 1, "unit": "st", "pricePerUnit": 0, "subtotal": 0 }  ← FEL!
-  ]
-}
-
----
-
-DETALJNIVÅ OCH INNEHÅLL (användarens val: ${detailLevel}):
-
-⚠️ DESSA KRAV ÄR OBLIGATORISKA OCH KOMMER VALIDERAS:
-
-**QUICK (Snabboffert - 5 min arbete):**
-✓ EXAKT 2-3 arbetsposter (inte fler, inte färre)
-✓ EXAKT 3-5 materialposter
-✓ Notes: Max 100 tecken (hårda gränsen!)
-✓ Fördelning: Dela baseTotals.workHours på 2-3 poster
-✓ Exempel notes: "Offert giltig 30 dagar. ROT-avdrag ingår."
-
-**STANDARD (Normal offert - 15 min arbete):**
-✓ EXAKT 4-6 arbetsposter med korta beskrivningar (1 mening per post)
-✓ EXAKT 5-10 materialposter med kategorisering
-✓ Notes: EXAKT 200-300 tecken (mäts!)
-✓ Fördelning: Dela baseTotals.workHours proportionellt
-✓ Notes måste innehålla: Giltighetstid, Betalningsvillkor, ROT/RUT-info
-
-**DETAILED (Detaljerad offert - 30 min arbete):**
-✓ EXAKT 6-10 arbetsposter med utförliga beskrivningar (2-3 meningar per post)
-✓ EXAKT 10-15 materialposter med fullständiga specifikationer
-✓ Notes: EXAKT 500-800 tecken
-✓ MÅSTE innehålla fasindelning: "Fas 1: ...", "Fas 2: ...", etc.
-✓ Notes måste inkludera: Arbetsgång, Garantier, Betalplan
-✓ Fördelning: Mer detaljerad uppdelning av baseTotals
-
-**CONSTRUCTION (Byggprojekt - 60 min arbete):**
-✓ EXAKT 10-15 arbetsposter inkl. "Projektledning" (obligatoriskt)
-✓ EXAKT 15-25 materialposter med artikelnummer
-✓ Notes: EXAKT 1200-2000 tecken (komplett projektplan)
-✓ Notes MÅSTE innehålla ALLA dessa termer:
-  - "projektledning" eller "projektansvarig"
-  - "tidsplan" eller "tidplan"
-  - "garanti" eller "garantier"
-  - "besiktning" eller "slutbesiktning"
-✓ Fördelning: Inklusive projektledning (10-15% av totala timmar)
-
-Om du inte följer dessa krav kommer offerten att valideras och returneras för korrigering.
-
-**🎯 ABSOLUT KRAV - MATEMATIK MÅSTE STÄMMA:**
-- Summan av alla workItems.hours PER arbetstyp MÅSTE exakt matcha baseTotals.workHours
-- Summan av alla materials.subtotal MÅSTE exakt matcha baseTotals.materialCost + baseTotals.equipmentCost
-- Om baseTotals säger "Snickare: 40h" → totalt i workItems för Snickare MÅSTE vara exakt 40h
-- Om baseTotals säger "materialCost: 18500" → totalt i materials MÅSTE vara exakt 18500 kr
+• workItems.hours per arbetstyp = baseTotals.workHours exakt
+• materials.subtotal totalt = ${baseTotals.materialCost + baseTotals.equipmentCost} kr exakt
+• workItems.hourlyRate = baseTotals.hourlyRatesByType exakt
             
 Baserat på uppdragsbeskrivningen ska du returnera en strukturerad offert i JSON-format med följande struktur:
 
