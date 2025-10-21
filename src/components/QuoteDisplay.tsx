@@ -698,6 +698,33 @@ const QuoteDisplay = ({
         </Alert>
       </div>
 
+      {/* ROT/RUT Info Box (Fas 9C) */}
+      {deductionType !== 'none' && (
+        <div className="px-6 pb-4">
+          <Alert className="border-green-500 bg-green-50 dark:bg-green-950">
+            <AlertCircle className="h-4 w-4 text-green-600" />
+            <AlertTitle className="text-green-900 dark:text-green-100">
+              {deductionType === 'rot' ? '🏠 ROT-avdrag' : '🧹 RUT-avdrag'}
+            </AlertTitle>
+            <AlertDescription className="text-green-800 dark:text-green-200">
+              <p className="font-medium">
+                {new Date() < new Date('2026-01-01') 
+                  ? '✅ T.o.m. 31 dec 2025: 50% avdrag på arbetskostnad inkl. moms'
+                  : '⚠️ Fr.o.m. 1 jan 2026: 30% avdrag på arbetskostnad inkl. moms'
+                }
+              </p>
+              <div className="mt-2 space-y-1 text-sm">
+                <p><strong>Maxgräns per person:</strong> {deductionType === 'rot' ? '50,000 kr' : '75,000 kr'}/år</p>
+                <p><strong>Totalt max avdrag:</strong> {formatCurrency(deductionType === 'rot' ? 50000 : 75000)} (1 person)</p>
+                <p className="text-xs mt-2 opacity-80">
+                  💡 Flera i hushållet? Max-beloppet multipliceras med antal berättigade personer.
+                </p>
+              </div>
+            </AlertDescription>
+          </Alert>
+        </div>
+      )}
+
       <CardContent className="space-y-6">
         {/* Work Items */}
         <div>

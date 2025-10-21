@@ -620,6 +620,7 @@ serve(async (req) => {
       detailLevel: z.enum(['quick', 'standard', 'detailed', 'construction']).default('standard'),
       deductionType: z.enum(['rot', 'rut', 'none', 'auto']).default('auto'),
       referenceQuoteId: z.string().optional(),
+      numberOfRecipients: z.number().int().min(1).max(10).default(1),
       conversation_history: z.array(z.object({
         role: z.enum(['user', 'assistant']),
         content: z.string()
@@ -661,12 +662,30 @@ serve(async (req) => {
     }
 
     const user_id = user.id;
-    const { description, customer_id, detailLevel, deductionType, referenceQuoteId, conversation_history } = validatedData;
+    const { description, customer_id, detailLevel, deductionType, referenceQuoteId, numberOfRecipients, conversation_history } = validatedData;
 
     console.log('Generating quote for user:', user_id);
     console.log('Description:', description);
     console.log('Deduction type requested:', deductionType);
     console.log('Conversation history length:', conversation_history?.length || 0);
+
+    // Bestäm avdragssats baserat på datum (Fas 9B)
+    const currentDate = new Date();
+    const is2025HigherRate = currentDate >= new Date('2025-05-12') && currentDate <= new Date('2025-12-31');
+    const deductionRate = is2025HigherRate ? 0.50 : 0.30;
+    const deductionPeriodText = is2025HigherRate 
+      ? 'T.o.m. 31 december 2025: 50% avdrag på arbetskostnad inkl. moms'
+      : 'Fr.o.m. 1 januari 2026: 30% avdrag på arbetskostnad inkl. moms';
+    
+    console.log(`📅 Datum: ${currentDate.toISOString().split('T')[0]} → Avdragssats: ${deductionRate * 100}%`);
+
+    // Beräkna max ROT/RUT baserat på antal mottagare (Fas 9A)
+    const maxRotPerPerson = 50000;
+    const maxRutPerPerson = 75000;
+    const totalMaxRot = maxRotPerPerson * numberOfRecipients;
+    const totalMaxRut = maxRutPerPerson * numberOfRecipients;
+
+    console.log(`📊 ROT/RUT-gränser: ${numberOfRecipients} mottagare → Max ROT: ${totalMaxRot} kr, Max RUT: ${totalMaxRut} kr`);
 
     // Skapa Supabase-klient för att hämta timpriser
     const supabaseClient = createClient(
@@ -1474,35 +1493,41 @@ ${finalDeductionType === 'none' ? '- Inkludera INGET avdragsfält (varken rotDed
 **KRITISKT - ROT/RUT-AVDRAG BERÄKNING (FÖLJ EXAKT!)**
 **═══════════════════════════════════════════════════════════════**
 
+${deductionPeriodText}
+
 **ROT-AVDRAG (Renovering, Ombyggnad, Tillbyggnad):**
 1. Beräkna arbetskostnad INKL moms: workCost × 1.25
-2. ROT-avdrag = (workCost × 1.25) × 0.30
-3. Max 50,000 kr per person och år
+2. ROT-avdrag = (workCost × 1.25) × ${deductionRate}
+3. Max ${totalMaxRot} kr (${numberOfRecipients} ${numberOfRecipients === 1 ? 'person' : 'personer'} × ${maxRotPerPerson} kr/person)
 4. Gäller ENDAST arbetskostnad, INTE material
 5. Kund betalar: (workCost + materialCost) × 1.25 - rotDeduction
 
-**EXEMPEL ROT:**
+**EXEMPEL ROT (${numberOfRecipients} mottagare, ${deductionRate * 100}%):**
 • Arbetskostnad: 40,000 kr (exkl moms)
 • Arbetskostnad inkl moms: 40,000 × 1.25 = 50,000 kr
-• ROT-avdrag: 50,000 × 0.30 = 15,000 kr
+• ROT-avdrag (${deductionRate * 100}%): 50,000 × ${deductionRate} = ${Math.round(50000 * deductionRate)} kr
+• Max-gräns: ${totalMaxRot} kr
+• Faktiskt avdrag: ${Math.min(Math.round(50000 * deductionRate), totalMaxRot)} kr
 • Material: 10,000 kr (× 1.25 = 12,500 kr inkl moms)
 • Total inkl moms: 50,000 + 12,500 = 62,500 kr
-• Kund betalar: 62,500 - 15,000 = 47,500 kr
+• Kund betalar: 62,500 - ${Math.min(Math.round(50000 * deductionRate), totalMaxRot)} = ${62500 - Math.min(Math.round(50000 * deductionRate), totalMaxRot)} kr
 
-**RUT-AVDRAG (Rengöring, Underhåll, Trädgård):**
+**RUT-AVDRAG (Rengöring, Underhåll, Tvätt, Trädgård):**
 1. Beräkna arbetskostnad INKL moms: workCost × 1.25
-2. RUT-avdrag = (workCost × 1.25) × 0.50
-3. Max 75,000 kr per person och år
-4. Gäller ENDAST arbetskostnad, INTE material
+2. RUT-avdrag = (workCost × 1.25) × ${deductionRate}
+3. Max ${totalMaxRut} kr (${numberOfRecipients} ${numberOfRecipients === 1 ? 'person' : 'personer'} × ${maxRutPerPerson} kr/person)
+4. Gäller: Städning, trädgård, snöskottning, fönsterputsning
 5. Kund betalar: (workCost + materialCost) × 1.25 - rutDeduction
 
-**EXEMPEL RUT:**
+**EXEMPEL RUT (${numberOfRecipients} mottagare, ${deductionRate * 100}%):**
 • Arbetskostnad: 4,000 kr (exkl moms)
 • Arbetskostnad inkl moms: 4,000 × 1.25 = 5,000 kr
-• RUT-avdrag: 5,000 × 0.50 = 2,500 kr
+• RUT-avdrag (${deductionRate * 100}%): 5,000 × ${deductionRate} = ${Math.round(5000 * deductionRate)} kr
+• Max-gräns: ${totalMaxRut} kr
+• Faktiskt avdrag: ${Math.min(Math.round(5000 * deductionRate), totalMaxRut)} kr
 • Material: 500 kr (× 1.25 = 625 kr inkl moms)
 • Total inkl moms: 5,000 + 625 = 5,625 kr
-• Kund betalar: 5,625 - 2,500 = 3,125 kr
+• Kund betalar: 5,625 - ${Math.min(Math.round(5000 * deductionRate), totalMaxRut)} = ${5625 - Math.min(Math.round(5000 * deductionRate), totalMaxRut)} kr
 
 **KORREKT BERÄKNING I SUMMARY:**
 {
@@ -1511,10 +1536,10 @@ ${finalDeductionType === 'none' ? '- Inkludera INGET avdragsfält (varken rotDed
   "totalBeforeVAT": 50000,     // workCost + materialCost
   "vat": 12500,                // totalBeforeVAT × 0.25
   "totalWithVAT": 62500,       // totalBeforeVAT + vat
-  "deductionAmount": 15000,    // (workCost × 1.25) × 0.30
+  "deductionAmount": ${Math.min(Math.round(50000 * deductionRate), totalMaxRot)},    // (workCost × 1.25) × ${deductionRate}
   "deductionType": "rot",
-  "rotDeduction": 15000,       // Samma som deductionAmount
-  "customerPays": 47500        // totalWithVAT - rotDeduction
+  "rotDeduction": ${Math.min(Math.round(50000 * deductionRate), totalMaxRot)},       // Samma som deductionAmount
+  "customerPays": ${62500 - Math.min(Math.round(50000 * deductionRate), totalMaxRot)}        // totalWithVAT - rotDeduction
 }
 
 **FEL BERÄKNING (gör INTE så här!):**
@@ -1699,17 +1724,25 @@ Du MÅSTE:
 
     // Normalize deduction fields for consistent display
     if (finalDeductionType === 'rot') {
-      // ROT deduction
-      finalQuote.summary.deductionAmount = finalQuote.summary.rotDeduction || finalQuote.summary.deductionAmount || 0;
-      finalQuote.summary.rotDeduction = finalQuote.summary.deductionAmount;
+      // ROT deduction - använd dynamisk sats och max
+      const workCostInclVAT = finalQuote.summary.workCost * 1.25;
+      const calculatedRot = workCostInclVAT * deductionRate;
+      finalQuote.summary.rotDeduction = Math.min(calculatedRot, totalMaxRot);
+      finalQuote.summary.deductionAmount = finalQuote.summary.rotDeduction;
       finalQuote.summary.deductionType = 'rot';
-      delete finalQuote.summary.rutDeduction; // Remove RUT if exists
+      delete finalQuote.summary.rutDeduction;
+      
+      console.log(`✅ ROT (${deductionRate * 100}%): ${workCostInclVAT} kr × ${deductionRate} = ${calculatedRot} kr → begränsat till ${finalQuote.summary.rotDeduction} kr (max ${totalMaxRot} kr för ${numberOfRecipients} person${numberOfRecipients > 1 ? 'er' : ''})`);
     } else if (finalDeductionType === 'rut') {
-      // RUT deduction
-      finalQuote.summary.deductionAmount = finalQuote.summary.rutDeduction || finalQuote.summary.deductionAmount || 0;
-      finalQuote.summary.rutDeduction = finalQuote.summary.deductionAmount;
+      // RUT deduction - använd dynamisk sats och max
+      const workCostInclVAT = finalQuote.summary.workCost * 1.25;
+      const calculatedRut = workCostInclVAT * deductionRate;
+      finalQuote.summary.rutDeduction = Math.min(calculatedRut, totalMaxRut);
+      finalQuote.summary.deductionAmount = finalQuote.summary.rutDeduction;
       finalQuote.summary.deductionType = 'rut';
-      delete finalQuote.summary.rotDeduction; // Remove ROT if exists
+      delete finalQuote.summary.rotDeduction;
+      
+      console.log(`✅ RUT (${deductionRate * 100}%): ${workCostInclVAT} kr × ${deductionRate} = ${calculatedRut} kr → begränsat till ${finalQuote.summary.rutDeduction} kr (max ${totalMaxRut} kr för ${numberOfRecipients} person${numberOfRecipients > 1 ? 'er' : ''})`);
     } else {
       // No deduction
       finalQuote.summary.deductionAmount = 0;

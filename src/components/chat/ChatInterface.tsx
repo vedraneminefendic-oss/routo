@@ -109,7 +109,8 @@ export const ChatInterface = ({ onQuoteGenerated, isGenerating }: ChatInterfaceP
           description: content,
           conversation_history: conversationHistory,
           detailLevel: 'standard',
-          deductionType: 'auto'
+          deductionType: 'auto',
+          numberOfRecipients: 1 // Default to 1 recipient
         }
       });
 

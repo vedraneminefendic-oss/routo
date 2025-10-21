@@ -1,4 +1,4 @@
-import { Home, Ruler, Gem, Hammer, HelpCircle, Sparkles, Edit, Calendar } from "lucide-react";
+import { Home, Ruler, Gem, Hammer, HelpCircle, Sparkles, Edit, Calendar, Users } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -9,6 +9,7 @@ export interface ContextData {
   materialLevel?: string;
   workType?: string;
   deadline?: string;
+  numberOfRecipients?: number;
 }
 
 interface ContextPillsProps {
@@ -70,6 +71,14 @@ export const ContextPills = ({ messages, onPillClick }: ContextPillsProps) => {
       }
     }
 
+    // Extrahera antal mottagare
+    const recipientsMatch = allContent.match(/(\d+)\s*(person|personer|mottagare|hushåll)/i);
+    if (recipientsMatch) {
+      context.numberOfRecipients = parseInt(recipientsMatch[1]);
+    } else if (allContent.includes('flera') || allContent.includes('båda')) {
+      context.numberOfRecipients = 2;
+    }
+
     return context;
   };
 
@@ -123,6 +132,15 @@ export const ContextPills = ({ messages, onPillClick }: ContextPillsProps) => {
       color: 'text-red-600 dark:text-red-400',
       bgColor: 'bg-red-50 dark:bg-red-950/30',
       borderColor: 'border-red-200 dark:border-red-800'
+    },
+    {
+      key: 'numberOfRecipients' as keyof ContextData,
+      icon: Users,
+      label: 'Mottagare',
+      value: context.numberOfRecipients ? `${context.numberOfRecipients} ${context.numberOfRecipients === 1 ? 'person' : 'personer'}` : undefined,
+      color: 'text-indigo-600 dark:text-indigo-400',
+      bgColor: 'bg-indigo-50 dark:bg-indigo-950/30',
+      borderColor: 'border-indigo-200 dark:border-indigo-800'
     }
   ];
 
