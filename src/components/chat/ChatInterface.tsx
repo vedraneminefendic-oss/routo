@@ -360,11 +360,16 @@ export const ChatInterface = ({ onQuoteGenerated, isGenerating }: ChatInterfaceP
                     {generatedQuote.summary && (
                       <EstimateSummary
                         subtotal={generatedQuote.summary.totalBeforeVAT || 0}
+                        workCost={generatedQuote.summary.workCost}
+                        materialCost={generatedQuote.summary.materialCost}
+                        vat={generatedQuote.summary.vat}
+                        totalWithVAT={generatedQuote.summary.totalWithVAT}
                         rotRutDeduction={generatedQuote.summary.deductionType !== 'none' ? {
                           type: generatedQuote.summary.deductionType?.toUpperCase() as 'ROT' | 'RUT',
                           laborCost: generatedQuote.summary.workCost || 0,
                           deductionAmount: generatedQuote.summary.deductionAmount || 0,
-                          priceAfterDeduction: generatedQuote.summary.customerPays || 0
+                          priceAfterDeduction: generatedQuote.summary.customerPays || 0,
+                          deductionRate: generatedQuote.summary.deductionRate || 0.50
                         } : undefined}
                         total={generatedQuote.summary.customerPays || generatedQuote.summary.totalWithVAT || 0}
                       />

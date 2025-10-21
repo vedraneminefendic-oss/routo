@@ -6,27 +6,66 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 
 interface EstimateSummaryProps {
   subtotal: number;
+  workCost?: number;
+  materialCost?: number;
+  vat?: number;
+  totalWithVAT?: number;
   rotRutDeduction?: {
     type: 'ROT' | 'RUT';
     laborCost: number;
     deductionAmount: number;
     priceAfterDeduction: number;
+    deductionRate?: number;
   };
   total: number;
 }
 
-export const EstimateSummary = ({ subtotal, rotRutDeduction, total }: EstimateSummaryProps) => {
+export const EstimateSummary = ({ subtotal, workCost, materialCost, vat, totalWithVAT, rotRutDeduction, total }: EstimateSummaryProps) => {
   return (
     <Card className="border-2 border-primary/20">
       <CardContent className="pt-6">
         <div className="space-y-4">
+          {/* Work and Material Cost Breakdown */}
+          {workCost !== undefined && materialCost !== undefined && (
+            <>
+              <div className="flex items-center justify-between text-muted-foreground">
+                <span>Arbetskostnad</span>
+                <span>{workCost.toLocaleString('sv-SE')} kr</span>
+              </div>
+              <div className="flex items-center justify-between text-muted-foreground">
+                <span>Materialkostnad</span>
+                <span>{materialCost.toLocaleString('sv-SE')} kr</span>
+              </div>
+              <Separator />
+            </>
+          )}
+
           {/* Subtotal */}
           <div className="flex items-center justify-between text-muted-foreground">
-            <span>Delsumma</span>
+            <span>Summa före moms</span>
             <span className="font-medium">
               {subtotal.toLocaleString('sv-SE')} kr
             </span>
           </div>
+
+          {/* VAT */}
+          {vat !== undefined && (
+            <div className="flex items-center justify-between text-muted-foreground text-sm">
+              <span>Moms (25%)</span>
+              <span>{vat.toLocaleString('sv-SE')} kr</span>
+            </div>
+          )}
+
+          {/* Total with VAT */}
+          {totalWithVAT !== undefined && (
+            <>
+              <div className="flex items-center justify-between font-semibold">
+                <span>Totalt inkl. moms</span>
+                <span>{totalWithVAT.toLocaleString('sv-SE')} kr</span>
+              </div>
+              <Separator />
+            </>
+          )}
 
           {/* ROT/RUT Avdrag */}
           {rotRutDeduction && (
@@ -45,8 +84,8 @@ export const EstimateSummary = ({ subtotal, rotRutDeduction, total }: EstimateSu
                       <TooltipContent className="max-w-xs">
                         <p className="text-sm">
                           {rotRutDeduction.type === 'ROT' 
-                            ? 'ROT-avdrag för renovering, ombyggnad och tillbyggnad. Du får 30% rabatt på arbetskostnaden, max 50 000 kr/år.'
-                            : 'RUT-avdrag för hushållsnära tjänster. Du får 50% rabatt på arbetskostnaden, max 75 000 kr/år.'
+                            ? `ROT-avdrag för renovering, ombyggnad och tillbyggnad. Du får ${((rotRutDeduction.deductionRate ?? 0.50) * 100)}% rabatt på arbetskostnaden (t.o.m. 31 dec 2025: 50%, fr.o.m. 1 jan 2026: 30%), max 50 000 kr/år per person.`
+                            : `RUT-avdrag för hushållsnära tjänster. Du får ${((rotRutDeduction.deductionRate ?? 0.50) * 100)}% rabatt på arbetskostnaden (t.o.m. 31 dec 2025: 50%, fr.o.m. 1 jan 2026: 30%), max 75 000 kr/år per person.`
                           }
                         </p>
                       </TooltipContent>
@@ -60,7 +99,7 @@ export const EstimateSummary = ({ subtotal, rotRutDeduction, total }: EstimateSu
                     <span>{rotRutDeduction.laborCost.toLocaleString('sv-SE')} kr</span>
                   </div>
                   <div className="flex items-center justify-between text-secondary">
-                    <span>Avdrag ({rotRutDeduction.type === 'ROT' ? '30%' : '50%'})</span>
+                    <span>Avdrag ({((rotRutDeduction.deductionRate ?? 0.50) * 100)}%)</span>
                     <span className="font-medium">
                       -{rotRutDeduction.deductionAmount.toLocaleString('sv-SE')} kr
                     </span>
