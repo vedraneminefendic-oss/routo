@@ -404,14 +404,27 @@ Returnera JSON:
 async function generateFollowUpQuestions(
   description: string,
   conversationHistory: any[] | undefined,
-  apiKey: string
+  apiKey: string,
+  options?: {
+    missingCritical?: string[];
+    exchangeCount?: number;
+    projectType?: string;
+  }
 ): Promise<string[]> {
   console.log('🤔 Generating follow-up questions...');
   
   const fullDescription = buildConversationSummary(conversationHistory || [], description);
   
   // Count how many exchanges we've had
-  const exchangeCount = conversationHistory ? Math.floor(conversationHistory.length / 2) : 0;
+  const exchangeCount = options?.exchangeCount ?? (conversationHistory ? Math.floor(conversationHistory.length / 2) : 0);
+  const missingCritical = options?.missingCritical || [];
+  const projectType = options?.projectType || 'okänt';
+  
+  // FAS 16J: Om missingCritical är tom OCH vi har tillräcklig info → returnera tom array (hoppa över frågor)
+  if (missingCritical.length === 0 && exchangeCount > 0) {
+    console.log('✅ Smart skip pga: missingCritical är tom och vi har conversation history');
+    return [];
+  }
   
   // FAS 16A-FIX: Bygg strukturerad vy av tidigare konversation för att undvika upprepade frågor
   let previousQA = "";
@@ -528,25 +541,96 @@ async function generateFollowUpQuestions(
     ? `\n\n⚠️ **TOPICS SOM REDAN DISKUTERATS (fråga INTE om dessa igen, även om du formulerar frågan annorlunda!):**\n${uniqueTopics.map(t => `- ${t}`).join('\n')}\n`
     : '';
   
-  // FAS 16D-BONUS: Smart detection - Om användaren redan svarat på allt, hoppa över frågor
+  // FAS 16J: Utökad Smart skip v2 - Detektera om användaren signalerar att de redan svarat
   if (conversationHistory && conversationHistory.length >= 2) {
     const lastUserMessage = conversationHistory
       .filter(m => m.role === 'user')
       .pop()?.content || '';
+    
+    const lowerMsg = lastUserMessage.toLowerCase();
+    
+    // Detektera "jag har redan svarat på det"-fraser
+    const alreadyAnsweredPhrases = [
+      'det där har jag redan svarat på',
+      'har redan sagt',
+      'se ovan',
+      'allt framgår',
+      'det sa jag ju',
+      'läs mitt förra svar',
+      'det räcker med frågor',
+      'ingen fler frågor'
+    ];
+    
+    if (alreadyAnsweredPhrases.some(phrase => lowerMsg.includes(phrase))) {
+      console.log('✅ Smart skip pga: användaren indikerar att de redan svarat på allt');
+      return [];
+    }
     
     // Räkna meningsfulla påståenden i senaste svaret
     const statements = lastUserMessage
       .split(/[.!?]/)
       .filter((s: string) => s.trim().length > 10);
     
-    // Om användaren gav 3+ påståenden → antag att alla frågor besvarats
-    if (statements.length >= 3 && exchangeCount < 3) {
-      console.log(`✅ Smart skip: User provided ${statements.length} detailed statements - generating quote directly`);
-      return [];
+    // FAS 16J: Om användaren gav 3+ påståenden OCH vi har täckt in rimliga topics → skippa
+    if (statements.length >= 3 && exchangeCount < 2) {
+      // Kontrollera om vi täckt in rimligt antal topics för projekttypen
+      const minTopicsForProject: Record<string, number> = {
+        'trädfällning': 3, // Höjd/diameter, hinder, bortforsling, stubbfräsning
+        'målning': 3, // Yta, förarbete, tak/väggar
+        'badrum': 3, // Storlek, nivå, rör
+        'renovering': 3,
+        'städning': 2,
+        'okänt': 2
+      };
+      
+      const projectTypeLower = projectType.toLowerCase();
+      const minTopics = minTopicsForProject[projectTypeLower] || minTopicsForProject['okänt'];
+      
+      if (uniqueTopics.length >= minTopics) {
+        console.log(`✅ Smart skip pga: user provided ${statements.length} statements AND covered ${uniqueTopics.length}/${minTopics} required topics for ${projectType}`);
+        return [];
+      }
     }
   }
   
-  const questionsPrompt = `Du är en AI-assistent som hjälper en professionell hantverkare att skapa offerter.
+  // FAS 16J: Om missingCritical finns, bygg targeted prompt
+  let questionsPrompt = '';
+  let maxQuestions = 3;
+  
+  if (missingCritical.length > 0) {
+    // TARGETED MODE: Fråga endast om missing critical info
+    maxQuestions = Math.min(2, missingCritical.length);
+    
+    questionsPrompt = `Du är en AI-assistent som hjälper en professionell hantverkare att skapa offerter.
+
+**VIKTIGT PERSPEKTIV:**
+- Du pratar MED hantverkaren (användaren), inte med deras kund
+- Hantverkaren skriver in vad kunden vill ha, och du hjälper till att ta fram detaljer
+- Använd "du" = hantverkaren, "kunden" = hantverkarens kund
+
+NUVARANDE KONVERSATION:
+${fullDescription}
+${previousQA}
+
+**KRITISK INFORMATION SOM SAKNAS:**
+${missingCritical.map((item, i) => `${i + 1}. ${item}`).join('\n')}
+
+**UPPGIFT:** Ställ ENDAST frågor om dessa ${missingCritical.length} kritiska punkter ovan. Max ${maxQuestions} frågor.
+
+Exempel:
+Om "Vad ska renoveras? (badrum/kök/etc)" saknas → "Vilken typ av renovering handlar det om?"
+Om "Storlek på ytan" saknas → "Hur stor är ytan i kvadratmeter?"
+
+Returnera JSON med array av frågor:
+{
+  "questions": ["Fråga 1?", "Fråga 2?"]
+}`;
+    
+  } else {
+    // NORMAL MODE: Generella följdfrågor
+    maxQuestions = exchangeCount === 0 ? 3 : 2; // Färre frågor i runda 2
+    
+    questionsPrompt = `Du är en AI-assistent som hjälper en professionell hantverkare att skapa offerter.
 
 **VIKTIGT PERSPEKTIV:**
 - Du pratar MED hantverkaren (användaren), inte med deras kund
@@ -566,9 +650,9 @@ ${fullDescription}
 ${previousQA}
 ${topicsWarning}
 
-UPPGIFT: Ställ 2-4 relevanta följdfrågor för att få MER DETALJERAD information.
+UPPGIFT: Ställ ${maxQuestions} relevanta följdfrågor för att få MER DETALJERAD information.
 
-**Konversationsstadium: ${exchangeCount === 0 ? 'FÖRSTA FRÅGAN' : `Fråga ${exchangeCount + 1}`}**
+**Konversationsstadium: ${exchangeCount === 0 ? 'FÖRSTA FRÅGAN' : `UPPFÖLJNING (Runda ${exchangeCount + 1}/2)`}**
 
 ${exchangeCount === 0 ? `
 **FÖRSTA FRÅGAN - Fokusera på:**
@@ -614,18 +698,17 @@ Exempel för städning:
 
 Returnera JSON med array av frågor:
 {
-  "questions": ["Fråga 1?", "Fråga 2?", "Fråga 3?"],
-  "readyToGenerate": false
+  "questions": ["Fråga 1?", "Fråga 2?", "Fråga 3?"]
 }
 
 **VIKTIGT:**
-- Max 4 frågor
+- Max ${maxQuestions} frågor
 - Var SPECIFIK och RELEVANT för just detta projekt
 - Ställ INTE generiska frågor
 - Ställ ALDRIG frågor om saker som redan besvarats i "TIDIGARE FRÅGOR OCH SVAR"
 - **EN FRÅGA = EN FRÅGESTÄLLNING. Dela ALDRIG upp flera frågor med "och", "eller", kommatecken i samma fråga**
-- **PERSPEKTIV: Kom ihåg att "du" = hantverkaren som skapar offerten, "kunden" = hantverkarens kund**
-- Om användaren svarar "generera offerten nu" → sätt readyToGenerate: true`;
+- **PERSPEKTIV: Kom ihåg att "du" = hantverkaren som skapar offerten, "kunden" = hantverkarens kund**`;
+  }
 
   try {
     const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
@@ -1409,45 +1492,103 @@ Lägg till dem i materials-array med dessa standardpriser:
       ? `RUT-avdrag: 50% av arbetskostnaden (max 75 000 kr per person/år). Gäller städning, underhåll, trädgård, hemservice.`
       : `Inget skatteavdrag tillämpas på detta arbete.`;
 
-    // STEG 1: KONVERSATIONSFAS - Ställ alltid följdfrågor först
+    // FAS 16J: STEG 1 - Kör ALLTID preflight check först
     // Check if this is the first message in a conversation (no history)
     const isFirstMessage = !conversation_history || conversation_history.length === 0;
 
     // Count conversation exchanges (user + assistant pairs)
     const exchangeCount = conversation_history ? Math.floor(conversation_history.length / 2) : 0;
 
-    // Check if user explicitly wants to generate quote now
-    const userWantsQuoteNow = description.toLowerCase().match(/(generera|skapa|gör) (offert|offerten|nu|direkt)/);
-
-    if (isFirstMessage || (!userWantsQuoteNow && exchangeCount < 3)) {
-      // KONVERSATIONSFAS - Ställ följdfrågor (max 3 omgångar)
-      console.log(`💬 Conversation mode (exchange ${exchangeCount + 1}/3)`);
-      
-    const followUpQuestions = await generateFollowUpQuestions(
-      description, 
-      conversation_history, 
-      LOVABLE_API_KEY!
+    // FAS 16J: Utökad "kör nu"-regex med fler svenska uttryck
+    const userWantsQuoteNow = description.toLowerCase().match(
+      /(generera|skapa|gör|ta fram|räcker|kör på|nu|direkt|klart|det räcker med frågor)/
     );
-    
-    // FAS 16F-FIX: Om Smart skip aktiverades (tom array), gå direkt till offert
-    if (followUpQuestions.length === 0) {
-      console.log('✅ Smart skip activated - proceeding to quote generation');
-      // Fall through to quote generation
-    } else {
-      return new Response(
-        JSON.stringify({
-          type: 'clarification',
-          message: exchangeCount === 0 
-            ? 'Tack för din förfrågan! För att ge dig en så exakt offert som möjligt behöver jag veta lite mer:'
-            : 'Bra! Några fler frågor så jag kan göra offerten perfekt:',
-          questions: followUpQuestions
-        }),
-        { 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-          status: 200 
-        }
+
+    // FAS 16J: SÄNKT GRÄNS - max 2 rundor istället för 3
+    if (isFirstMessage || (!userWantsQuoteNow && exchangeCount < 2)) {
+      
+      // FAS 16J: Kör preflight check INNAN vi bestämmer om vi ska fråga eller generera
+      console.log(`🛫 Running preflight check before deciding conversation mode (exchange ${exchangeCount}/2)...`);
+      const preflightResult = await performPreflightCheck(
+        description,
+        conversation_history,
+        LOVABLE_API_KEY!
       );
-    }
+      
+      console.log(`Preflight result: canProceed=${preflightResult.canProceed}, projectType="${preflightResult.projectType}", missingCritical=${JSON.stringify(preflightResult.missingCritical)}`);
+      
+      // FAS 16J: Om preflight säger OK OCH inget kritiskt saknas → generera direkt
+      if (preflightResult.canProceed && preflightResult.missingCritical.length === 0) {
+        console.log('✅ Smart skip pga: preflight OK and no missing critical info - proceeding to quote generation');
+        // Fall through to quote generation
+      } else if (preflightResult.missingCritical.length > 0) {
+        // FAS 16J: Kritisk info saknas → fråga ENDAST om dessa (max 2 frågor)
+        console.log(`⚠️ Conversation mode: TARGETED questions about ${preflightResult.missingCritical.length} critical items (exchange ${exchangeCount + 1}/2)`);
+        
+        const followUpQuestions = await generateFollowUpQuestions(
+          description, 
+          conversation_history, 
+          LOVABLE_API_KEY!,
+          {
+            missingCritical: preflightResult.missingCritical,
+            exchangeCount,
+            projectType: preflightResult.projectType
+          }
+        );
+        
+        // Om Smart skip aktiverades (tom array), gå direkt till offert
+        if (followUpQuestions.length === 0) {
+          console.log('✅ Smart skip activated after targeted check - proceeding to quote generation');
+          // Fall through to quote generation
+        } else {
+          return new Response(
+            JSON.stringify({
+              type: 'clarification',
+              message: exchangeCount === 0 
+                ? 'Tack för din förfrågan! För att ge dig en så exakt offert som möjligt behöver jag veta lite mer:'
+                : 'Nästan klart! Bara någon sista detalj:',
+              questions: followUpQuestions
+            }),
+            { 
+              headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+              status: 200 
+            }
+          );
+        }
+      } else {
+        // FAS 16J: canProceed = false (sällsynt) → ställ vanliga frågor
+        console.log(`💬 Conversation mode: NORMAL questions (exchange ${exchangeCount + 1}/2)`);
+        
+        const followUpQuestions = await generateFollowUpQuestions(
+          description, 
+          conversation_history, 
+          LOVABLE_API_KEY!,
+          {
+            exchangeCount,
+            projectType: preflightResult.projectType
+          }
+        );
+        
+        // Om Smart skip aktiverades (tom array), gå direkt till offert
+        if (followUpQuestions.length === 0) {
+          console.log('✅ Smart skip activated - proceeding to quote generation');
+          // Fall through to quote generation
+        } else {
+          return new Response(
+            JSON.stringify({
+              type: 'clarification',
+              message: exchangeCount === 0 
+                ? 'Tack för din förfrågan! För att ge dig en så exakt offert som möjligt behöver jag veta lite mer:'
+                : 'Bra! Några fler frågor så jag kan göra offerten perfekt:',
+              questions: followUpQuestions
+            }),
+            { 
+              headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+              status: 200 
+            }
+          );
+        }
+      }
     }
 
     // Om vi kommer hit ska vi generera offert
