@@ -15,5 +15,8 @@ verify_jwt = false
 [functions.aggregate-industry-data]
 verify_jwt = false
 
+[functions.update-user-patterns]
+verify_jwt = true
+
 [functions.manage-conversation]
 verify_jwt = true

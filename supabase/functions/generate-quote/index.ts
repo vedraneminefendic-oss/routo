@@ -991,7 +991,19 @@ Lägg till dem i materials-array med dessa standardpriser:
       console.error('Error fetching industry benchmarks:', benchmarksError);
     }
 
+    // Fas 14A: Hämta användarens personliga patterns
+    const { data: userPatterns, error: patternsError } = await supabaseClient
+      .from('user_quote_patterns')
+      .select('*')
+      .eq('user_id', user.id)
+      .maybeSingle();
+
+    if (patternsError) {
+      console.error('Error fetching user patterns:', patternsError);
+    }
+
     console.log('📈 Industry benchmarks loaded:', industryBenchmarks?.length || 0, 'entries');
+    console.log('👤 User patterns loaded:', userPatterns ? 'yes' : 'no', userPatterns ? `(${userPatterns.sample_size} quotes analyzed)` : '');
 
     const userStyle = analyzeUserStyle(userQuotes || []);
     if (userStyle) {
@@ -1045,6 +1057,69 @@ Lägg till dem i materials-array med dessa standardpriser:
     };
 
     const learningContext = buildLearningContext(industryBenchmarks);
+
+    // Fas 14A: Bygg personlig learning context från user patterns
+    const buildPersonalContext = (patterns: any) => {
+      if (!patterns || patterns.sample_size === 0) {
+        return '';
+      }
+
+      let context = '\n\n**═══════════════════════════════════════════════════════════════**\n';
+      context += '**DIN PERSONLIGA STATISTIK (baserat på dina tidigare offerter)**\n';
+      context += '**═══════════════════════════════════════════════════════════════**\n\n';
+      context += `Analyserad från ${patterns.sample_size} av dina tidigare offerter:\n\n`;
+
+      if (patterns.avg_quote_value) {
+        context += `• Genomsnittligt offervärde: ${Math.round(patterns.avg_quote_value)} kr\n`;
+      }
+
+      if (patterns.preferred_detail_level) {
+        context += `• Föredraget detaljnivå: ${patterns.preferred_detail_level}\n`;
+      }
+
+      if (patterns.work_type_distribution && Object.keys(patterns.work_type_distribution).length > 0) {
+        context += `\n**DINA VANLIGASTE ARBETSTYPER:**\n`;
+        Object.entries(patterns.work_type_distribution)
+          .sort(([, a]: any, [, b]: any) => b - a)
+          .slice(0, 5)
+          .forEach(([type, percent]: any) => {
+            context += `  • ${type}: ${percent}% av dina projekt\n`;
+          });
+      }
+
+      if (patterns.avg_hourly_rates && Object.keys(patterns.avg_hourly_rates).length > 0) {
+        context += `\n**DINA GENOMSNITTLIGA TIMPRISER:**\n`;
+        Object.entries(patterns.avg_hourly_rates).forEach(([type, rate]: any) => {
+          context += `  • ${type}: ${rate} kr/h\n`;
+        });
+      }
+
+      if (patterns.avg_material_to_work_ratio) {
+        const ratio = (patterns.avg_material_to_work_ratio * 100).toFixed(0);
+        context += `\n**DIN MATERIAL/ARBETE-RATIO:**\n`;
+        context += `  • Du använder typiskt ${ratio}% av arbetskostnaden för material\n`;
+      }
+
+      if (patterns.uses_emojis || patterns.avg_description_length) {
+        context += `\n**DIN STIL:**\n`;
+        if (patterns.uses_emojis) {
+          context += `  • Du använder emojis och ikoner i dina beskrivningar ✅\n`;
+        }
+        if (patterns.avg_description_length) {
+          context += `  • Dina beskrivningar är i snitt ${patterns.avg_description_length} tecken\n`;
+        }
+      }
+
+      context += `\n**INSTRUKTION:**\n`;
+      context += `• Använd DIN egen statistik som primär referens\n`;
+      context += `• Matcha din vanliga stil och detaljnivå\n`;
+      context += `• Jämför med branschdata för att säkerställa rimlighet\n`;
+      context += `• Om dina priser avviker >20% från bransch → använd DINA priser (du kanske har specialkompetens)\n`;
+
+      return context;
+    };
+
+    const personalContext = buildPersonalContext(userPatterns);
 
     // Build deduction info based on type
     const deductionInfo = finalDeductionType === 'rot' 
@@ -1272,6 +1347,8 @@ Lägg till dem i materials-array med dessa standardpriser:
    ${detailLevel === 'standard' ? '→ 4-6 arbetsposter, 5-10 material, notes 200-300 tecken' : ''}
    ${detailLevel === 'detailed' ? '→ 6-10 arbetsposter, 10-15 material, notes 500-800 tecken med fasindelning' : ''}
    ${detailLevel === 'construction' ? '→ 10-15 arbetsposter (inkl. projektledning), 15-25 material, notes 1200-2000 tecken med projektledning+tidsplan+garanti+besiktning' : ''}
+
+${personalContext}
 
 ${learningContext}
 
@@ -1751,6 +1828,24 @@ Viktig information:
     };
     
     // Quality metadata (simplified - no warnings in new flow)
+
+    // Fas 14E: Feedback loop - Uppdatera användarens patterns i bakgrunden
+    // Fire-and-forget: Kör asynkront utan att vänta på resultat
+    fetch(`${SUPABASE_URL}/functions/v1/update-user-patterns`, {
+      method: 'POST',
+      headers: {
+        'Authorization': authHeader,
+        'Content-Type': 'application/json',
+      },
+    }).then(response => {
+      if (response.ok) {
+        console.log('✅ User patterns updated in background');
+      } else {
+        console.warn('⚠️ Failed to update user patterns (non-blocking)');
+      }
+    }).catch(err => {
+      console.warn('⚠️ Error updating user patterns (non-blocking):', err.message);
+    });
 
     return new Response(
       JSON.stringify(responseData),

@@ -30,7 +30,7 @@ serve(async (req) => {
 
     const { data: quotes, error: quotesError } = await supabase
       .from('quotes')
-      .select('generated_quote, edited_quote, created_at, description')
+      .select('generated_quote, edited_quote, created_at, description, user_id')
       .gte('created_at', sixMonthsAgo.toISOString())
       .in('status', ['accepted', 'completed', 'sent']);
 
@@ -48,7 +48,9 @@ serve(async (req) => {
       );
     }
 
-    // Kategorisera offerter baserat på nyckelord
+    // Fas 14B: GDPR-säker kategorisering med k-anonymity
+    // Gruppera först per user_id för att säkerställa minst 5 användare per kategori
+    const usersByCategory = new Map<string, Set<string>>();
     const categories = new Map<string, any[]>();
     
     quotes.forEach(q => {
@@ -74,16 +76,38 @@ serve(async (req) => {
 
       if (!categories.has(category)) {
         categories.set(category, []);
+        usersByCategory.set(category, new Set());
       }
       categories.get(category)!.push(quote);
+      
+      // Spåra användare per kategori (för k-anonymity)
+      if (q.user_id) {
+        usersByCategory.get(category)!.add(q.user_id);
+      }
     });
 
     console.log(`Categorized into ${categories.size} categories`);
+    
+    // GDPR: Filtrera bort kategorier med mindre än 5 unika användare
+    const MINIMUM_USERS_FOR_ANONYMITY = 5;
+    const validCategories = new Map<string, any[]>();
+    
+    categories.forEach((quotes, category) => {
+      const uniqueUsers = usersByCategory.get(category)?.size || 0;
+      if (uniqueUsers >= MINIMUM_USERS_FOR_ANONYMITY) {
+        validCategories.set(category, quotes);
+        console.log(`✅ ${category}: ${quotes.length} quotes from ${uniqueUsers} users (GDPR-compliant)`);
+      } else {
+        console.log(`⚠️ ${category}: Only ${uniqueUsers} users - SKIPPED for GDPR compliance (need ${MINIMUM_USERS_FOR_ANONYMITY})`);
+      }
+    });
+    
+    console.log(`After GDPR filtering: ${validCategories.size} valid categories`);
 
-    // Beräkna benchmarks för varje kategori
+    // Beräkna benchmarks endast för GDPR-säkra kategorier
     const benchmarks: any[] = [];
 
-    for (const [category, categoryQuotes] of categories.entries()) {
+    for (const [category, categoryQuotes] of validCategories.entries()) {
       // Samla alla timpriser per arbetstyp
       const hourlyRatesByType = new Map<string, number[]>();
       const totalHoursByCategory: number[] = [];
@@ -201,9 +225,11 @@ serve(async (req) => {
 
     return new Response(
       JSON.stringify({ 
-        message: 'Industry data aggregated successfully',
+        message: 'Industry data aggregated successfully (GDPR-compliant)',
         processed: quotes.length,
-        categories: categories.size,
+        totalCategories: categories.size,
+        gdprCompliantCategories: validCategories.size,
+        skippedForPrivacy: categories.size - validCategories.size,
         benchmarks: benchmarks.length
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }

@@ -724,6 +724,54 @@ export type Database = {
         }
         Relationships: []
       }
+      user_quote_patterns: {
+        Row: {
+          avg_description_length: number | null
+          avg_hourly_rates: Json | null
+          avg_material_to_work_ratio: number | null
+          avg_quote_value: number | null
+          common_project_types: Json | null
+          id: string
+          last_updated: string
+          preferred_detail_level: string | null
+          sample_size: number
+          total_quotes: number
+          user_id: string
+          uses_emojis: boolean | null
+          work_type_distribution: Json | null
+        }
+        Insert: {
+          avg_description_length?: number | null
+          avg_hourly_rates?: Json | null
+          avg_material_to_work_ratio?: number | null
+          avg_quote_value?: number | null
+          common_project_types?: Json | null
+          id?: string
+          last_updated?: string
+          preferred_detail_level?: string | null
+          sample_size?: number
+          total_quotes?: number
+          user_id: string
+          uses_emojis?: boolean | null
+          work_type_distribution?: Json | null
+        }
+        Update: {
+          avg_description_length?: number | null
+          avg_hourly_rates?: Json | null
+          avg_material_to_work_ratio?: number | null
+          avg_quote_value?: number | null
+          common_project_types?: Json | null
+          id?: string
+          last_updated?: string
+          preferred_detail_level?: string | null
+          sample_size?: number
+          total_quotes?: number
+          user_id?: string
+          uses_emojis?: boolean | null
+          work_type_distribution?: Json | null
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
