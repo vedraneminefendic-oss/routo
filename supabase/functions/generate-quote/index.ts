@@ -416,7 +416,8 @@ Analysera detta och bestäm: Ska du fråga mer eller generera offert?`;
     });
 
     if (!response.ok) {
-      console.error('Conversation API error:', response.status);
+      const errorBody = await response.text();
+      console.error('Conversation API error:', response.status, errorBody);
       return { action: 'generate' }; // Fallback: generera offert
     }
 
@@ -697,11 +698,165 @@ Input: "Bygga altan"
   });
 
   if (!response.ok) {
-    throw new Error(`Failed to calculate base totals: ${response.status}`);
+    const errorBody = await response.text();
+    console.error('⚠️ AI Gateway error in calculateBaseTotals:', response.status, errorBody);
+    console.log('⚠️ Using degraded mode for base totals calculation');
+    
+    // Degraded mode: heuristic-based calculation
+    const descLower = description.toLowerCase();
+    let workHours: { [key: string]: number } = {};
+    let materialCost = 0;
+    let equipmentCost = 0;
+    
+    // Detect project type and estimate
+    if (descLower.includes('träd') || descLower.includes('fäll') || descLower.includes('arborist')) {
+      // Tree work: Arborist
+      const isLarge = descLower.includes('stor') || descLower.includes('hög');
+      const nearHouse = descLower.includes('hus') || descLower.includes('byggnad') || descLower.includes('nära');
+      const baseHours = isLarge ? 14 : 10;
+      const complexityAdd = nearHouse ? 2 : 0;
+      workHours['Arborist'] = baseHours + complexityAdd;
+      
+      equipmentCost = 200; // Motorsåg
+      if (descLower.includes('forsla') || descLower.includes('borttransport')) {
+        equipmentCost += 2000; // Flishugg
+      }
+      materialCost = 0;
+    } else if (descLower.includes('måla') || descLower.includes('målning')) {
+      // Painting
+      const areaMatch = description.match(/(\d+)\s*kvm/);
+      const area = areaMatch ? parseInt(areaMatch[1]) : 120;
+      workHours['Målare'] = Math.round(area / 7.5);
+      materialCost = area < 100 ? 5500 : 8500;
+      equipmentCost = 0;
+    } else if (descLower.includes('badrum')) {
+      // Bathroom renovation
+      workHours = { 'Plattsättare': 12, 'VVS': 8, 'Elektriker': 4 };
+      materialCost = 20000;
+      equipmentCost = 0;
+    } else if (descLower.includes('altan') || descLower.includes('däck')) {
+      // Deck construction
+      workHours['Snickare'] = 40;
+      materialCost = 32000;
+      equipmentCost = 0;
+    } else if (descLower.includes('golv')) {
+      // Flooring
+      workHours['Snickare'] = 20;
+      materialCost = 15000;
+      equipmentCost = 0;
+    } else {
+      // Unknown: generic carpentry
+      workHours['Snickare'] = 8;
+      materialCost = 0;
+      equipmentCost = 0;
+    }
+    
+    // Calculate work cost for material fallback
+    let workCost = 0;
+    const hourlyRatesByType: { [key: string]: number } = {};
+    if (hourlyRates && hourlyRates.length > 0) {
+      hourlyRates.forEach(r => {
+        hourlyRatesByType[r.work_type] = r.rate;
+      });
+      
+      Object.entries(workHours).forEach(([type, hours]) => {
+        const rate = hourlyRatesByType[type] || 650;
+        workCost += hours * rate;
+      });
+    } else {
+      Object.values(workHours).forEach(hours => {
+        workCost += hours * 650;
+      });
+    }
+    
+    // If material is still 0, use fallback rule (35% of work cost)
+    if (materialCost === 0 && workCost > 0) {
+      materialCost = Math.round(workCost * 0.35);
+    }
+    
+    console.log('⚠️ Degraded mode result:', { workHours, materialCost, equipmentCost, workCost });
+    
+    return { 
+      workHours, 
+      materialCost, 
+      equipmentCost,
+      hourlyRatesByType
+    };
   }
 
-  const data = await response.json();
-  const result = JSON.parse(data.choices[0].message.content);
+  let result;
+  try {
+    const data = await response.json();
+    result = JSON.parse(data.choices[0].message.content);
+  } catch (parseError) {
+    console.error('⚠️ JSON parse error in calculateBaseTotals:', parseError);
+    console.log('⚠️ Using degraded mode for base totals calculation');
+    
+    // Same degraded mode as above
+    const descLower = description.toLowerCase();
+    let workHours: { [key: string]: number } = {};
+    let materialCost = 0;
+    let equipmentCost = 0;
+    
+    if (descLower.includes('träd') || descLower.includes('fäll') || descLower.includes('arborist')) {
+      const isLarge = descLower.includes('stor') || descLower.includes('hög');
+      const nearHouse = descLower.includes('hus') || descLower.includes('byggnad') || descLower.includes('nära');
+      workHours['Arborist'] = (isLarge ? 14 : 10) + (nearHouse ? 2 : 0);
+      equipmentCost = descLower.includes('forsla') || descLower.includes('borttransport') ? 2200 : 200;
+      materialCost = 0;
+    } else if (descLower.includes('måla') || descLower.includes('målning')) {
+      const areaMatch = description.match(/(\d+)\s*kvm/);
+      const area = areaMatch ? parseInt(areaMatch[1]) : 120;
+      workHours['Målare'] = Math.round(area / 7.5);
+      materialCost = area < 100 ? 5500 : 8500;
+      equipmentCost = 0;
+    } else if (descLower.includes('badrum')) {
+      workHours = { 'Plattsättare': 12, 'VVS': 8, 'Elektriker': 4 };
+      materialCost = 20000;
+      equipmentCost = 0;
+    } else if (descLower.includes('altan') || descLower.includes('däck')) {
+      workHours['Snickare'] = 40;
+      materialCost = 32000;
+      equipmentCost = 0;
+    } else if (descLower.includes('golv')) {
+      workHours['Snickare'] = 20;
+      materialCost = 15000;
+      equipmentCost = 0;
+    } else {
+      workHours['Snickare'] = 8;
+      materialCost = 0;
+      equipmentCost = 0;
+    }
+    
+    let workCost = 0;
+    const hourlyRatesByType: { [key: string]: number } = {};
+    if (hourlyRates && hourlyRates.length > 0) {
+      hourlyRates.forEach(r => {
+        hourlyRatesByType[r.work_type] = r.rate;
+      });
+      Object.entries(workHours).forEach(([type, hours]) => {
+        const rate = hourlyRatesByType[type] || 650;
+        workCost += hours * rate;
+      });
+    } else {
+      Object.values(workHours).forEach(hours => {
+        workCost += hours * 650;
+      });
+    }
+    
+    if (materialCost === 0 && workCost > 0) {
+      materialCost = Math.round(workCost * 0.35);
+    }
+    
+    console.log('⚠️ Degraded mode result:', { workHours, materialCost, equipmentCost, workCost });
+    
+    return { 
+      workHours, 
+      materialCost, 
+      equipmentCost,
+      hourlyRatesByType
+    };
+  }
   
   // Map hourly rates to dictionary for easier validation
   const hourlyRatesByType: { [key: string]: number } = {};
@@ -2016,7 +2171,8 @@ Returnera ENDAST ett JSON-objekt med detta format:
     });
 
     if (!response.ok) {
-      console.error('AI detection failed, defaulting to ROT');
+      const errorBody = await response.text();
+      console.error('AI detection failed, defaulting to ROT:', response.status, errorBody);
       return 'rot';
     }
 
