@@ -318,6 +318,127 @@ function buildConversationSummary(history: any[], fallbackDescription?: string, 
     : mainRequest;
 }
 
+// Context Reconciliation: Infer yes/no answers from Swedish phrases
+function reconcileMissingCriticalWithLatestAnswers(
+  missingCritical: string[],
+  conversationHistory: any[] | undefined,
+  latestDescription: string
+): { filteredMissingCritical: string[]; resolvedFacts: Record<string, string> } {
+  console.log('🧠 Reconciliation: analyzing latest messages for implicit answers...');
+  
+  const resolvedFacts: Record<string, string> = {};
+  
+  if (!conversationHistory || conversationHistory.length === 0) {
+    return { filteredMissingCritical: missingCritical, resolvedFacts };
+  }
+  
+  // Get the last 1-2 user messages (most recent first)
+  const userMessages = conversationHistory
+    .filter(m => m.role === 'user')
+    .slice(-2)
+    .map(m => m.content);
+  
+  const allTexts = [...userMessages, latestDescription].join(' ').toLowerCase();
+  
+  // Topic keyword patterns (Swedish regex with negations)
+  const topicPatterns: Record<string, { yes: RegExp[]; no: RegExp[] }> = {
+    debris_removal: {
+      yes: [
+        /(bortforsl|forslar bort|frakta bort|transportera bort|kör bort)/i,
+        /(ta bort|tar hand om.*virk|tar om hand)/i,
+        /(jag.*forslar|jag.*tar.*bort|jag.*kör.*bort)/i
+      ],
+      no: [
+        /(lämna kvar|behåller.*virk|kunden.*tar hand|ordnar själv)/i,
+        /(ingen bortforsl|inte.*bortforsl|behöver inte.*ta bort)/i
+      ]
+    },
+    stump_grinding: {
+      yes: [
+        /(stubbfräs|fräser stubb|fräsa stubb|fräs.*stubb)/i,
+        /(jag.*fräser|jag.*fräs)/i
+      ],
+      no: [
+        /(inte.*stubbfräs|ingen stubbfräs|inte.*fräs)/i,
+        /(lämna.*stubb|behålla.*stubb)/i
+      ]
+    },
+    ceiling_painting: {
+      yes: [
+        /(måla.*tak|tak.*målas|inklusive.*tak|även.*tak)/i,
+        /(väggar.*och.*tak|tak.*och.*vägg)/i
+      ],
+      no: [
+        /(bara.*vägg|endast.*vägg|inte.*tak|utan.*tak)/i,
+        /(ej.*tak|exkludera.*tak)/i
+      ]
+    },
+    demolition: {
+      yes: [
+        /(riv|demontera|ta bort.*befintlig|befintlig.*rivs)/i,
+        /(riva.*ut|riva.*bort)/i
+      ],
+      no: [
+        /(behåll|ingen.*rivning|inte.*riv|befintlig.*stannar)/i
+      ]
+    }
+  };
+  
+  // Map missing critical items to topic keys
+  const mapToTopicKey = (criticalItem: string): string | null => {
+    const lower = criticalItem.toLowerCase();
+    if (lower.includes('bortforsl') || lower.includes('transportera') || lower.includes('forsla')) {
+      return 'debris_removal';
+    }
+    if (lower.includes('stubb') || lower.includes('fräs')) {
+      return 'stump_grinding';
+    }
+    if (lower.includes('tak') && lower.includes('mål')) {
+      return 'ceiling_painting';
+    }
+    if (lower.includes('riv') || lower.includes('demonter')) {
+      return 'demolition';
+    }
+    return null;
+  };
+  
+  // Check each missing critical item
+  const filtered = missingCritical.filter(item => {
+    const topicKey = mapToTopicKey(item);
+    if (!topicKey) return true; // Keep items we can't map
+    
+    const patterns = topicPatterns[topicKey];
+    if (!patterns) return true; // Keep if no patterns defined
+    
+    // Check YES patterns
+    const hasYes = patterns.yes.some(regex => regex.test(allTexts));
+    if (hasYes) {
+      resolvedFacts[topicKey] = 'yes';
+      console.log(`✅ Resolved from latest answers: ${topicKey}=yes (matched in: "${allTexts.substring(0, 100)}...")`);
+      return false; // Remove from missing
+    }
+    
+    // Check NO patterns
+    const hasNo = patterns.no.some(regex => regex.test(allTexts));
+    if (hasNo) {
+      resolvedFacts[topicKey] = 'no';
+      console.log(`✅ Resolved from latest answers: ${topicKey}=no (matched in: "${allTexts.substring(0, 100)}...")`);
+      return false; // Remove from missing
+    }
+    
+    return true; // Still missing
+  });
+  
+  if (filtered.length < missingCritical.length) {
+    console.log(`🎯 Reconciliation complete: ${missingCritical.length - filtered.length} item(s) resolved`);
+    console.log(`❌ Still missing: ${JSON.stringify(filtered)}`);
+  } else {
+    console.log('⚠️ Reconciliation: No items could be inferred from latest messages');
+  }
+  
+  return { filteredMissingCritical: filtered, resolvedFacts };
+}
+
 // Pre-flight check: Can I proceed with quote generation?
 async function performPreflightCheck(
   description: string,
@@ -456,8 +577,23 @@ async function generateFollowUpQuestions(
   const missingCritical = options?.missingCritical || [];
   const projectType = options?.projectType || 'okänt';
   
+  // FAILSAFE: Additional filter against resolved facts (if we have conversation history)
+  let filteredMissingCritical = missingCritical;
+  if (conversationHistory && conversationHistory.length > 0) {
+    const { filteredMissingCritical: reconciled, resolvedFacts } = reconcileMissingCriticalWithLatestAnswers(
+      missingCritical,
+      conversationHistory,
+      description
+    );
+    
+    if (reconciled.length < missingCritical.length) {
+      console.log(`🛡️ Failsafe: Filtered ${missingCritical.length - reconciled.length} already-answered items from question list`);
+      filteredMissingCritical = reconciled;
+    }
+  }
+  
   // FAS 16J: Om missingCritical är tom OCH vi har tillräcklig info → returnera tom array (hoppa över frågor)
-  if (missingCritical.length === 0 && exchangeCount > 0) {
+  if (filteredMissingCritical.length === 0 && exchangeCount > 0) {
     console.log('✅ Smart skip pga: missingCritical är tom och vi har conversation history');
     return [];
   }
@@ -641,9 +777,9 @@ async function generateFollowUpQuestions(
   let questionsPrompt = '';
   let maxQuestions = 3;
   
-  if (missingCritical.length > 0) {
+  if (filteredMissingCritical.length > 0) {
     // TARGETED MODE: Fråga endast om missing critical info
-    maxQuestions = Math.min(2, missingCritical.length);
+    maxQuestions = Math.min(2, filteredMissingCritical.length);
     
     questionsPrompt = `Du är en AI-assistent som hjälper en professionell hantverkare att skapa offerter.
 
@@ -657,9 +793,9 @@ ${fullDescription}
 ${previousQA}
 
 **KRITISK INFORMATION SOM SAKNAS:**
-${missingCritical.map((item, i) => `${i + 1}. ${item}`).join('\n')}
+${filteredMissingCritical.map((item, i) => `${i + 1}. ${item}`).join('\n')}
 
-**UPPGIFT:** Ställ ENDAST frågor om dessa ${missingCritical.length} kritiska punkter ovan. Max ${maxQuestions} frågor.
+**UPPGIFT:** Ställ ENDAST frågor om dessa ${filteredMissingCritical.length} kritiska punkter ovan. Max ${maxQuestions} frågor.
 
 Exempel:
 Om "Vad ska renoveras? (badrum/kök/etc)" saknas → "Vilken typ av renovering handlar det om?"
@@ -1600,6 +1736,16 @@ Lägg till dem i materials-array med dessa standardpriser:
       
       console.log(`Preflight result: canProceed=${preflightResult.canProceed}, projectType="${preflightResult.projectType}", missingCritical=${JSON.stringify(preflightResult.missingCritical)}`);
       
+      // CONTEXT RECONCILIATION: Filter missing critical items based on answers in conversation
+      const { filteredMissingCritical, resolvedFacts } = reconcileMissingCriticalWithLatestAnswers(
+        preflightResult.missingCritical,
+        conversation_history,
+        description
+      );
+      
+      // Replace missingCritical with filtered version
+      preflightResult.missingCritical = filteredMissingCritical;
+      
       // FAS 16J: Om preflight säger OK OCH inget kritiskt saknas → generera direkt
       if (preflightResult.canProceed && preflightResult.missingCritical.length === 0) {
         console.log('✅ Smart skip pga: preflight OK and no missing critical info - proceeding to quote generation');
@@ -1681,7 +1827,32 @@ Lägg till dem i materials-array med dessa standardpriser:
     console.log('Step 2: Calculating base totals with complete conversation context...');
     
     // Bygg komplett beskrivning från hela konversationen
-    const completeDescription = buildConversationSummary(conversation_history || [], description);
+    let completeDescription = buildConversationSummary(conversation_history || [], description);
+    
+    // Append resolved facts as explicit sentences to ensure AI doesn't forget them
+    const { resolvedFacts } = reconcileMissingCriticalWithLatestAnswers(
+      [], // We don't need to filter here, just get the resolved facts
+      conversation_history,
+      description
+    );
+    
+    if (Object.keys(resolvedFacts).length > 0) {
+      const factSentences: string[] = [];
+      if (resolvedFacts.debris_removal === 'yes') factSentences.push('Bortforsling: ja');
+      if (resolvedFacts.debris_removal === 'no') factSentences.push('Bortforsling: nej');
+      if (resolvedFacts.stump_grinding === 'yes') factSentences.push('Stubbfräsning: ja');
+      if (resolvedFacts.stump_grinding === 'no') factSentences.push('Stubbfräsning: nej');
+      if (resolvedFacts.ceiling_painting === 'yes') factSentences.push('Takmålning: ja');
+      if (resolvedFacts.ceiling_painting === 'no') factSentences.push('Takmålning: nej');
+      if (resolvedFacts.demolition === 'yes') factSentences.push('Rivning: ja');
+      if (resolvedFacts.demolition === 'no') factSentences.push('Rivning: nej');
+      
+      if (factSentences.length > 0) {
+        completeDescription += '. ' + factSentences.join('. ') + '.';
+        console.log('✅ Appended resolved facts to description:', factSentences.join(', '));
+      }
+    }
+    
     console.log('Complete description for base totals:', completeDescription);
     
     const baseTotals = await calculateBaseTotals(
