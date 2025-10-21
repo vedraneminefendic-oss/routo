@@ -5,22 +5,17 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Wrench, LogOut, Settings as SettingsIcon, BarChart3, Users, Search, AlertCircle } from "lucide-react";
+import { Wrench, LogOut, Settings as SettingsIcon, BarChart3, Users, Search, AlertCircle, Plus } from "lucide-react";
 import { toast } from "sonner";
-import QuoteForm from "@/components/QuoteForm";
 import QuoteDisplay from "@/components/QuoteDisplay";
 import QuoteEditor from "@/components/QuoteEditor";
 import QuoteList from "@/components/QuoteList";
 import { OnboardingWizard } from "@/components/OnboardingWizard";
-import { QuoteTemplates, QuoteTemplate } from "@/components/QuoteTemplates";
-import { ContextualHelp } from "@/components/ContextualHelp";
-import { AIProgressIndicator } from "@/components/AIProgressIndicator";
 
 const Index = () => {
   const navigate = useNavigate();
   const [user, setUser] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-  const [isGenerating, setIsGenerating] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [currentQuote, setCurrentQuote] = useState<any>(null);
@@ -31,7 +26,6 @@ const Index = () => {
   const [statusFilter, setStatusFilter] = useState("all");
   const [currentCustomerId, setCurrentCustomerId] = useState<string | undefined>(undefined);
   const [pendingQuotesCount, setPendingQuotesCount] = useState(0);
-  const [showTemplates, setShowTemplates] = useState(false);
   const [hasCustomRates, setHasCustomRates] = useState(false);
   const [hourlyRate, setHourlyRate] = useState<number>(650);
 
@@ -93,47 +87,6 @@ const Index = () => {
     }
   };
 
-  const handleGenerateQuote = async (description: string, customerId?: string, detailLevel?: string, deductionType?: string) => {
-    setIsGenerating(true);
-    setCurrentDescription(description);
-    setCurrentCustomerId(customerId);
-    
-    try {
-      const { data, error } = await supabase.functions.invoke('generate-quote', {
-        body: { 
-          description,
-          user_id: user?.id,
-          customer_id: customerId,
-          detailLevel: detailLevel || 'standard',
-          deductionType: deductionType || 'auto'
-        }
-      });
-
-      if (error) throw error;
-      
-      setCurrentQuote(data.quote);
-      
-      // Spara info om custom rates och hourly rate
-      setHasCustomRates(data.hasCustomRates || false);
-      if (data.quote?.workItems?.[0]?.hourlyRate) {
-        setHourlyRate(data.quote.workItems[0].hourlyRate);
-      }
-      
-      // Visa varning om inga anpassade timpriser användes
-      if (!data.hasCustomRates) {
-        toast.warning("Du har inte lagt in några timpriser i inställningarna. Använder standardpris 650 kr/h.", {
-          duration: 5000
-        });
-      }
-      
-      toast.success("Offert genererad!");
-    } catch (error: any) {
-      console.error('Error generating quote:', error);
-      toast.error(error.message || "Kunde inte generera offert");
-    } finally {
-      setIsGenerating(false);
-    }
-  };
 
   const handleSaveQuote = async () => {
     if (!currentQuote || !user) return;
@@ -268,13 +221,6 @@ const Index = () => {
     navigate("/auth");
   };
 
-  const handleSelectTemplate = (template: QuoteTemplate) => {
-    setShowTemplates(false);
-    // Auto-fill the form with template text
-    const description = template.exampleText;
-    // Trigger generation immediately
-    handleGenerateQuote(description, undefined, 'standard', template.category.toLowerCase());
-  };
 
   const filteredQuotes = quotes.filter((quote) => {
     const matchesSearch = searchTerm === "" || 
@@ -363,41 +309,28 @@ const Index = () => {
       {/* Main Content */}
       <main className="container mx-auto px-4 py-8 bg-background">
         <div className="grid lg:grid-cols-2 gap-6">
-          {/* Left Column - Form & Generated Quote */}
+          {/* Left Column - Create New Quote Button */}
           <div className="space-y-6">
-            {/* Quick Templates Section */}
             {!currentQuote && (
               <Card className="border-2 border-dashed border-primary/20 bg-primary/5">
                 <CardHeader>
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <CardTitle className="text-lg">Snabbmallar</CardTitle>
-                      <ContextualHelp content="Välj en färdig mall för vanliga ROT/RUT-jobb för att snabbt komma igång. Mallen förfyller beskrivningen och AI:n genererar offerten automatiskt." />
-                    </div>
-                    <Button 
-                      variant="ghost" 
-                      size="sm"
-                      onClick={() => setShowTemplates(!showTemplates)}
-                    >
-                      {showTemplates ? 'Dölj' : 'Visa alla'}
-                    </Button>
-                  </div>
+                  <CardTitle className="text-lg">Skapa ny offert</CardTitle>
                   <CardDescription>
-                    Börja snabbt med färdiga mallar för vanliga jobb
+                    Använd vår AI-assistent för att snabbt skapa professionella offerter
                   </CardDescription>
                 </CardHeader>
-                {showTemplates && (
-                  <CardContent>
-                    <QuoteTemplates onSelectTemplate={handleSelectTemplate} />
-                  </CardContent>
-                )}
+                <CardContent>
+                  <Button 
+                    onClick={() => navigate('/quotes/new')}
+                    className="w-full"
+                    size="lg"
+                  >
+                    <Plus className="h-5 w-5 mr-2" />
+                    Ny offert med AI
+                  </Button>
+                </CardContent>
               </Card>
             )}
-
-            {/* AI Progress Indicator */}
-            {isGenerating && <AIProgressIndicator isGenerating={isGenerating} />}
-
-            <QuoteForm onGenerate={handleGenerateQuote} isGenerating={isGenerating} />
             
             {currentQuote && !isEditing && (
               <QuoteDisplay 
@@ -430,10 +363,7 @@ const Index = () => {
           <div>
             <Card>
               <CardHeader className="pb-3">
-                <div className="flex items-center gap-2">
-                  <CardTitle className="text-lg text-secondary">Dina offerter</CardTitle>
-                  <ContextualHelp content="Här ser du alla dina sparade offerter. Klicka på en offert för att visa, redigera eller skicka den. Du kan också söka och filtrera på status." />
-                </div>
+                <CardTitle className="text-lg text-secondary">Dina offerter</CardTitle>
                 <CardDescription className="text-xs">
                   {quotes.length} {quotes.length === 1 ? 'offert' : 'offerter'} totalt
                 </CardDescription>

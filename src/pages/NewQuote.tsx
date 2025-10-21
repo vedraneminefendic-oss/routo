@@ -5,15 +5,10 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Wrench, LogOut, Settings as SettingsIcon, BarChart3, Users, ArrowLeft } from "lucide-react";
 import { toast } from "sonner";
-import QuoteForm from "@/components/QuoteForm";
 import QuoteDisplay from "@/components/QuoteDisplay";
 import QuoteEditor from "@/components/QuoteEditor";
-import { QuoteTemplates, QuoteTemplate } from "@/components/QuoteTemplates";
-import { ContextualHelp } from "@/components/ContextualHelp";
 import { AIProgressIndicator } from "@/components/AIProgressIndicator";
 import { ChatInterface } from "@/components/chat/ChatInterface";
-import { Switch } from "@/components/ui/switch";
-import { Label } from "@/components/ui/label";
 
 const NewQuote = () => {
   const navigate = useNavigate();
@@ -28,11 +23,8 @@ const NewQuote = () => {
   const [currentQuote, setCurrentQuote] = useState<any>(null);
   const [currentDescription, setCurrentDescription] = useState("");
   const [currentCustomerId, setCurrentCustomerId] = useState<string | undefined>(undefined);
-  const [showTemplatesSection, setShowTemplatesSection] = useState(showTemplates);
   const [hasCustomRates, setHasCustomRates] = useState(false);
   const [hourlyRate, setHourlyRate] = useState<number>(650);
-  const [useChatInterface, setUseChatInterface] = useState(false);
-  const [chatGeneratedQuote, setChatGeneratedQuote] = useState<any>(null);
   
   // Quality/validation state
   const [qualityWarning, setQualityWarning] = useState<string | undefined>(undefined);
@@ -219,7 +211,6 @@ const NewQuote = () => {
 
   const handleChatGenerateQuote = (quote: any) => {
     // Denna kallas när chat-interfacet får en komplett offert från backend
-    setChatGeneratedQuote(quote);
     setCurrentQuote(quote);
     setIsGenerating(false);
     toast.success("Offert genererad och klar att granskas!");
@@ -230,11 +221,6 @@ const NewQuote = () => {
     navigate("/auth");
   };
 
-  const handleSelectTemplate = (template: QuoteTemplate) => {
-    setShowTemplatesSection(false);
-    const description = template.exampleText;
-    handleGenerateQuote(description, undefined, 'standard', template.category.toLowerCase());
-  };
 
   if (loading) {
     return (
@@ -287,70 +273,14 @@ const NewQuote = () => {
       {/* Main Content */}
       <main className="container mx-auto px-4 py-8">
         <div className="max-w-4xl mx-auto space-y-6">
-          {/* Interface Toggle */}
-          {!currentQuote && (
-            <Card className="bg-accent/10 border-accent/20">
-              <CardContent className="pt-6">
-                <div className="flex items-center justify-between">
-                  <div className="space-y-1">
-                    <Label htmlFor="chat-mode" className="text-base font-medium">
-                      Chat-läge (Beta)
-                    </Label>
-                    <p className="text-sm text-muted-foreground">
-                      Prata med AI:n istället för att fylla i formulär
-                    </p>
-                  </div>
-                  <Switch
-                    id="chat-mode"
-                    checked={useChatInterface}
-                    onCheckedChange={setUseChatInterface}
-                  />
-                </div>
-              </CardContent>
-            </Card>
-          )}
-
-          {/* Quick Templates Section */}
-          {!currentQuote && !useChatInterface && (
-            <Card className="border-2 border-dashed border-primary/20 bg-primary/5">
-              <CardHeader>
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <CardTitle className="text-lg">Snabbmallar</CardTitle>
-                    <ContextualHelp content="Välj en färdig mall för vanliga ROT/RUT-jobb för att snabbt komma igång. Mallen förfyller beskrivningen och AI:n genererar offerten automatiskt." />
-                  </div>
-                  <Button 
-                    variant="ghost" 
-                    size="sm"
-                    onClick={() => setShowTemplatesSection(!showTemplatesSection)}
-                  >
-                    {showTemplatesSection ? 'Dölj' : 'Visa alla'}
-                  </Button>
-                </div>
-                <CardDescription>
-                  Börja snabbt med färdiga mallar för vanliga jobb
-                </CardDescription>
-              </CardHeader>
-              {showTemplatesSection && (
-                <CardContent>
-                  <QuoteTemplates onSelectTemplate={handleSelectTemplate} />
-                </CardContent>
-              )}
-            </Card>
-          )}
-
           {/* AI Progress Indicator */}
           {isGenerating && <AIProgressIndicator isGenerating={isGenerating} />}
 
-          {/* Quote Interface - Chat or Form */}
-            {useChatInterface ? (
-              <ChatInterface 
-                onQuoteGenerated={handleChatGenerateQuote}
-                isGenerating={isGenerating} 
-              />
-            ) : (
-              <QuoteForm onGenerate={handleGenerateQuote} isGenerating={isGenerating} />
-            )}
+          {/* Chat Interface */}
+          <ChatInterface 
+            onQuoteGenerated={handleChatGenerateQuote}
+            isGenerating={isGenerating} 
+          />
           
           {/* Generated Quote Display */}
           {currentQuote && !isEditing && (
