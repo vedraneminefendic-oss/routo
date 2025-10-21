@@ -285,10 +285,18 @@ function autoCorrectQuote(quote: any, baseTotals: any): any {
 }
 
 // Helper function to build intelligent conversation summary
-function buildConversationSummary(history: any[]): string {
-  if (!history || history.length === 0) return '';
+function buildConversationSummary(history: any[], fallbackDescription?: string): string {
+  // Om historiken är tom, använd fallback description
+  if (!history || history.length === 0) {
+    return fallbackDescription || '';
+  }
   
   const userMessages = history.filter(m => m.role === 'user');
+  
+  // Om inga user messages finns efter filtrering, använd fallback
+  if (userMessages.length === 0) {
+    return fallbackDescription || '';
+  }
   
   if (userMessages.length === 1) {
     return userMessages[0].content;
@@ -316,7 +324,7 @@ async function performPreflightCheck(
 ): Promise<{ canProceed: boolean; projectType: string; missingCritical: string[] }> {
   console.log('🛫 Running pre-flight check...');
   
-  const fullDescription = buildConversationSummary(conversationHistory || [{ role: 'user', content: description }]);
+  const fullDescription = buildConversationSummary(conversationHistory || [], description);
   
   const checkPrompt = `Analysera denna jobbeskrivning och avgör om du kan skapa en offert:
 
