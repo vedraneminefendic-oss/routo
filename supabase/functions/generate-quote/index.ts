@@ -405,7 +405,7 @@ Analysera detta och bestäm: Ska du fråga mer eller generera offert?`;
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'google/gemini-2.5-flash',
+        model: 'openai/gpt-5-mini',
         messages: [
           { role: 'system', content: systemPrompt },
           { role: 'user', content: userPrompt }
@@ -612,7 +612,7 @@ Om du inte hittar exakt projekttyp i guiderna ovan:
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
-      model: 'google/gemini-2.5-flash',
+      model: 'openai/gpt-5-mini',
       temperature: 0,
       messages: [
         {
@@ -1362,7 +1362,7 @@ Lägg till dem i materials-array med dessa standardpriser:
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'google/gemini-2.5-flash',
+        model: 'openai/gpt-5-mini',
         temperature: 0,
         tools: [{
           type: "function",
@@ -1958,7 +1958,7 @@ async function detectDeductionType(description: string, apiKey: string): Promise
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'google/gemini-2.5-flash',
+        model: 'openai/gpt-5-mini',
         messages: [
           {
             role: 'system',
