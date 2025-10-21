@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { MessageBubble } from "./MessageBubble";
 import { ChatInput } from "./ChatInput";
 import { ConversationStarter } from "./ConversationStarter";
+import { ContextPills } from "./ContextPills";
 import { Loader2, RotateCcw, Send, Save, Edit3 } from "lucide-react";
 import { EstimateSection } from "@/components/estimate/EstimateSection";
 import { EstimateSummary } from "@/components/estimate/EstimateSummary";
@@ -429,8 +430,22 @@ export const ChatInterface = ({ onQuoteGenerated, isGenerating }: ChatInterfaceP
           </div>
         )}
 
+        {/* Context Pills - visar vad AI:n förstått */}
+        <ContextPills 
+          messages={messages}
+          onPillClick={(key) => {
+            const prompts = {
+              projectType: "Vilken typ av projekt handlar det om?",
+              area: "Hur stor är ytan i kvadratmeter?",
+              materialLevel: "Vilken materialnivå önskar du? (Budget/Mellan/Premium)",
+              workType: "Är det ROT- eller RUT-arbete?"
+            };
+            handleSendMessage(prompts[key]);
+          }}
+        />
+
         {/* Input Area */}
-        <div className="border-t bg-muted/30 p-4">
+        <div className="bg-muted/30 p-4">
           <ChatInput 
             onSendMessage={handleSendMessage}
             disabled={isGenerating || isTyping}
