@@ -285,232 +285,117 @@ function autoCorrectQuote(quote: any, baseTotals: any): any {
 }
 
 // Helper function to build intelligent conversation summary
-function buildConversationSummary(history: any[], fallbackDescription?: string, preserveMainDescription: boolean = false): string {
-  // Om historiken är tom, använd fallback description
+function buildConversationSummary(history: any[], fallbackDescription?: string): string {
   if (!history || history.length === 0) {
     return fallbackDescription || '';
   }
   
-  const userMessages = history.filter(m => m.role === 'user');
+  const userMessages = history
+    .filter(m => m.role === 'user')
+    .map(m => m.content);
   
-  // Om inga user messages finns efter filtrering, använd fallback
   if (userMessages.length === 0) {
     return fallbackDescription || '';
   }
   
   if (userMessages.length === 1) {
-    return userMessages[0].content;
+    return userMessages[0];
   }
   
-  // NYTT: Om preserveMainDescription är true, använd ALLTID första meddelandet som bas
-  const mainRequest = preserveMainDescription && fallbackDescription 
-    ? fallbackDescription  // Använd den ursprungliga beskrivningen från conversation_history[0]
-    : userMessages[0].content;
+  // Första meddelandet = huvudförfrågan
+  const mainRequest = userMessages[0];
   
-  // Övriga svar är kompletteringar (filtrera bort korta/icke-informativa svar)
+  // Övriga = förtydliganden
   const clarifications = userMessages.slice(1)
-    .map(m => m.content)
-    .filter(c => c.length > 5 && !['nej', 'ja', 'ok', 'okej'].includes(c.toLowerCase().trim()))
+    .filter(c => c.length > 5)
     .join('. ');
   
   return clarifications 
-    ? `${mainRequest}. Ytterligare info: ${clarifications}`
+    ? `${mainRequest}. ${clarifications}`
     : mainRequest;
 }
 
-// Context Reconciliation: Infer yes/no answers from Swedish phrases
-function reconcileMissingCriticalWithLatestAnswers(
-  missingCritical: string[],
-  conversationHistory: any[] | undefined,
-  latestDescription: string
-): { filteredMissingCritical: string[]; resolvedFacts: Record<string, string> } {
-  console.log('🧠 Reconciliation: analyzing latest messages for implicit answers...');
-  
-  const resolvedFacts: Record<string, string> = {};
-  
-  if (!conversationHistory || conversationHistory.length === 0) {
-    return { filteredMissingCritical: missingCritical, resolvedFacts };
-  }
-  
-  // Get the last 1-2 user messages (most recent first)
-  const userMessages = conversationHistory
-    .filter(m => m.role === 'user')
-    .slice(-2)
-    .map(m => m.content);
-  
-  const allTexts = [...userMessages, latestDescription].join(' ').toLowerCase();
-  
-  // Topic keyword patterns (Swedish regex with negations)
-  const topicPatterns: Record<string, { yes: RegExp[]; no: RegExp[] }> = {
-    debris_removal: {
-      yes: [
-        /(bortforsl|forslar bort|frakta bort|transportera bort|kör bort)/i,
-        /(ta bort|tar hand om.*virk|tar om hand)/i,
-        /(jag.*forslar|jag.*tar.*bort|jag.*kör.*bort)/i
-      ],
-      no: [
-        /(lämna kvar|behåller.*virk|kunden.*tar hand|ordnar själv)/i,
-        /(ingen bortforsl|inte.*bortforsl|behöver inte.*ta bort)/i
-      ]
-    },
-    stump_grinding: {
-      yes: [
-        /(stubbfräs|fräser stubb|fräsa stubb|fräs.*stubb)/i,
-        /(jag.*fräser|jag.*fräs)/i
-      ],
-      no: [
-        /(inte.*stubbfräs|ingen stubbfräs|inte.*fräs)/i,
-        /(lämna.*stubb|behålla.*stubb)/i
-      ]
-    },
-    ceiling_painting: {
-      yes: [
-        /(måla.*tak|tak.*målas|inklusive.*tak|även.*tak)/i,
-        /(väggar.*och.*tak|tak.*och.*vägg)/i
-      ],
-      no: [
-        /(bara.*vägg|endast.*vägg|inte.*tak|utan.*tak)/i,
-        /(ej.*tak|exkludera.*tak)/i
-      ]
-    },
-    demolition: {
-      yes: [
-        /(riv|demontera|ta bort.*befintlig|befintlig.*rivs)/i,
-        /(riva.*ut|riva.*bort)/i
-      ],
-      no: [
-        /(behåll|ingen.*rivning|inte.*riv|befintlig.*stannar)/i
-      ]
-    }
-  };
-  
-  // Map missing critical items to topic keys
-  const mapToTopicKey = (criticalItem: string): string | null => {
-    const lower = criticalItem.toLowerCase();
-    if (lower.includes('bortforsl') || lower.includes('transportera') || lower.includes('forsla')) {
-      return 'debris_removal';
-    }
-    if (lower.includes('stubb') || lower.includes('fräs')) {
-      return 'stump_grinding';
-    }
-    if (lower.includes('tak') && lower.includes('mål')) {
-      return 'ceiling_painting';
-    }
-    if (lower.includes('riv') || lower.includes('demonter')) {
-      return 'demolition';
-    }
-    return null;
-  };
-  
-  // Check each missing critical item
-  const filtered = missingCritical.filter(item => {
-    const topicKey = mapToTopicKey(item);
-    if (!topicKey) return true; // Keep items we can't map
-    
-    const patterns = topicPatterns[topicKey];
-    if (!patterns) return true; // Keep if no patterns defined
-    
-    // Check YES patterns
-    const hasYes = patterns.yes.some(regex => regex.test(allTexts));
-    if (hasYes) {
-      resolvedFacts[topicKey] = 'yes';
-      console.log(`✅ Resolved from latest answers: ${topicKey}=yes (matched in: "${allTexts.substring(0, 100)}...")`);
-      return false; // Remove from missing
-    }
-    
-    // Check NO patterns
-    const hasNo = patterns.no.some(regex => regex.test(allTexts));
-    if (hasNo) {
-      resolvedFacts[topicKey] = 'no';
-      console.log(`✅ Resolved from latest answers: ${topicKey}=no (matched in: "${allTexts.substring(0, 100)}...")`);
-      return false; // Remove from missing
-    }
-    
-    return true; // Still missing
-  });
-  
-  if (filtered.length < missingCritical.length) {
-    console.log(`🎯 Reconciliation complete: ${missingCritical.length - filtered.length} item(s) resolved`);
-    console.log(`❌ Still missing: ${JSON.stringify(filtered)}`);
-  } else {
-    console.log('⚠️ Reconciliation: No items could be inferred from latest messages');
-  }
-  
-  return { filteredMissingCritical: filtered, resolvedFacts };
-}
-
-// Pre-flight check: Can I proceed with quote generation?
-async function performPreflightCheck(
+// FAS 17: Single AI Decision Point - handleConversation
+async function handleConversation(
   description: string,
   conversationHistory: any[] | undefined,
   apiKey: string
-): Promise<{ canProceed: boolean; projectType: string; missingCritical: string[] }> {
-  console.log('🛫 Running pre-flight check...');
+): Promise<{ action: 'ask' | 'generate'; questions?: string[] }> {
   
-  const fullDescription = buildConversationSummary(conversationHistory || [], description);
-  
-  const checkPrompt = `Analysera denna jobbeskrivning och avgör om du kan skapa en offert:
+  const systemPrompt = `Du är en erfaren svensk hantverkare som tar emot offerförfrågningar.
 
-"${fullDescription}"
+**DIN UPPGIFT:**
+Analysera HELA konversationen och bestäm EN av följande:
 
-Returnera JSON:
-{
-  "canProceed": true/false,  // false ENDAST om kritisk info saknas
-  "projectType": "trädfällning/målning/badrum/etc",
-  "missingCritical": []  // ENDAST kritiska saker som MÅSTE ha svar
-}
+1. **ASK MODE** - Om KRITISK information saknas:
+   - Returnera 1-3 smarta, relevanta frågor
+   - Fokusera ENDAST på sådant du MÅSTE veta för att kunna prissätta
+   - Aldrig fråga om något användaren redan nämnt
+   - Var naturlig och konversationell
+   
+2. **GENERATE MODE** - Om du har tillräcklig information:
+   - Returnera tom questions-array
+   - Du kan göra rimliga antaganden för icke-kritiska detaljer
 
-**KRITISKA KRAV PER PROJEKTTYP:**
+**VAD ÄR KRITISK INFORMATION?**
 
 **Trädfällning/Arborist:**
-- Höjd på träd (måste ha för att beräkna timmar)
-- Närhet till byggnader/hinder/ledningar (avgör svårighetsgrad)
-- Bortforsling av virke (ja/nej - påverkar pris kraftigt)
+- Höjd (måste ha för att beräkna tid)
+- Närhet till hinder/byggnader (påverkar svårighetsgrad)
+- Bortforsling (ja/nej - stor kostnadsskillnad)
 - Stubbfräsning (ja/nej)
 
 **Målning:**
-- Area eller antal rum (måste ha för att beräkna material/timmar)
-- Tak inkluderat? (ja/nej)
+- Area/rumsstorlek (måste ha)
+- Tak inkluderat? (stor kostnadsskillnad)
 - Befintligt underlag (tapet/färg/puts)
 
 **Badrum/Kök/Renovering:**
-- Storlek/area (måste ha)
-- Omfattning (total renovering/delvis?)
-- Rivning av befintligt? (ja/nej)
+- Area/storlek (måste ha)
+- Total/delvis renovering?
+- Rivning av befintligt?
 
-**Elektriker:**
-- Typ av arbete (installation/fel/utbyte)
-- Omfattning/antal punkter
-
-**VVS:**
-- Typ av arbete (rör/avlopp/uppgradering)
+**Elektriker/VVS:**
+- Typ av arbete
 - Omfattning
 
-**Snickare:**
-- Typ av arbete (montering/bygg/reparation)
-- Material (tillhandahålls av kund eller inkluderat?)
+**VIKTIGA REGLER:**
 
-**VIKTIGT:**
-- canProceed = true om du kan göra rimliga antaganden för ICKE-kritiska detaljer
-- missingCritical = tom array om kritiska krav är uppfyllda
-- Var INTE överdrivet försiktig - hantverkare gör antaganden hela tiden
-- Fokusera på VEM/VAD/VAR, inte detaljerade specifikationer
+✅ **Läs HELA konversationen noggrant**
+- Om användaren redan nämnt något → fråga INTE igen
+- T.ex. "Jag forslar virket" = bortforsling är besvarad
+- T.ex. "15m höga ekar nära huset" = både höjd och närhet besvarad
 
-**Exempel:**
-"Fälla två ekar 15m nära huset, jag tar bortforsling" 
-→ canProceed: true, missingCritical: [] (alla kritiska detaljer finns)
+✅ **Var smart om implicita svar**
+- "två stora ekar 15m" → höjd finns
+- "jag tar bortforsling och fräser stubbar" → båda besvarade
+- "måla vardagsrum 25 kvm, bara väggar" → area finns, tak=nej
 
-"Fälla två ekar 15m"
-→ canProceed: false, missingCritical: ["Närhet till byggnader/hinder?", "Bortforsling (ja/nej)?"]
+✅ **Max 2 konversationsrundor**
+- Om detta är andra gången du frågar → var extra generös med antaganden
+- Generera hellre offert än ställa fler frågor
 
-"Renovera något"
-→ canProceed: false, missingCritical: ["Vad ska renoveras? (badrum/kök/etc)"]
+✅ **Naturlig ton**
+- Inte: "Närhet till byggnader eller hinder?"
+- Utan: "Står träden nära huset eller några andra byggnader?"
 
-"Måla om vardagsrum 25 kvm"
-→ canProceed: false, missingCritical: ["Ska taket målas?", "Befintlig färg/tapet?"]
+**RETURNERA JSON:**
+{
+  "action": "ask" eller "generate",
+  "questions": ["Fråga 1?", "Fråga 2?"] eller []
+}`;
 
-"Måla om vardagsrum 25 kvm, väggar och tak, befintlig färg"
-→ canProceed: true, missingCritical: [] (alla kritiska detaljer finns)`;
+  const conversationText = conversationHistory && conversationHistory.length > 0
+    ? conversationHistory.map(m => 
+        `${m.role === 'user' ? '👤 Kund' : '🤖 Du'}: ${m.content}`
+      ).join('\n\n')
+    : `👤 Kund: ${description}`;
+
+  const userPrompt = `HELA KONVERSATIONEN HITTILLS:
+
+${conversationText}
+
+Analysera detta och bestäm: Ska du fråga mer eller generera offert?`;
 
   try {
     const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
@@ -522,409 +407,39 @@ Returnera JSON:
       body: JSON.stringify({
         model: 'google/gemini-2.5-flash',
         messages: [
-          { role: 'system', content: checkPrompt },
-          { role: 'user', content: fullDescription }
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: userPrompt }
         ],
         response_format: { type: "json_object" },
-        temperature: 0
+        temperature: 0.3
       }),
     });
 
     if (!response.ok) {
-      console.error('Pre-flight check API error:', response.status);
-      return { canProceed: true, projectType: 'okänt', missingCritical: [] }; // Fallback
+      console.error('Conversation API error:', response.status);
+      return { action: 'generate' }; // Fallback: generera offert
     }
 
     const data = await response.json();
     const result = JSON.parse(data.choices[0].message.content);
     
-    console.log('Pre-flight result:', result);
-    
-    if (!result.canProceed && result.missingCritical.length > 0) {
-      console.log(`⚠️ Pre-flight check failed: ${JSON.stringify(result.missingCritical)}`);
-    } else {
-      console.log(`✅ Pre-flight OK: Projekttyp "${result.projectType}"`);
-    }
+    console.log('🤖 AI Decision:', result);
     
     return {
-      canProceed: result.canProceed !== false, // Default to true if not explicitly false
-      projectType: result.projectType || 'okänt',
-      missingCritical: result.missingCritical || []
+      action: result.action === 'ask' ? 'ask' : 'generate',
+      questions: result.questions || []
     };
     
   } catch (error) {
-    console.error('Pre-flight check error:', error);
-    return { canProceed: true, projectType: 'okänt', missingCritical: [] }; // Fallback
+    console.error('Conversation error:', error);
+    return { action: 'generate' }; // Fallback
   }
 }
 
-async function generateFollowUpQuestions(
-  description: string,
-  conversationHistory: any[] | undefined,
-  apiKey: string,
-  options?: {
-    missingCritical?: string[];
-    exchangeCount?: number;
-    projectType?: string;
-  }
-): Promise<string[]> {
-  console.log('🤔 Generating follow-up questions...');
-  
-  const fullDescription = buildConversationSummary(conversationHistory || [], description);
-  
-  // Count how many exchanges we've had
-  const exchangeCount = options?.exchangeCount ?? (conversationHistory ? Math.floor(conversationHistory.length / 2) : 0);
-  const missingCritical = options?.missingCritical || [];
-  const projectType = options?.projectType || 'okänt';
-  
-  // FAILSAFE: Additional filter against resolved facts (if we have conversation history)
-  let filteredMissingCritical = missingCritical;
-  if (conversationHistory && conversationHistory.length > 0) {
-    const { filteredMissingCritical: reconciled, resolvedFacts } = reconcileMissingCriticalWithLatestAnswers(
-      missingCritical,
-      conversationHistory,
-      description
-    );
-    
-    if (reconciled.length < missingCritical.length) {
-      console.log(`🛡️ Failsafe: Filtered ${missingCritical.length - reconciled.length} already-answered items from question list`);
-      filteredMissingCritical = reconciled;
-    }
-  }
-  
-  // FAS 16J: Om missingCritical är tom OCH vi har tillräcklig info → returnera tom array (hoppa över frågor)
-  if (filteredMissingCritical.length === 0 && exchangeCount > 0) {
-    console.log('✅ Smart skip pga: missingCritical är tom och vi har conversation history');
-    return [];
-  }
-  
-  // FAS 16A-FIX: Bygg strukturerad vy av tidigare konversation för att undvika upprepade frågor
-  let previousQA = "";
-  if (conversationHistory && conversationHistory.length > 0) {
-    previousQA = "\n\n**TIDIGARE FRÅGOR OCH SVAR:**";
-    
-    let lastQuestions: string[] = [];
-    
-    for (let i = 0; i < conversationHistory.length; i++) {
-      const msg = conversationHistory[i];
-      
-      if (msg.role === 'assistant') {
-        // Splitta på dubbelradbrytningar för att hitta individuella frågor
-        const questions = msg.content.split('\n\n')
-          .map((q: string) => q.trim())
-          .filter((q: string) => q.includes('?') && q.length > 5);
-        
-        if (questions.length > 0) {
-          lastQuestions = questions;
-          questions.forEach((q: string) => {
-            previousQA += `\n\n🤖 AI frågade: ${q}`;
-          });
-        }
-      } else if (msg.role === 'user') {
-        // Om användaren gav ett långt svar, försök matcha mot tidigare frågor
-        const userAnswer = msg.content.trim();
-        previousQA += `\n👤 Användare svarade: ${userAnswer}`;
-        
-        // Om svaret är kort (< 50 tecken) och vi har frågor, matcha det mot senaste frågan
-        if (userAnswer.length < 50 && lastQuestions.length > 0) {
-          previousQA += ` (på frågan: "${lastQuestions[lastQuestions.length - 1]}")`;
-        }
-        
-        lastQuestions = []; // Reset efter svar
-      }
-    }
-    
-    previousQA += "\n";
-  }
-  
-  // FAS 16H: Extrahera diskuterade topics för att undvika omformulerade dubblettfrågor
-  const discussedTopics: string[] = [];
-  if (conversationHistory && conversationHistory.length > 0) {
-    for (const msg of conversationHistory) {
-      if (msg.role === 'assistant' && msg.content.includes('?')) {
-        const content = msg.content.toLowerCase();
-        
-        // Trädfällning-specifika topics
-        if (content.includes('bortforsling') || content.includes('transportera') || content.includes('ta bort') || content.includes('ta om hand')) {
-          discussedTopics.push('bortforsling av material');
-        }
-        if (content.includes('stubb') || content.includes('fräs')) {
-          discussedTopics.push('stubbfräsning');
-        }
-        if (content.includes('höjd') || content.includes('hur höga')) {
-          discussedTopics.push('höjd/storlek');
-        }
-        if (content.includes('nära') || content.includes('avstånd') || content.includes('byggnader')) {
-          discussedTopics.push('närhet till byggnader/hinder');
-        }
-        if (content.includes('brant') || content.includes('sluttning')) {
-          discussedTopics.push('terräng/sluttning');
-        }
-        if (content.includes('gräs') || content.includes('rabatt') || content.includes('skydda')) {
-          discussedTopics.push('markskydd');
-        }
-        
-        // Badrum/renovering-specifika topics
-        if (content.includes('storlek') || content.includes('kvm') || content.includes('kvadrat')) {
-          discussedTopics.push('storlek/area');
-        }
-        if (content.includes('riv') || content.includes('befintlig')) {
-          discussedTopics.push('rivning av befintligt');
-        }
-        if (content.includes('rör') || content.includes('ledningar')) {
-          discussedTopics.push('rör/ledningar');
-        }
-        if (content.includes('golvvärme') || content.includes('värmesystem')) {
-          discussedTopics.push('värmesystem');
-        }
-        
-        // Målning-specifika topics
-        if (content.includes('rum') || content.includes('antal')) {
-          discussedTopics.push('antal rum/ytor');
-        }
-        if (content.includes('spackling') || content.includes('slipning')) {
-          discussedTopics.push('förarbete (spackling/slipning)');
-        }
-        if (content.includes('tak') || content.includes('vägg')) {
-          discussedTopics.push('vilka ytor som ska målas');
-        }
-        if (content.includes('färg') || content.includes('material')) {
-          discussedTopics.push('material/färgval');
-        }
-        
-        // Generella topics
-        if (content.includes('deadline') || content.includes('färdig') || content.includes('klart till')) {
-          discussedTopics.push('deadline/tidsram');
-        }
-        if (content.includes('budget') || content.includes('kostnad')) {
-          discussedTopics.push('budget');
-        }
-        if (content.includes('tillgång') || content.includes('nå')) {
-          discussedTopics.push('tillgänglighet');
-        }
-      }
-    }
-  }
-  
-  // Skapa unikt set (ta bort exakta dubbletter från topic-listan)
-  const uniqueTopics = [...new Set(discussedTopics)];
-  
-  const topicsWarning = uniqueTopics.length > 0 
-    ? `\n\n⚠️ **TOPICS SOM REDAN DISKUTERATS (fråga INTE om dessa igen, även om du formulerar frågan annorlunda!):**\n${uniqueTopics.map(t => `- ${t}`).join('\n')}\n`
-    : '';
-  
-  // FAS 16J: Utökad Smart skip v2 - Detektera om användaren signalerar att de redan svarat
-  if (conversationHistory && conversationHistory.length >= 2) {
-    const lastUserMessage = conversationHistory
-      .filter(m => m.role === 'user')
-      .pop()?.content || '';
-    
-    const lowerMsg = lastUserMessage.toLowerCase();
-    
-    // Detektera "jag har redan svarat på det"-fraser
-    const alreadyAnsweredPhrases = [
-      'det där har jag redan svarat på',
-      'har redan sagt',
-      'se ovan',
-      'allt framgår',
-      'det sa jag ju',
-      'läs mitt förra svar',
-      'det räcker med frågor',
-      'ingen fler frågor'
-    ];
-    
-    if (alreadyAnsweredPhrases.some(phrase => lowerMsg.includes(phrase))) {
-      console.log('✅ Smart skip pga: användaren indikerar att de redan svarat på allt');
-      return [];
-    }
-    
-    // Räkna meningsfulla påståenden i senaste svaret
-    const statements = lastUserMessage
-      .split(/[.!?]/)
-      .filter((s: string) => s.trim().length > 10);
-    
-    // FAS 16K: Om användaren gav 5+ påståenden OCH vi har täckt in rimliga topics → skippa (höjt från 3)
-    if (statements.length >= 5 && exchangeCount < 2) {
-      // FAS 16K: Anpassa tröskel baserat på projekttyp (höjda värden)
-      const minTopicsMap: Record<string, number> = {
-        'trädfällning': 4,    // Höjd/diameter, hinder, bortforsling, stubbfräsning
-        'arborist': 4,        // Samma som trädfällning
-        'målning': 4,         // Yta, förarbete, tak/väggar, befintligt underlag
-        'badrum': 5,          // Storlek, nivå, rör, kakel, rivning
-        'kök': 5,             // Storlek, skåp, bänkskiva, vitvaror, rivning
-        'renovering': 5,      // Omfattning, rum, material, rivning, el/vvs
-        'elektriker': 4,      // Typ, omfattning, tillgänglighet, befintligt
-        'vvs': 4,             // Typ, omfattning, tillgänglighet, befintligt
-        'snickare': 4,        // Typ, material, omfattning, placering
-        'städning': 3,        // Area, frekvens, typ
-        'trädgård': 4,        // Area, typ av arbete, frekvens, material
-        'okänt': 5            // Högt krav för okända projekt
-      };
-      
-      const projectTypeLower = projectType.toLowerCase();
-      const minTopics = minTopicsMap[projectTypeLower] || minTopicsMap['okänt'];
-      
-      if (uniqueTopics.length >= minTopics) {
-        console.log(`✅ Smart skip v2 pga: user provided ${statements.length} statements AND covered ${uniqueTopics.length}/${minTopics} required topics for ${projectType}`);
-        return [];
-      } else {
-        console.log(`⏭️ Not skipping: ${statements.length} statements but only ${uniqueTopics.length}/${minTopics} topics for ${projectType}`);
-      }
-    }
-  }
-  
-  // FAS 16J: Om missingCritical finns, bygg targeted prompt
-  let questionsPrompt = '';
-  let maxQuestions = 3;
-  
-  if (filteredMissingCritical.length > 0) {
-    // TARGETED MODE: Fråga endast om missing critical info
-    maxQuestions = Math.min(2, filteredMissingCritical.length);
-    
-    questionsPrompt = `Du är en AI-assistent som hjälper en professionell hantverkare att skapa offerter.
+// Context Reconciliation: Infer yes/no answers from Swedish phrases
+// FAS 17: Old functions removed (reconcileMissingCriticalWithLatestAnswers, performPreflightCheck, generateFollowUpQuestions)
 
-**VIKTIGT PERSPEKTIV:**
-- Du pratar MED hantverkaren (användaren), inte med deras kund
-- Hantverkaren skriver in vad kunden vill ha, och du hjälper till att ta fram detaljer
-- Använd "du" = hantverkaren, "kunden" = hantverkarens kund
 
-NUVARANDE KONVERSATION:
-${fullDescription}
-${previousQA}
-
-**KRITISK INFORMATION SOM SAKNAS:**
-${filteredMissingCritical.map((item, i) => `${i + 1}. ${item}`).join('\n')}
-
-**UPPGIFT:** Ställ ENDAST frågor om dessa ${filteredMissingCritical.length} kritiska punkter ovan. Max ${maxQuestions} frågor.
-
-Exempel:
-Om "Vad ska renoveras? (badrum/kök/etc)" saknas → "Vilken typ av renovering handlar det om?"
-Om "Storlek på ytan" saknas → "Hur stor är ytan i kvadratmeter?"
-
-Returnera JSON med array av frågor:
-{
-  "questions": ["Fråga 1?", "Fråga 2?"]
-}`;
-    
-  } else {
-    // NORMAL MODE: Generella följdfrågor
-    maxQuestions = exchangeCount === 0 ? 3 : 2; // Färre frågor i runda 2
-    
-    questionsPrompt = `Du är en AI-assistent som hjälper en professionell hantverkare att skapa offerter.
-
-**VIKTIGT PERSPEKTIV:**
-- Du pratar MED hantverkaren (användaren), inte med deras kund
-- Hantverkaren skriver in vad kunden vill ha, och du hjälper till att ta fram detaljer
-- Använd "du" = hantverkaren, "kunden" = hantverkarens kund
-
-**EXEMPEL PÅ RÄTT FORMULERING:**
-✅ "Tar du själv bortforslingen eller ansvarar kunden för det?"
-✅ "Ska du fräsa stubbarna eller gör kunden det?"
-✅ "Behöver kunden ha klart till ett visst datum?"
-
-❌ INTE: "Vill du att vi tar hand om bortforslingen?"
-❌ INTE: "Ska vi fräsa stubbarna?"
-
-NUVARANDE KONVERSATION:
-${fullDescription}
-${previousQA}
-${topicsWarning}
-
-UPPGIFT: Ställ ${maxQuestions} relevanta följdfrågor för att få MER DETALJERAD information.
-
-**Konversationsstadium: ${exchangeCount === 0 ? 'FÖRSTA FRÅGAN' : `UPPFÖLJNING (Runda ${exchangeCount + 1}/2)`}**
-
-${exchangeCount === 0 ? `
-**FÖRSTA FRÅGAN - Fokusera på:**
-1. Exakt omfattning (antal, storlek, mängd)
-2. Platsförhållanden (tillgänglighet, svårighetsgrad)
-3. Tidpunkt/deadline
-4. Extra önskemål (bortforsling, fräsning, etc)
-
-Exempel för trädfällning:
-- "Hur höga är träden ungefär?"
-- "Finns det byggnader eller elledningar i närheten som kan påverka arbetet?"
-- "Tar du själv bortforslingen av virket eller ansvarar kunden för det?"
-- "Ska du fräsa stubbarna eller gör kunden det själv?"
-
-Exempel för badrumsrenovering:
-- "Vilken storlek har badrummet (kvm)?"
-- "Ska du riva befintliga kakel och plattor eller finns det redan gjort?"
-- "Behöver kunden nya rör eller kan du återanvända befintligt?"
-- "Vill kunden ha golvvärme eller standard elradiator?"
-
-Exempel för målning:
-- "Hur många rum ska du måla?"
-- "Behöver du spackling och slipning eller är väggarna klara?"
-- "Ska du måla tak också eller bara väggar?"
-- "Tar du med färg i offerten eller fixar kunden det själv?"
-
-Exempel för städning:
-- "Hur stor yta (kvm) ska du städa?"
-- "Ska du göra fönsterputs också eller bara ordinarie städning?"
-- "Behöver kunden engångsstädning eller återkommande uppdrag?"
-- "Tar du med städmaterial i priset eller använder kundens produkter?"
-` : `
-**UPPFÖLJNINGSFRÅGOR - Fördjupa:**
-- Material/kvalitet
-- Exakta mått
-- Specifika tekniska krav
-- Budget/tidsram
-
-⚠️ **KRITISKT: Fråga ALDRIG om information som användaren redan givit ovan!**
-⚠️ **Läs igenom "TIDIGARE FRÅGOR OCH SVAR" noggrant innan du skapar nya frågor!**
-⚠️ **Kontrollera "TOPICS SOM REDAN DISKUTERATS" - fråga INTE om dessa ämnen igen, även om du formulerar frågan annorlunda!**
-`}
-
-Returnera JSON med array av frågor:
-{
-  "questions": ["Fråga 1?", "Fråga 2?", "Fråga 3?"]
-}
-
-**VIKTIGT:**
-- Max ${maxQuestions} frågor
-- Var SPECIFIK och RELEVANT för just detta projekt
-- Ställ INTE generiska frågor
-- Ställ ALDRIG frågor om saker som redan besvarats i "TIDIGARE FRÅGOR OCH SVAR"
-- **EN FRÅGA = EN FRÅGESTÄLLNING. Dela ALDRIG upp flera frågor med "och", "eller", kommatecken i samma fråga**
-- **PERSPEKTIV: Kom ihåg att "du" = hantverkaren som skapar offerten, "kunden" = hantverkarens kund**`;
-  }
-
-  try {
-    const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: 'google/gemini-2.5-flash',
-        messages: [
-          { role: 'system', content: questionsPrompt },
-          { role: 'user', content: fullDescription }
-        ],
-        response_format: { type: "json_object" },
-        temperature: 0.7
-      }),
-    });
-
-    if (!response.ok) {
-      console.error('Follow-up questions API error:', response.status);
-      return ["Berätta mer om projektet så kan jag göra en bättre offert."];
-    }
-
-    const data = await response.json();
-    const result = JSON.parse(data.choices[0].message.content);
-    
-    console.log('📋 Generated questions:', result.questions);
-    
-    return result.questions || ["Kan du berätta mer om projektet?"];
-    
-  } catch (error) {
-    console.error('Follow-up questions error:', error);
-    return ["Berätta mer om projektet så kan jag göra en bättre offert."];
-  }
-}
 
 async function calculateBaseTotals(
   description: string, 
@@ -1672,153 +1187,48 @@ Lägg till dem i materials-array med dessa standardpriser:
       ? `RUT-avdrag: 50% av arbetskostnaden (max 75 000 kr per person/år). Gäller städning, underhåll, trädgård, hemservice.`
       : `Inget skatteavdrag tillämpas på detta arbete.`;
 
-    // FAS 16J: STEG 1 - Kör ALLTID preflight check först
-    // Check if this is the first message in a conversation (no history)
-    const isFirstMessage = !conversation_history || conversation_history.length === 0;
-
-    // Count conversation exchanges (user + assistant pairs)
+    // FAS 17: Simplified AI Conversation Mode
+    // Count conversation exchanges
     const exchangeCount = conversation_history ? Math.floor(conversation_history.length / 2) : 0;
 
-    // FAS 16J: Utökad "kör nu"-regex med fler svenska uttryck
+    // Check if user explicitly wants quote now
     const userWantsQuoteNow = description.toLowerCase().match(
-      /(generera|skapa|gör|ta fram|räcker|kör på|nu|direkt|klart|det räcker med frågor)/
+      /(generera|skapa|gör|ta fram|räcker|kör på|nu|direkt|klart|det räcker)/
     );
 
-    // FAS 16J: SÄNKT GRÄNS - max 2 rundor istället för 3
-    if (isFirstMessage || (!userWantsQuoteNow && exchangeCount < 2)) {
+    // FAS 17: Ask questions if under 2 rounds AND user doesn't want quote now
+    if (!userWantsQuoteNow && exchangeCount < 2) {
+      console.log(`💬 Running AI conversation handler (exchange ${exchangeCount}/2)...`);
       
-      // FAS 16K: CONVERSATION STARTER MODE - Om beskrivningen är extremt kort, fråga alltid
-      const latestUserMessage = conversation_history && conversation_history.length > 0
-        ? conversation_history[conversation_history.length - 1].content
-        : description;
-      const isVeryShortDescription = latestUserMessage.length < 50;
-      
-      if (isFirstMessage && isVeryShortDescription) {
-        console.log(`🗣️ Conversation Starter Mode: Description too short (${latestUserMessage.length} chars), asking initial questions...`);
-        
-        // Kör en snabb preflight för att identifiera projekttyp
-        const quickPreflight = await performPreflightCheck(
-          description,
-          conversation_history,
-          LOVABLE_API_KEY!
-        );
-        
-        const initialQuestions = await generateFollowUpQuestions(
-          description,
-          conversation_history,
-          LOVABLE_API_KEY!,
-          {
-            exchangeCount: 0,
-            projectType: quickPreflight.projectType || 'general'
-          }
-        );
-        
-        return new Response(
-          JSON.stringify({
-            type: 'clarification',
-            message: 'Tack för din förfrågan! För att ge dig en så exakt offert som möjligt behöver jag veta lite mer:',
-            questions: initialQuestions
-          }),
-          {
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-            status: 200
-          }
-        );
-      }
-      
-      // FAS 16J: Kör preflight check INNAN vi bestämmer om vi ska fråga eller generera
-      console.log(`🛫 Running preflight check before deciding conversation mode (exchange ${exchangeCount}/2)...`);
-      const preflightResult = await performPreflightCheck(
+      const decision = await handleConversation(
         description,
         conversation_history,
         LOVABLE_API_KEY!
       );
       
-      console.log(`Preflight result: canProceed=${preflightResult.canProceed}, projectType="${preflightResult.projectType}", missingCritical=${JSON.stringify(preflightResult.missingCritical)}`);
-      
-      // CONTEXT RECONCILIATION: Filter missing critical items based on answers in conversation
-      const { filteredMissingCritical, resolvedFacts } = reconcileMissingCriticalWithLatestAnswers(
-        preflightResult.missingCritical,
-        conversation_history,
-        description
-      );
-      
-      // Replace missingCritical with filtered version
-      preflightResult.missingCritical = filteredMissingCritical;
-      
-      // FAS 16J: Om preflight säger OK OCH inget kritiskt saknas → generera direkt
-      if (preflightResult.canProceed && preflightResult.missingCritical.length === 0) {
-        console.log('✅ Smart skip pga: preflight OK and no missing critical info - proceeding to quote generation');
-        // Fall through to quote generation
-      } else if (preflightResult.missingCritical.length > 0) {
-        // FAS 16J: Kritisk info saknas → fråga ENDAST om dessa (max 2 frågor)
-        console.log(`⚠️ Conversation mode: TARGETED questions about ${preflightResult.missingCritical.length} critical items (exchange ${exchangeCount + 1}/2)`);
+      if (decision.action === 'ask' && decision.questions && decision.questions.length > 0) {
+        console.log(`🤔 AI wants to ask ${decision.questions.length} question(s)`);
         
-        const followUpQuestions = await generateFollowUpQuestions(
-          description, 
-          conversation_history, 
-          LOVABLE_API_KEY!,
-          {
-            missingCritical: preflightResult.missingCritical,
-            exchangeCount,
-            projectType: preflightResult.projectType
+        return new Response(
+          JSON.stringify({
+            type: 'clarification',
+            message: exchangeCount === 0 
+              ? 'Tack för din förfrågan! För att ge dig en så exakt offert som möjligt behöver jag veta lite mer:'
+              : 'Perfekt! Bara några sista detaljer:',
+            questions: decision.questions
+          }),
+          { 
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+            status: 200 
           }
         );
-        
-        // Om Smart skip aktiverades (tom array), gå direkt till offert
-        if (followUpQuestions.length === 0) {
-          console.log('✅ Smart skip activated after targeted check - proceeding to quote generation');
-          // Fall through to quote generation
-        } else {
-          return new Response(
-            JSON.stringify({
-              type: 'clarification',
-              message: exchangeCount === 0 
-                ? 'Tack för din förfrågan! För att ge dig en så exakt offert som möjligt behöver jag veta lite mer:'
-                : 'Nästan klart! Bara någon sista detalj:',
-              questions: followUpQuestions
-            }),
-            { 
-              headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-              status: 200 
-            }
-          );
-        }
-      } else {
-        // FAS 16J: canProceed = false (sällsynt) → ställ vanliga frågor
-        console.log(`💬 Conversation mode: NORMAL questions (exchange ${exchangeCount + 1}/2)`);
-        
-        const followUpQuestions = await generateFollowUpQuestions(
-          description, 
-          conversation_history, 
-          LOVABLE_API_KEY!,
-          {
-            exchangeCount,
-            projectType: preflightResult.projectType
-          }
-        );
-        
-        // Om Smart skip aktiverades (tom array), gå direkt till offert
-        if (followUpQuestions.length === 0) {
-          console.log('✅ Smart skip activated - proceeding to quote generation');
-          // Fall through to quote generation
-        } else {
-          return new Response(
-            JSON.stringify({
-              type: 'clarification',
-              message: exchangeCount === 0 
-                ? 'Tack för din förfrågan! För att ge dig en så exakt offert som möjligt behöver jag veta lite mer:'
-                : 'Bra! Några fler frågor så jag kan göra offerten perfekt:',
-              questions: followUpQuestions
-            }),
-            { 
-              headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-              status: 200 
-            }
-          );
-        }
       }
+      
+      console.log('✅ AI decided to generate quote');
     }
+
+    // Fall through to quote generation
+    console.log('✅ Proceeding to quote generation...');
 
     // Om vi kommer hit ska vi generera offert
     console.log('✅ Enough information gathered - generating quote...');
@@ -1827,32 +1237,7 @@ Lägg till dem i materials-array med dessa standardpriser:
     console.log('Step 2: Calculating base totals with complete conversation context...');
     
     // Bygg komplett beskrivning från hela konversationen
-    let completeDescription = buildConversationSummary(conversation_history || [], description);
-    
-    // Append resolved facts as explicit sentences to ensure AI doesn't forget them
-    const { resolvedFacts } = reconcileMissingCriticalWithLatestAnswers(
-      [], // We don't need to filter here, just get the resolved facts
-      conversation_history,
-      description
-    );
-    
-    if (Object.keys(resolvedFacts).length > 0) {
-      const factSentences: string[] = [];
-      if (resolvedFacts.debris_removal === 'yes') factSentences.push('Bortforsling: ja');
-      if (resolvedFacts.debris_removal === 'no') factSentences.push('Bortforsling: nej');
-      if (resolvedFacts.stump_grinding === 'yes') factSentences.push('Stubbfräsning: ja');
-      if (resolvedFacts.stump_grinding === 'no') factSentences.push('Stubbfräsning: nej');
-      if (resolvedFacts.ceiling_painting === 'yes') factSentences.push('Takmålning: ja');
-      if (resolvedFacts.ceiling_painting === 'no') factSentences.push('Takmålning: nej');
-      if (resolvedFacts.demolition === 'yes') factSentences.push('Rivning: ja');
-      if (resolvedFacts.demolition === 'no') factSentences.push('Rivning: nej');
-      
-      if (factSentences.length > 0) {
-        completeDescription += '. ' + factSentences.join('. ') + '.';
-        console.log('✅ Appended resolved facts to description:', factSentences.join(', '));
-      }
-    }
-    
+    const completeDescription = buildConversationSummary(conversation_history || [], description);
     console.log('Complete description for base totals:', completeDescription);
     
     const baseTotals = await calculateBaseTotals(
