@@ -194,7 +194,13 @@ serve(async (req) => {
       throw upsertError;
     }
 
-    console.log('✅ User patterns updated successfully');
+    console.log('📊 Updated user patterns:', {
+      user_id: user.id,
+      quotes_analyzed: quotes.length,
+      avg_value: patterns.avg_quote_value?.toFixed(0) || 0,
+      work_types: Object.keys(workTypeDistribution).join(', '),
+      detail_level: patterns.preferred_detail_level
+    });
 
     return new Response(
       JSON.stringify({ 

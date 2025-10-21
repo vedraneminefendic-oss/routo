@@ -128,6 +128,20 @@ const NewQuote = () => {
         });
       }
       
+      // Show learning metadata if available
+      if (data.learningMetadata) {
+        const { hasUserPatterns, hasBenchmarks, quotesAnalyzed, benchmarkCategories } = data.learningMetadata;
+        
+        if (hasUserPatterns || hasBenchmarks) {
+          let learningMsg = "🧠 AI använder ";
+          const parts = [];
+          if (hasUserPatterns) parts.push(`dina ${quotesAnalyzed} tidigare offerter`);
+          if (hasBenchmarks) parts.push(`${benchmarkCategories} branschstandarder`);
+          
+          toast.info(learningMsg + parts.join(' och '), { duration: 4000 });
+        }
+      }
+      
       if (data.realismWarnings && data.realismWarnings.length > 0) {
         toast.info('Branschvalidering: Vissa estimat kan behöva justeras', {
           duration: 6000

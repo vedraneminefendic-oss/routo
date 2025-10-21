@@ -87,6 +87,13 @@ export const useQuoteStatus = () => {
         description: `Offertens status ändrades till "${newStatus}"`,
       });
 
+      // Trigger user patterns update for accepted/completed/sent quotes (fire-and-forget)
+      if (newStatus === 'accepted' || newStatus === 'completed' || newStatus === 'sent') {
+        supabase.functions.invoke('update-user-patterns', {
+          body: { user_id: user?.id }
+        }).catch(err => console.error('Failed to update user patterns:', err));
+      }
+
       return true;
     } catch (error) {
       console.error("Error changing status:", error);

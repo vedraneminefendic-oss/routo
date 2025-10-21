@@ -5,12 +5,12 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Building2, Clock, Wrench, FileText, PlayCircle } from "lucide-react";
+import { Building2, Clock, Wrench, FileText, PlayCircle, Brain } from "lucide-react";
 import CompanySettings from "@/components/CompanySettings";
 import HourlyRatesManager from "@/components/HourlyRatesManager";
 import EquipmentRatesManager from "@/components/EquipmentRatesManager";
 import TemplatesManager from "@/components/TemplatesManager";
-import { useToast } from "@/hooks/use-toast";
+import { toast } from "sonner";
 import { AppHeader } from "@/components/AppHeader";
 
 const Settings = () => {
@@ -20,7 +20,6 @@ const Settings = () => {
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState(searchParams.get("tab") || "company");
   const [showOnboardingResume, setShowOnboardingResume] = useState(false);
-  const { toast } = useToast();
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -63,10 +62,7 @@ const Settings = () => {
       .update({ current_step: "welcome" })
       .eq("user_id", user.id);
     
-    toast({
-      title: "Guidning återupptas",
-      description: "Går tillbaka till startsidan...",
-    });
+    toast.success("Guidning återupptas - går tillbaka till startsidan...");
     
     setTimeout(() => navigate("/"), 500);
   };
@@ -99,6 +95,43 @@ const Settings = () => {
             </AlertDescription>
           </Alert>
         )}
+
+        <Card className="mb-6">
+          <CardHeader>
+            <CardTitle className="text-secondary flex items-center gap-2">
+              <Brain className="h-5 w-5" />
+              AI-profil
+            </CardTitle>
+            <CardDescription>
+              Uppdatera din AI-profil manuellt baserat på dina tidigare offerter
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Button 
+              onClick={async () => {
+                try {
+                  const { data: { user } } = await supabase.auth.getUser();
+                  if (!user) return;
+                  
+                  toast.info('Uppdaterar AI-profil...');
+                  
+                  await supabase.functions.invoke('update-user-patterns', {
+                    body: { user_id: user.id }
+                  });
+                  
+                  toast.success('Din AI-profil har uppdaterats!');
+                } catch (error) {
+                  console.error('Error updating user patterns:', error);
+                  toast.error('Kunde inte uppdatera AI-profil');
+                }
+              }}
+              className="flex items-center gap-2"
+            >
+              <Brain className="h-4 w-4" />
+              Uppdatera AI-profil
+            </Button>
+          </CardContent>
+        </Card>
 
         <Tabs 
           value={activeTab} 

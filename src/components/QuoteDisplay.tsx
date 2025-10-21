@@ -229,6 +229,14 @@ const QuoteDisplay = ({
 
       toast.success(`E-post skickad till ${recipientEmail}!`);
       
+      // Trigger user patterns update after sending quote (fire-and-forget)
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        supabase.functions.invoke('update-user-patterns', {
+          body: { user_id: user.id }
+        }).catch(err => console.error('Failed to update user patterns:', err));
+      }
+      
       setShowEmailDialog(false);
       setRecipientEmail("");
       setRecipientName("");

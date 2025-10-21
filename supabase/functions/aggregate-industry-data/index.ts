@@ -223,6 +223,15 @@ serve(async (req) => {
       console.log('Successfully updated benchmarks');
     }
 
+    console.log('📈 Aggregated industry data:', {
+      total_categories: categories.size,
+      gdpr_compliant: validCategories.size,
+      skipped_for_privacy: categories.size - validCategories.size,
+      total_quotes_processed: quotes.length,
+      benchmarks_created: benchmarks.length,
+      date_range: '6 months'
+    });
+
     return new Response(
       JSON.stringify({ 
         message: 'Industry data aggregated successfully (GDPR-compliant)',

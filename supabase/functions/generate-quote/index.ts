@@ -1283,6 +1283,14 @@ Lägg till dem i materials-array med dessa standardpriser:
       console.log('User style analyzed:', userStyle);
     }
 
+    // Prepare learning metadata to return to frontend
+    const learningMetadata = {
+      hasUserPatterns: !!userPatterns,
+      hasBenchmarks: (industryBenchmarks?.length || 0) > 0,
+      quotesAnalyzed: userPatterns?.total_quotes_analyzed || 0,
+      benchmarkCategories: industryBenchmarks?.length || 0
+    };
+
     // Build learning context from industry benchmarks
     const buildLearningContext = (benchmarks: any[] | null) => {
       if (!benchmarks || benchmarks.length === 0) {
@@ -2291,28 +2299,11 @@ Viktig information:
       detailLevel,
       deductionType: finalDeductionType,
       usedReference: referenceQuotes.length > 0,
-      referenceTitle: referenceQuotes[0]?.title || undefined
+      referenceTitle: referenceQuotes[0]?.title || undefined,
+      learningMetadata // Include learning metadata for frontend
     };
     
     // Quality metadata (simplified - no warnings in new flow)
-
-    // Fas 14E: Feedback loop - Uppdatera användarens patterns i bakgrunden
-    // Fire-and-forget: Kör asynkront utan att vänta på resultat
-    fetch(`${SUPABASE_URL}/functions/v1/update-user-patterns`, {
-      method: 'POST',
-      headers: {
-        'Authorization': authHeader,
-        'Content-Type': 'application/json',
-      },
-    }).then(response => {
-      if (response.ok) {
-        console.log('✅ User patterns updated in background');
-      } else {
-        console.warn('⚠️ Failed to update user patterns (non-blocking)');
-      }
-    }).catch(err => {
-      console.warn('⚠️ Error updating user patterns (non-blocking):', err.message);
-    });
 
     return new Response(
       JSON.stringify(responseData),
