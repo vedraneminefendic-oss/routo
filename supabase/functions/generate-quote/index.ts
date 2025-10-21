@@ -1451,6 +1451,114 @@ Lägg till dem i materials-array med dessa standardpriser:
 
     console.log('✅ Base totals calculated:', baseTotals);
 
+    // ==================
+    // HELPER: LOCAL QUOTE BUILDER (FALLBACK)
+    // ==================
+    
+    const buildFallbackQuote = (params: {
+      description: string;
+      baseTotals: any;
+      detailLevel: string;
+      hourlyRatesByType: { [key: string]: number };
+      finalDeductionType: string;
+      deductionRate: number;
+      totalMaxRot: number;
+      totalMaxRut: number;
+    }) => {
+      console.log('⚠️ Building fallback quote locally...');
+      
+      const { description, baseTotals, detailLevel, hourlyRatesByType, finalDeductionType, deductionRate, totalMaxRot, totalMaxRut } = params;
+      
+      // Generate work items from baseTotals.workHours
+      const workItems: any[] = [];
+      for (const [workType, hours] of Object.entries(baseTotals.workHours)) {
+        const hourlyRate = hourlyRatesByType[workType] || 650;
+        const subtotal = (hours as number) * hourlyRate;
+        workItems.push({
+          name: `${workType} - Arbete`,
+          description: `Utförande av ${workType.toLowerCase()}-arbete enligt beskrivning`,
+          hours: hours,
+          hourlyRate: hourlyRate,
+          subtotal: subtotal
+        });
+      }
+      
+      // Generate material items
+      const materials: any[] = [];
+      if (baseTotals.equipmentCost > 0) {
+        materials.push({
+          name: 'Maskiner och utrustning',
+          quantity: 1,
+          unit: 'post',
+          pricePerUnit: baseTotals.equipmentCost,
+          subtotal: baseTotals.equipmentCost
+        });
+      }
+      if (baseTotals.materialCost > 0) {
+        materials.push({
+          name: 'Material och förbrukning',
+          quantity: 1,
+          unit: 'post',
+          pricePerUnit: baseTotals.materialCost,
+          subtotal: baseTotals.materialCost
+        });
+      }
+      
+      // Calculate summary
+      const workCost = workItems.reduce((sum, item) => sum + item.subtotal, 0);
+      const materialCost = baseTotals.materialCost + baseTotals.equipmentCost;
+      const totalBeforeVAT = workCost + materialCost;
+      const vat = Math.round(totalBeforeVAT * 0.25);
+      const totalWithVAT = totalBeforeVAT + vat;
+      
+      let deductionAmount = 0;
+      if (finalDeductionType === 'rot' || finalDeductionType === 'rut') {
+        const workCostInclVAT = workCost * 1.25;
+        const maxDeduction = finalDeductionType === 'rot' ? totalMaxRot : totalMaxRut;
+        deductionAmount = Math.min(Math.round(workCostInclVAT * deductionRate), maxDeduction);
+      }
+      
+      const customerPays = totalWithVAT - deductionAmount;
+      
+      // Generate simple title
+      let title = 'Offert';
+      if (description.toLowerCase().includes('träd') || description.toLowerCase().includes('fäll')) {
+        title = 'Offert: Trädfällning';
+      } else if (description.toLowerCase().includes('måla') || description.toLowerCase().includes('målning')) {
+        title = 'Offert: Målning';
+      } else if (description.toLowerCase().includes('badrum')) {
+        title = 'Offert: Badrumsrenovering';
+      } else if (description.toLowerCase().includes('altan')) {
+        title = 'Offert: Altanbygge';
+      } else if (description.toLowerCase().includes('kök')) {
+        title = 'Offert: Köksrenovering';
+      }
+      
+      const quote = {
+        title: title,
+        workItems: workItems,
+        materials: materials,
+        summary: {
+          workCost: workCost,
+          materialCost: materialCost,
+          totalBeforeVAT: totalBeforeVAT,
+          vat: vat,
+          totalWithVAT: totalWithVAT,
+          deductionAmount: deductionAmount,
+          deductionType: finalDeductionType,
+          customerPays: customerPays,
+          ...(finalDeductionType === 'rot' ? { rotDeduction: deductionAmount } : {}),
+          ...(finalDeductionType === 'rut' ? { rutDeduction: deductionAmount } : {})
+        },
+        deductionType: finalDeductionType,
+        notes: `Offerten är baserad på de uppgifter som lämnats och gällande priser.\n\nObservera: Denna offert har skapats i offline-läge på grund av tillfälligt fel i AI-tjänsten. Beräkningarna bygger på dina timpriser och branschstandarder.`
+      };
+      
+      console.log('✅ Fallback quote built:', { workCost, materialCost, totalWithVAT, customerPays });
+      
+      return quote;
+    };
+
     // Define strict JSON schema for tool calling
     const quoteSchema = {
       type: "object",
@@ -1864,7 +1972,7 @@ Viktig information:
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error('AI Gateway error:', response.status, errorText);
+      console.error('AI Gateway error in main generation:', response.status, errorText);
       
       if (response.status === 429) {
         return new Response(
@@ -1880,19 +1988,73 @@ Viktig information:
         );
       }
 
-      throw new Error(`AI Gateway error: ${response.status}`);
+      // For all other errors (400, 500, etc.) - use local fallback
+      console.log('⚠️ AI Gateway error - using local quote builder as fallback');
+      const fallbackQuote = buildFallbackQuote({
+        description,
+        baseTotals,
+        detailLevel,
+        hourlyRatesByType: baseTotals.hourlyRatesByType,
+        finalDeductionType,
+        deductionRate,
+        totalMaxRot,
+        totalMaxRut
+      });
+      
+      // Skip to the final response with fallback quote
+      return new Response(
+        JSON.stringify({
+          type: 'complete_quote',
+          quote: fallbackQuote,
+          customerId: customer_id,
+          warnings: ['Offerten skapades i offline-läge på grund av ett tillfälligt fel i AI-tjänsten.']
+        }),
+        {
+          status: 200,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        }
+      );
     }
 
     const data = await response.json();
     
     // Extract quote from tool call response
     let generatedQuote;
-    if (data.choices[0].message.tool_calls && data.choices[0].message.tool_calls[0]) {
-      // Tool calling response format
-      generatedQuote = JSON.parse(data.choices[0].message.tool_calls[0].function.arguments);
-    } else {
-      // Fallback to old format if tool calling not used
-      generatedQuote = JSON.parse(data.choices[0].message.content);
+    try {
+      if (data.choices[0].message.tool_calls && data.choices[0].message.tool_calls[0]) {
+        // Tool calling response format
+        generatedQuote = JSON.parse(data.choices[0].message.tool_calls[0].function.arguments);
+      } else {
+        // Fallback to old format if tool calling not used
+        generatedQuote = JSON.parse(data.choices[0].message.content);
+      }
+    } catch (parseError) {
+      console.error('Failed to parse AI response:', parseError);
+      console.log('⚠️ JSON parse error - using local quote builder as fallback');
+      
+      const fallbackQuote = buildFallbackQuote({
+        description,
+        baseTotals,
+        detailLevel,
+        hourlyRatesByType: baseTotals.hourlyRatesByType,
+        finalDeductionType,
+        deductionRate,
+        totalMaxRot,
+        totalMaxRut
+      });
+      
+      return new Response(
+        JSON.stringify({
+          type: 'complete_quote',
+          quote: fallbackQuote,
+          customerId: customer_id,
+          warnings: ['Offerten skapades i offline-läge på grund av ett tillfälligt fel i AI-tjänsten.']
+        }),
+        {
+          status: 200,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        }
+      );
     }
     
     // SANITY CHECK: Verify quote matches user's actual request
