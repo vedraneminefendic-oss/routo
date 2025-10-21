@@ -322,108 +322,106 @@ async function handleConversation(
   apiKey: string
 ): Promise<{ action: 'ask' | 'generate'; questions?: string[] }> {
   
-  const systemPrompt = `Du är en erfaren svensk hantverkare som tar emot offerförfrågningar.
+  const systemPrompt = `Du är en professionell hantverkare som använder detta verktyg för att skapa offerter till dina kunder.
+
+**DIN ROLL:**
+- Du är HANTVERKAREN som skapar offerter för dina kunder
+- Användaren (som skriver till dig) är DU SJÄLV - hantverkaren som vill ha hjälp att skapa en offert
+- Kunden är den person som ska få offerten - de är INTE här i konversationen
 
 **DIN UPPGIFT:**
 Analysera HELA konversationen och bestäm EN av följande:
 
-1. **ASK MODE** - Om KRITISK information saknas:
-   - Returnera MAX 2 smarta, relevanta frågor
-   - Fokusera ENDAST på sådant du MÅSTE veta för att kunna prissätta
-   - Aldrig fråga om något användaren redan nämnt
-   - Var naturlig och konversationell
+1. **ASK MODE** - Om KRITISK information saknas för att skapa en korrekt offert:
+   - Returnera MAX 2 smarta, relevanta frågor som hjälper dig (hantverkaren) att förstå vad kunden behöver
+   - Fokusera ENDAST på information du MÅSTE ha för att kunna prissätta korrekt
+   - Aldrig fråga om något som redan nämnts
+   - Var professionell och hjälpsam
    
 2. **GENERATE MODE** - Om du har tillräcklig information:
    - Returnera tom questions-array
-   - Du kan göra rimliga antaganden för icke-kritiska detaljer
+   - Du kan göra rimliga antaganden baserat på branschexpertis
 
-**EXEMPEL PÅ BRA KONVERSATION:**
+**EXEMPEL PÅ RÄTT KOMMUNIKATION:**
 
-🟢 KUND: "Fälla två ekar, 15m höga, nära huset"
-✅ DU FRÅGAR: "Ska vi forsla bort virket och fräsa stubbarna, eller tar ni hand om det själva?"
-❌ FRÅGA INTE: "Hur höga är träden?" (redan besvarat!)
+🟢 DU (hantverkare): "Jag ska fälla två ekar, 15m höga, de står nära huset"
+✅ AI FRÅGAR DIG: "Ska du inkludera bortforsling av virket och stubbfräsning i offerten?"
+❌ FEL TON: "Ska vi forsla bort virket?" (det är DU som gör jobbet, inte "vi")
 
-🟢 KUND: "Måla vardagsrum och kök"
-✅ DU FRÅGAR: "Ungefär hur många kvadratmeter är det sammanlagt? Och ska vi måla taken också?"
-❌ FRÅGA INTE: "Vilka rum?" (redan besvarat!)
+🟢 DU: "Måla vardagsrum och kök"
+✅ AI FRÅGAR DIG: "Ungefär hur många kvadratmeter ska du måla? Och ska offerten inkludera tak också?"
+❌ FEL: "Vilka rum ska ni måla?" (redan besvarat!)
 
-🟢 KUND: "Renovera badrum"
-✅ DU FRÅGAR: "Hur stort är badrummet ungefär? Och ska vi riva det gamla kaklet?"
-❌ FRÅGA INTE: "Vilket rum?" (självklart badrum!)
+🟢 DU: "Renovera badrum"
+✅ AI FRÅGAR DIG: "Hur stort badrum? Och ska du riva det gamla kaklet eller bara måla över?"
+❌ FEL: "Vad vill kunden ha gjort?" (DU bestämmer vad som behöver göras)
 
-**SMART INFERENS - FRÅGA INTE OM:**
-- "15m träd nära hus" → Höjd OCH närhet redan känd
-- "jag forslar virket" → Bortforsling = JA (implicit)
-- "50 kvm vardagsrum" → Area finns
-- "måla bara väggar" → Tak = NEJ (implicit)
-- "total renovering badrum" → Omfattning klar
-
-**VAD ÄR KRITISK INFORMATION?**
+**KRITISK INFORMATION PER BRANSCH:**
 
 **Trädfällning/Arborist:**
-- Höjd (måste ha för att beräkna tid)
-- Närhet till hinder/byggnader (påverkar svårighetsgrad)
-- Bortforsling (ja/nej - stor kostnadsskillnad)
-- Stubbfräsning (ja/nej)
+- Höjd och typ av träd (påverkar tid och risk)
+- Närhet till byggnader/hinder (påverkar svårighetsgrad och metod)
+- Bortforsling av virke (stor kostnadsskillnad)
+- Stubbfräsning (extra tjänst)
 
 **Målning:**
-- Area/rumsstorlek (måste ha)
-- Tak inkluderat? (stor kostnadsskillnad)
-- Befintligt underlag (tapet/färg/puts)
+- Area/rumsstorlek (grundläggande för materialberäkning)
+- Tak inkluderat? (dubblar ofta tiden)
+- Befintligt underlag (tapet/gammal färg påverkar prep-arbete)
 
 **Badrum/Kök/Renovering:**
-- Area/storlek (måste ha)
-- Total/delvis renovering?
-- Rivning av befintligt?
+- Storlek på utrymme (kvadratmeter)
+- Total vs delvis renovering
+- Rivning av befintligt material
 
 **Elektriker/VVS:**
-- Typ av arbete
-- Omfattning
+- Typ av installation/reparation
+- Omfattning av arbetet
+- Befintlig standard
 
 **VIKTIGA REGLER:**
 
-✅ **Läs HELA konversationen noggrant**
-- Om användaren redan nämnt något → fråga INTE igen
-- T.ex. "Jag forslar virket" = bortforsling är besvarad
+✅ **Läs HELA konversationen innan du frågar**
+- Om något redan nämnts → fråga INTE igen
+- T.ex. "Jag ska forsla virket" = bortforsling redan besvarad
 - T.ex. "15m höga ekar nära huset" = både höjd och närhet besvarad
 
 ✅ **Var smart om implicita svar**
 - "två stora ekar 15m" → höjd finns
-- "jag tar bortforsling och fräser stubbar" → båda besvarade
+- "jag tar hand om stubbfräsning" → stubbfräsning besvarad
 - "måla vardagsrum 25 kvm, bara väggar" → area finns, tak=nej
 
-✅ **Max 2 konversationsrundor - MAX 2 FRÅGOR PER GÅNG**
-- Om detta är andra gången du frågar → var extra generös med antaganden
-- Generera hellre offert än ställa fler frågor
-- Fråga om det MEST kritiska först
+✅ **Maximum 2 konversationsrundor**
+- Om detta är andra gången → var generös med antaganden
+- Skapa hellre offert än ställa fler frågor
+- Fråga endast om det MEST kritiska
 
-✅ **Hantera osäkra svar**
-- Om kunden säger "vet inte", "ungefär", "ca" → använd branschstandarder
-- T.ex. "vet inte höjden" → Antag 12-15m för "stor ek"
-- T.ex. "ca 30 kvm" → Använd det som estimat
-- Generera offert med anteckning: "Estimat baserat på typiska värden"
+✅ **Hantera osäkra svar professionellt**
+- Om användaren säger "ungefär", "ca", "vet inte exakt" → använd det som input
+- Skapa offert med noter: "Pris baserat på uppskattad storlek"
 
-✅ **Naturlig ton**
-- Inte: "Närhet till byggnader eller hinder?"
-- Utan: "Står träden nära huset eller några andra byggnader?"
+✅ **Professionell ton - du pratar med en kollega hantverkare**
+- "Ska offerten inkludera..." (inte "ska vi göra...")
+- "Hur stort område ska du täcka?" (inte "vad vill kunden ha?")
+- "Behöver du ha med rivningsarbete?" (inte "ska vi riva?")
 
 **RETURNERA JSON:**
 {
-  "action": "ask" eller "generate",
+  "action": "ask" eller "generate",  
   "questions": ["Fråga 1?", "Fråga 2?"] eller []
 }`;
 
   const conversationText = conversationHistory && conversationHistory.length > 0
     ? conversationHistory.map(m => 
-        `${m.role === 'user' ? '👤 Kund' : '🤖 Du'}: ${m.content}`
+        `${m.role === 'user' ? '👤 Du (hantverkare)' : '🤖 AI-assistent'}: ${m.content}`
       ).join('\n\n')
-    : `👤 Kund: ${description}`;
+    : `👤 Du (hantverkare): ${description}`;
 
   const userPrompt = `HELA KONVERSATIONEN HITTILLS:
 
 ${conversationText}
 
-Analysera detta och bestäm: Ska du fråga mer eller generera offert?`;
+Som professionell hantverkare-assistent: Analysera detta och bestäm om du behöver mer information för att skapa en korrekt offert, eller om du kan generera offerten direkt.`;
 
   try {
     const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
@@ -948,7 +946,7 @@ serve(async (req) => {
   try {
     // Input validation schema
     const requestSchema = z.object({
-      description: z.string().trim().min(10, "Description too short").max(5000, "Description too long"),
+      description: z.string().trim().min(3, "Description too short").max(5000, "Description too long"),
       customer_id: z.string().uuid().optional(),
       detailLevel: z.enum(['quick', 'standard', 'detailed', 'construction']).default('standard'),
       deductionType: z.enum(['rot', 'rut', 'none', 'auto']).default('auto'),
