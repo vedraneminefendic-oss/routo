@@ -452,6 +452,82 @@ async function generateFollowUpQuestions(
     previousQA += "\n";
   }
   
+  // FAS 16H: Extrahera diskuterade topics för att undvika omformulerade dubblettfrågor
+  const discussedTopics: string[] = [];
+  if (conversationHistory && conversationHistory.length > 0) {
+    for (const msg of conversationHistory) {
+      if (msg.role === 'assistant' && msg.content.includes('?')) {
+        const content = msg.content.toLowerCase();
+        
+        // Trädfällning-specifika topics
+        if (content.includes('bortforsling') || content.includes('transportera') || content.includes('ta bort') || content.includes('ta om hand')) {
+          discussedTopics.push('bortforsling av material');
+        }
+        if (content.includes('stubb') || content.includes('fräs')) {
+          discussedTopics.push('stubbfräsning');
+        }
+        if (content.includes('höjd') || content.includes('hur höga')) {
+          discussedTopics.push('höjd/storlek');
+        }
+        if (content.includes('nära') || content.includes('avstånd') || content.includes('byggnader')) {
+          discussedTopics.push('närhet till byggnader/hinder');
+        }
+        if (content.includes('brant') || content.includes('sluttning')) {
+          discussedTopics.push('terräng/sluttning');
+        }
+        if (content.includes('gräs') || content.includes('rabatt') || content.includes('skydda')) {
+          discussedTopics.push('markskydd');
+        }
+        
+        // Badrum/renovering-specifika topics
+        if (content.includes('storlek') || content.includes('kvm') || content.includes('kvadrat')) {
+          discussedTopics.push('storlek/area');
+        }
+        if (content.includes('riv') || content.includes('befintlig')) {
+          discussedTopics.push('rivning av befintligt');
+        }
+        if (content.includes('rör') || content.includes('ledningar')) {
+          discussedTopics.push('rör/ledningar');
+        }
+        if (content.includes('golvvärme') || content.includes('värmesystem')) {
+          discussedTopics.push('värmesystem');
+        }
+        
+        // Målning-specifika topics
+        if (content.includes('rum') || content.includes('antal')) {
+          discussedTopics.push('antal rum/ytor');
+        }
+        if (content.includes('spackling') || content.includes('slipning')) {
+          discussedTopics.push('förarbete (spackling/slipning)');
+        }
+        if (content.includes('tak') || content.includes('vägg')) {
+          discussedTopics.push('vilka ytor som ska målas');
+        }
+        if (content.includes('färg') || content.includes('material')) {
+          discussedTopics.push('material/färgval');
+        }
+        
+        // Generella topics
+        if (content.includes('deadline') || content.includes('färdig') || content.includes('klart till')) {
+          discussedTopics.push('deadline/tidsram');
+        }
+        if (content.includes('budget') || content.includes('kostnad')) {
+          discussedTopics.push('budget');
+        }
+        if (content.includes('tillgång') || content.includes('nå')) {
+          discussedTopics.push('tillgänglighet');
+        }
+      }
+    }
+  }
+  
+  // Skapa unikt set (ta bort exakta dubbletter från topic-listan)
+  const uniqueTopics = [...new Set(discussedTopics)];
+  
+  const topicsWarning = uniqueTopics.length > 0 
+    ? `\n\n⚠️ **TOPICS SOM REDAN DISKUTERATS (fråga INTE om dessa igen, även om du formulerar frågan annorlunda!):**\n${uniqueTopics.map(t => `- ${t}`).join('\n')}\n`
+    : '';
+  
   // FAS 16D-BONUS: Smart detection - Om användaren redan svarat på allt, hoppa över frågor
   if (conversationHistory && conversationHistory.length >= 2) {
     const lastUserMessage = conversationHistory
@@ -488,6 +564,7 @@ async function generateFollowUpQuestions(
 NUVARANDE KONVERSATION:
 ${fullDescription}
 ${previousQA}
+${topicsWarning}
 
 UPPGIFT: Ställ 2-4 relevanta följdfrågor för att få MER DETALJERAD information.
 
@@ -532,6 +609,7 @@ Exempel för städning:
 
 ⚠️ **KRITISKT: Fråga ALDRIG om information som användaren redan givit ovan!**
 ⚠️ **Läs igenom "TIDIGARE FRÅGOR OCH SVAR" noggrant innan du skapar nya frågor!**
+⚠️ **Kontrollera "TOPICS SOM REDAN DISKUTERATS" - fråga INTE om dessa ämnen igen, även om du formulerar frågan annorlunda!**
 `}
 
 Returnera JSON med array av frågor:
