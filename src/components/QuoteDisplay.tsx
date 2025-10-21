@@ -801,6 +801,10 @@ const QuoteDisplay = ({
             {deductionAmount > 0 && (
               <>
                 <Separator />
+                <div className="flex justify-between text-sm text-muted-foreground">
+                  <span>Arbetskostnad inkl. moms:</span>
+                  <span>{formatCurrency(quote.summary.workCost * 1.25)}</span>
+                </div>
                 <div className="flex justify-between text-primary">
                   <span>{deductionType === 'rut' ? 'RUT' : 'ROT'}-avdrag (50%):</span>
                   <span>-{formatCurrency(deductionAmount)}</span>

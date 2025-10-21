@@ -32,7 +32,8 @@ export const ContextPills = ({ messages, onPillClick }: ContextPillsProps) => {
     else if (allContent.includes('altandäck') || allContent.includes('altan')) context.projectType = 'Altandäck';
     else if (allContent.includes('målning') || allContent.includes('måla')) context.projectType = 'Målning';
     else if (allContent.includes('golvläggning') || allContent.includes('golv')) context.projectType = 'Golvläggning';
-    else if (allContent.includes('el')) context.projectType = 'Elarbete';
+    else if (allContent.includes('elarbete') || allContent.includes('elektriker') || allContent.includes(' el ')) context.projectType = 'Elarbete';
+    else if (allContent.includes('trädfällning') || allContent.includes('träd') || allContent.includes('fällning') || allContent.includes('arborist')) context.projectType = 'Trädfällning';
     else if (allContent.includes('vvs') || allContent.includes('rör')) context.projectType = 'VVS';
 
     // Extrahera area/storlek
@@ -57,7 +58,7 @@ export const ContextPills = ({ messages, onPillClick }: ContextPillsProps) => {
       // Auto-detektera baserat på projekttyp
       if (['Badrum', 'Kök', 'Målning', 'Golvläggning', 'Elarbete', 'VVS'].includes(context.projectType)) {
         context.workType = 'ROT-arbete';
-      } else if (['Städning', 'Trädgård'].includes(context.projectType)) {
+      } else if (['Städning', 'Trädgård', 'Trädfällning'].includes(context.projectType)) {
         context.workType = 'RUT-arbete';
       }
     }
