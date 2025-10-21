@@ -1161,7 +1161,12 @@ GENERERA INGEN KOMPLETT OFFERT ÄNNU. Returnera endast JSON-objektet ovan.`;
       return new Response(
         JSON.stringify({
           type: 'clarification',
-          message: `Innan jag skapar offerten behöver jag förtydligande:\n\n${preflightCheck.errors.map(e => `• ${e}`).join('\n')}\n\nKan du ge mer specifika detaljer om vad du vill ha gjort?`,
+          message: 'Jag behöver lite mer information för att skapa en korrekt offert.',
+          questions: [
+            preflightCheck.errors.join('\n'),
+            'Kan du ge mer specifika detaljer om vad du vill ha gjort?',
+            'Finns det några särskilda krav eller önskemål?'
+          ],
           currentData: { projectType: preflightCheck.projectType }
         }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
