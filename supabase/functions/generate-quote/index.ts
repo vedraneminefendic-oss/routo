@@ -315,12 +315,47 @@ function buildConversationSummary(history: any[], fallbackDescription?: string):
     : mainRequest;
 }
 
+// Normalization helper for text comparison
+function normalizeText(text: string): string {
+  return text
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim();
+}
+
 // FAS 17: Single AI Decision Point - handleConversation
 async function handleConversation(
   description: string,
   conversationHistory: any[] | undefined,
   apiKey: string
 ): Promise<{ action: 'ask' | 'generate'; questions?: string[] }> {
+  
+  // Calculate conversation state
+  const exchangeCount = conversationHistory 
+    ? Math.floor(conversationHistory.length / 2) 
+    : 0;
+  
+  const lastUserMessage = conversationHistory && conversationHistory.length > 0
+    ? conversationHistory.filter(m => m.role === 'user').slice(-1)[0]?.content || description
+    : description;
+  
+  const lastAssistantMessage = conversationHistory && conversationHistory.length > 0
+    ? conversationHistory.filter(m => m.role === 'assistant').slice(-1)[0]?.content || ''
+    : '';
+  
+  console.log('📝 Conversation state:', {
+    exchangeCount,
+    historyLength: conversationHistory?.length || 0,
+    lastUserMessage,
+    userWantsQuoteNow: /ge.*mig.*offert|generera.*nu|skippa|fortsätt/i.test(lastUserMessage)
+  });
+  
+  // User wants quote immediately
+  if (/ge.*mig.*offert|generera.*nu|skippa|fortsätt/i.test(lastUserMessage)) {
+    console.log('🚀 User wants quote now → forcing generate');
+    return { action: 'generate' };
+  }
   
   const systemPrompt = `Du är en professionell hantverkare som använder detta verktyg för att skapa offerter till dina kunder.
 
@@ -451,31 +486,126 @@ Som professionell hantverkare-assistent: Analysera detta och bestäm om du behö
     
     console.log('🤖 AI Decision:', result);
     
-    // Quality check: Filter out questions that are already answered in conversation
+    // Quality check: Advanced filtering with normalization and ja/nej detection
     if (result.action === 'ask' && result.questions && result.questions.length > 0) {
-      const conversationText = conversationHistory && conversationHistory.length > 0
-        ? conversationHistory.map(m => m.content.toLowerCase()).join(' ')
-        : description.toLowerCase();
+      console.log('🤔 AI wants to ask', result.questions.length, 'question(s)');
       
-      const filteredQuestions = result.questions.filter((q: string) => {
-        const qLower = q.toLowerCase();
+      // Normalize all relevant text
+      const normalizedDesc = normalizeText(lastUserMessage);
+      const normalizedLastAssistant = normalizeText(lastAssistantMessage);
+      
+      const fullConversationText = conversationHistory && conversationHistory.length > 0
+        ? normalizeText(conversationHistory.map(m => m.content).join(' '))
+        : normalizedDesc;
+      
+      const historyAssistantText = conversationHistory && conversationHistory.length > 0
+        ? normalizeText(conversationHistory.filter(m => m.role === 'assistant').map(m => m.content).join(' '))
+        : '';
+      
+      // Detect ja/nej answers
+      const isYes = /^(ja|japp|javisst|absolut|yes|okej|ok)\b/.test(normalizedDesc);
+      const isNo = /^(nej|nope|inte|nada|aldrig)\b/.test(normalizedDesc);
+      
+      if (isYes || isNo) {
+        console.log(`💬 Detected ${isYes ? 'YES' : 'NO'} answer to last question:`, lastAssistantMessage.substring(0, 100));
+      }
+      
+      // Topic patterns for smart filtering
+      const topics = {
+        removal: /(bortf?orsl|borttransport|ta bort|forsla|transport)/,
+        stump: /(stubb|fras)/,
+        height: /(hur.*hog|hoga|hogt|meter|m\b)/,
+        area: /(kvm|kvadrat|m2|area|\d+\s*x\s*\d+|storlek)/,
+        ceiling: /\btak\b/,
+        proximity: /(nara|bebyggelse|hinder|hus|ledning|vag|byggnad)/,
+        demolition: /(riv|ta bort|demonter)/,
+        surface: /(underlag|yta|tapet|gammal)/
+      };
+      
+      let filteredQuestions = result.questions.filter((q: string) => {
+        const qNorm = normalizeText(q);
         
-        // Filter out questions about things already mentioned
-        if (qLower.includes('hur höga') && conversationText.match(/\d+\s*m(eter)?/)) return false;
-        if (qLower.includes('forsla') && conversationText.match(/forsla|borttransport|ta bort|själv/)) return false;
-        if (qLower.includes('area') && conversationText.match(/kvm|kvadrat|m2|\d+\s*x\s*\d+/)) return false;
-        if (qLower.includes('tak') && conversationText.match(/bara vägg|utan tak|väggar/)) return false;
-        if (qLower.includes('storlek') && conversationText.match(/\d+\s*kvm|\d+\s*m2/)) return false;
+        // Remove exact duplicates already asked
+        if (historyAssistantText.includes(qNorm)) {
+          console.log('❌ Filtering duplicate question:', q.substring(0, 50));
+          return false;
+        }
+        
+        // Remove questions about topics already mentioned in conversation
+        for (const [topicName, pattern] of Object.entries(topics)) {
+          if (pattern.test(qNorm) && pattern.test(fullConversationText)) {
+            console.log(`❌ Filtering question about already mentioned topic (${topicName}):`, q.substring(0, 50));
+            return false;
+          }
+        }
+        
+        // Handle ja/nej linked to last assistant question
+        if ((isYes || isNo) && normalizedLastAssistant) {
+          for (const [topicName, pattern] of Object.entries(topics)) {
+            if (pattern.test(qNorm) && pattern.test(normalizedLastAssistant)) {
+              console.log(`❌ Filtering question - topic (${topicName}) already answered with ${isYes ? 'YES' : 'NO'}:`, q.substring(0, 50));
+              return false;
+            }
+          }
+        }
+        
+        // Specific filters for common patterns
+        if (qNorm.includes('hur hog') && /\d+\s*m(eter)?/.test(fullConversationText)) {
+          console.log('❌ Filtering height question - already mentioned:', q.substring(0, 50));
+          return false;
+        }
+        
+        if ((qNorm.includes('area') || qNorm.includes('stor')) && /\d+\s*(kvm|m2|kvadrat)/.test(fullConversationText)) {
+          console.log('❌ Filtering area question - already mentioned:', q.substring(0, 50));
+          return false;
+        }
         
         return true;
       });
       
-      console.log('📝 Filtered questions:', { original: result.questions.length, filtered: filteredQuestions.length });
+      // Remove duplicate questions in current batch
+      const seenQuestions = new Set<string>();
+      filteredQuestions = filteredQuestions.filter((q: string) => {
+        const qNorm = normalizeText(q);
+        if (seenQuestions.has(qNorm)) {
+          console.log('❌ Filtering duplicate in batch:', q.substring(0, 50));
+          return false;
+        }
+        seenQuestions.add(qNorm);
+        return true;
+      });
       
-      // If all questions were filtered out, generate instead
+      // Fix tone: replace "vi/oss" with "du"
+      filteredQuestions = filteredQuestions.map((q: string) => 
+        q.replace(/\b(vi|oss)\b/gi, 'du')
+          .replace(/ska vi/gi, 'ska du')
+          .replace(/gör vi/gi, 'gör du')
+      );
+      
+      console.log('📝 Filtered questions:', { 
+        original: result.questions.length, 
+        filtered: filteredQuestions.length 
+      });
+      
+      // Force generate after too many exchanges or no questions left
       if (filteredQuestions.length === 0) {
-        console.log('✅ All questions already answered → generating quote');
+        console.log('✅ All questions filtered → generating quote');
         return { action: 'generate' };
+      }
+      
+      if (exchangeCount >= 1 && filteredQuestions.length > 0) {
+        // Check if filtered questions are just repeating same topics
+        const newTopicsMentioned = filteredQuestions.some((q: string) => {
+          const qNorm = normalizeText(q);
+          return !Object.values(topics).some(pattern => 
+            pattern.test(qNorm) && pattern.test(historyAssistantText)
+          );
+        });
+        
+        if (!newTopicsMentioned) {
+          console.log('⚠️ No new topics in questions after exchange 1 → forcing generate');
+          return { action: 'generate' };
+        }
       }
       
       return {
@@ -946,7 +1076,7 @@ serve(async (req) => {
   try {
     // Input validation schema
     const requestSchema = z.object({
-      description: z.string().trim().min(3, "Description too short").max(5000, "Description too long"),
+      description: z.string().trim().min(1, "Description too short").max(5000, "Description too long"),
       customer_id: z.string().uuid().optional(),
       detailLevel: z.enum(['quick', 'standard', 'detailed', 'construction']).default('standard'),
       deductionType: z.enum(['rot', 'rut', 'none', 'auto']).default('auto'),
