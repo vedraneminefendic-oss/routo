@@ -315,13 +315,101 @@ function buildConversationSummary(history: any[], fallbackDescription?: string):
     : mainRequest;
 }
 
-// Normalization helper for text comparison
+// Normalization helper for text comparison with synonym mapping
 function normalizeText(text: string): string {
-  return text
+  // Synonym mapping for common Swedish construction terms
+  const synonyms: Record<string, string> = {
+    'fällning': 'falla',
+    'fälla': 'falla',
+    'såga': 'falla',
+    'ta ner': 'falla',
+    'kakel': 'plattor',
+    'klinker': 'plattor',
+    'flisa': 'plattor',
+    'rivning': 'riva',
+    'demontera': 'riva',
+    'plocka ner': 'riva',
+    'målning': 'mala',
+    'spackling': 'mala',
+    'tapetsering': 'mala',
+    'stubbe': 'stubb',
+    'rot': 'stubb',
+    'stam': 'stubb'
+  };
+  
+  let normalized = text
     .toLowerCase()
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
     .trim();
+  
+  // Replace synonyms
+  for (const [key, value] of Object.entries(synonyms)) {
+    const keyNorm = key.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    normalized = normalized.replace(new RegExp(keyNorm, 'gi'), value);
+  }
+  
+  // Handle compound words (split hyphenated)
+  normalized = normalized.replace(/-/g, ' ');
+  
+  return normalized;
+}
+
+// Domain-specific critical factors per work type
+function getDomainKnowledge(description: string): { workType: string; criticalFactors: string[] } {
+  const descNorm = normalizeText(description);
+  
+  const domainMap: Record<string, { keywords: string[]; factors: string[] }> = {
+    'trädfällning': {
+      keywords: ['falla', 'trad', 'ek', 'tall', 'gran', 'bjork', 'arborist'],
+      factors: [
+        '🌳 Trädhöjd påverkar tid och utrustning kraftigt (10m = 2h, 20m = 4-5h)',
+        '📏 Diameter avgör svårighetsgrad (>60cm = professionell utrustning)',
+        '🏠 Närhet till byggnader/ledningar = +50-100% kostnad pga precision',
+        '🪵 Stubbfräsning är separat post (ca 2000-4000 kr beroende på storlek)',
+        '🚚 Bortforsling av virke/grenar kan kosta 3000-8000 kr beroende på volym'
+      ]
+    },
+    'badrumsrenovering': {
+      keywords: ['badrum', 'wc', 'dusch', 'kakel', 'plattor', 'handfat', 'toalett'],
+      factors: [
+        '🚿 Rivning av gammalt material: 3-6 timmar beroende på storlek',
+        '💧 VVS-arbete är kritiskt och tidskrävande (1-2 dagar för komplett byte)',
+        '🔌 El-arbete för uttag och belysning (0.5-1 dag)',
+        '🧱 Plattläggning: Räkna 15-25 timmar för 5 kvm badrum',
+        '🎨 Material varierar enormt: Budget 500-2000 kr/kvm för plattor'
+      ]
+    },
+    'målning': {
+      keywords: ['mala', 'spackel', 'tapetsera', 'farg'],
+      factors: [
+        '🎨 Area och takhöjd är kritiska faktorer',
+        '🧰 Förberedelse (spackling, slipning) = 40% av tiden',
+        '🖌️ Antal strykningar påverkar tid: 2 strykningar standard',
+        '🪜 Takhöjd >3m kräver ställning = +30% tid',
+        '🏠 Fönster/dörrar/lister ökar komplexitet betydligt'
+      ]
+    },
+    'städning': {
+      keywords: ['stada', 'stad', 'torka', 'dammsuga', 'fonsterputs'],
+      factors: [
+        '🏠 Kvm är primär kostnadsfaktor',
+        '🧹 Typ av städning: Storstädning vs underhåll (2-3x skillnad)',
+        '🪟 Fönsterputs räknas separat (150-300 kr per fönster)',
+        '⏰ Frekvens påverkar pris: Engångsjobb dyrare än återkommande',
+        '🧴 Material ingår oftast, men specialrengöring tillkommer'
+      ]
+    }
+  };
+  
+  // Detect work type
+  for (const [workType, config] of Object.entries(domainMap)) {
+    if (config.keywords.some(kw => descNorm.includes(kw))) {
+      return { workType, criticalFactors: config.factors };
+    }
+  }
+  
+  return { workType: 'general', criticalFactors: [] };
 }
 
 // Extract measurements with structured data
@@ -473,11 +561,15 @@ async function handleConversation(
     ? conversationHistory.filter(m => m.role === 'assistant').slice(-1)[0]?.content || ''
     : '';
   
+  // Get domain knowledge for this work type
+  const { workType, criticalFactors } = getDomainKnowledge(description);
+  
   console.log('📝 Conversation state:', {
     exchangeCount,
     historyLength: conversationHistory?.length || 0,
     lastUserMessage,
-    userWantsQuoteNow: /ge.*mig.*offert|generera.*nu|skippa|fortsätt/i.test(lastUserMessage)
+    userWantsQuoteNow: /ge.*mig.*offert|generera.*nu|skippa|fortsätt/i.test(lastUserMessage),
+    detectedWorkType: workType
   });
   
   // User wants quote immediately
@@ -519,6 +611,9 @@ Analysera HELA konversationen och bestäm EN av följande:
 🟢 DU: "Renovera badrum"
 ✅ AI FRÅGAR DIG: "Hur stort badrum? Och ska du riva det gamla kaklet eller bara måla över?"
 ❌ FEL: "Vad vill kunden ha gjort?" (DU bestämmer vad som behöver göras)
+
+**DOMÄNSPECIFIK KUNSKAP:**
+${criticalFactors.length > 0 ? '\n' + criticalFactors.join('\n') + '\n' : ''}
 
 **KRITISK INFORMATION PER BRANSCH:**
 
@@ -666,19 +761,40 @@ Som professionell hantverkare-assistent: Analysera detta och bestäm om du behö
         console.log(`💬 Detected ${isYes ? 'YES' : 'NO'} answer to last question:`, lastAssistantMessage.substring(0, 100));
       }
       
-      // Topic patterns for smart filtering (updated with better measurement patterns)
+      // Enhanced topic detection with more specific patterns
       const topics = {
-        removal: /(bortf?orsl|borttransport|ta bort|forsla|transport)/,
-        stump: /(stubb|fras)/,
-        height: /(hojd|hur.*hog|hoga|hogt|meter.*hog|m\s*hog|\d+\s*m(eter)?\s)/,
-        diameter: /(diameter|tjock|bred|omkrets|stamdiameter|\d+\s*m(eter)?\s*diameter)/,
-        area: /(kvm|kvadrat|m2|area|\d+\s*x\s*\d+|storlek.*rum|rum.*storlek)/,
-        ceiling: /\btak\b/,
-        proximity: /(nara|bebyggelse|hinder|hus|ledning|vag|byggnad)/,
-        demolition: /(riv|ta bort|demonter)/,
-        surface: /(underlag|yta|tapet|gammal)/,
-        quantity: /(antal|hur.*manga|\d+\s*(st|stycken|trad|rum|objekt))/
+        removal: /(bortf[oö]rsl|borttransport|ta bort|forsla|frakta?.*bort|k[oö]ra?.*bort)/,
+        stump: /(stubb|fr[aä]s|rot|rota?.*upp)/,
+        height: /(h[oö]jd|hur.*h[oö]g|meter.*h[oö]|m\s*h[oö]|\d+\s*m(?:eter)?(?!\s*diameter))/,
+        diameter: /(diameter|tjock|bred|omkrets|stamdiameter|\d+\s*(?:cm|m)\s*(?:i\s*)?diameter)/,
+        area: /(kvm|kvadrat|m2|m²|area|\d+\s*x\s*\d+|storlek.*rum|\d+\s*kvadrat)/,
+        ceiling: /\btak(h[oö]jd)?\b/,
+        proximity: /(n[aä]ra|bebyggelse|hinder|hus|ledning|v[aä]g|byggnader?|granne|fasad)/,
+        quantity: /(antal|hur.*m[aå]nga|\d+\s*(st|stycken|tr[aä]d|rum|enheter))/,
+        material_level: /(material|kvalitet|[nN]iv[aå]|budget|standard|premium|lyx)/,
+        demolition: /(riv|demonter|plock.*ned|ta.*ned)/,
+        deadline: /(tid|n[aä]r|deadline|skynda|brådska|snabbt)/,
+        surface: /(underlag|yta|tapet|gammal|befintlig)/
       };
+      
+      // Track what has been discussed
+      const discussedTopics = new Set<string>();
+      
+      // Check conversation history for discussed topics
+      conversationHistory?.forEach(msg => {
+        for (const [topic, pattern] of Object.entries(topics)) {
+          if (pattern.test(msg.content)) {
+            discussedTopics.add(topic);
+          }
+        }
+      });
+      
+      // Check current description for mentioned topics
+      for (const [topic, pattern] of Object.entries(topics)) {
+        if (pattern.test(description)) {
+          discussedTopics.add(topic);
+        }
+      }
       
       let filteredQuestions = result.questions.filter((q: string) => {
         const qNorm = normalizeText(q);
@@ -689,10 +805,10 @@ Som professionell hantverkare-assistent: Analysera detta och bestäm om du behö
           return false;
         }
         
-        // Remove questions about topics already mentioned in conversation
+        // Check if question is about a topic already discussed
         for (const [topicName, pattern] of Object.entries(topics)) {
-          if (pattern.test(qNorm) && pattern.test(fullConversationText)) {
-            console.log(`❌ Filtering question about already mentioned topic (${topicName}):`, q.substring(0, 50));
+          if (pattern.test(qNorm) && discussedTopics.has(topicName)) {
+            console.log(`❌ Filtering question about ${topicName} - already discussed`);
             return false;
           }
         }
@@ -704,6 +820,42 @@ Som professionell hantverkare-assistent: Analysera detta och bestäm om du behö
               console.log(`❌ Filtering question - topic (${topicName}) already answered with ${isYes ? 'YES' : 'NO'}:`, q.substring(0, 50));
               return false;
             }
+          }
+        }
+        
+        // Check if question was already asked (semantic similarity)
+        const alreadyAsked = conversationHistory?.some(msg => {
+          if (msg.role !== 'assistant') return false;
+          const msgNorm = normalizeText(msg.content);
+          // Check for 70%+ word overlap (semantic similarity)
+          const qWords = qNorm.split(/\s+/).filter(w => w.length > 3);
+          const msgWords = msgNorm.split(/\s+/);
+          const overlap = qWords.filter(w => msgWords.some(mw => mw.includes(w) || w.includes(mw)));
+          return overlap.length >= qWords.length * 0.7;
+        });
+        
+        if (alreadyAsked) {
+          console.log(`❌ Filtering duplicate question (semantic): ${q.slice(0, 50)}...`);
+          return false;
+        }
+        
+        // Check if answer is already implicit in measurements
+        if (measurements) {
+          if ((qNorm.includes('hojd') || qNorm.includes('hur') && qNorm.includes('hog')) && measurements.height) {
+            console.log(`❌ Filtering question - answered by measurements: ${q.slice(0, 50)}...`);
+            return false;
+          }
+          if ((qNorm.includes('diameter') || qNorm.includes('tjock')) && measurements.diameter) {
+            console.log(`❌ Filtering question - answered by measurements: ${q.slice(0, 50)}...`);
+            return false;
+          }
+          if ((qNorm.includes('stor') || qNorm.includes('area') || qNorm.includes('kvm')) && measurements.area) {
+            console.log(`❌ Filtering question - answered by measurements: ${q.slice(0, 50)}...`);
+            return false;
+          }
+          if ((qNorm.includes('antal') || qNorm.includes('manga')) && measurements.quantity) {
+            console.log(`❌ Filtering question - answered by measurements: ${q.slice(0, 50)}...`);
+            return false;
           }
         }
         
