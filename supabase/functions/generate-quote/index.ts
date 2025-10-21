@@ -399,6 +399,95 @@ Returnera JSON:
   }
 }
 
+async function generateFollowUpQuestions(
+  description: string,
+  conversationHistory: any[] | undefined,
+  apiKey: string
+): Promise<string[]> {
+  console.log('🤔 Generating follow-up questions...');
+  
+  const fullDescription = buildConversationSummary(conversationHistory || [], description);
+  
+  // Count how many exchanges we've had
+  const exchangeCount = conversationHistory ? Math.floor(conversationHistory.length / 2) : 0;
+  
+  const questionsPrompt = `Du är en professionell hantverkare som skapar offerter. 
+
+NUVARANDE KONVERSATION:
+${fullDescription}
+
+UPPGIFT: Ställ 2-4 relevanta följdfrågor för att få MER DETALJERAD information.
+
+**Konversationsstadium: ${exchangeCount === 0 ? 'FÖRSTA FRÅGAN' : `Fråga ${exchangeCount + 1}`}**
+
+${exchangeCount === 0 ? `
+**FÖRSTA FRÅGAN - Fokusera på:**
+1. Exakt omfattning (antal, storlek, mängd)
+2. Platsförhållanden (tillgänglighet, svårighetsgrad)
+3. Tidpunkt/deadline
+4. Extra önskemål (bortforsling, fräsning, etc)
+
+Exempel för trädfällning:
+- "Hur höga är träden ungefär?"
+- "Finns det byggnader eller elledningar i närheten?"
+- "Vill du att vi tar hand om bortforslingen också?"
+- "Behöver stubbarna fräsas?"
+` : `
+**UPPFÖLJNINGSFRÅGOR - Fördjupa:**
+- Material/kvalitet
+- Exakta mått
+- Specifika tekniska krav
+- Budget/tidsram
+`}
+
+Returnera JSON med array av frågor:
+{
+  "questions": ["Fråga 1?", "Fråga 2?", "Fråga 3?"],
+  "readyToGenerate": false
+}
+
+**VIKTIGT:**
+- Max 4 frågor
+- Var SPECIFIK och RELEVANT för just detta projekt
+- Ställ INTE generiska frågor
+- Om användaren svarar "generera offerten nu" → sätt readyToGenerate: true`;
+
+  try {
+    const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: 'google/gemini-2.5-flash',
+        messages: [
+          { role: 'system', content: questionsPrompt },
+          { role: 'user', content: fullDescription }
+        ],
+        response_format: { type: "json_object" },
+        temperature: 0.7
+      }),
+    });
+
+    if (!response.ok) {
+      console.error('Follow-up questions API error:', response.status);
+      return ["Berätta mer om projektet så kan jag göra en bättre offert."];
+    }
+
+    const data = await response.json();
+    const result = JSON.parse(data.choices[0].message.content);
+    
+    console.log('📋 Generated questions:', result.questions);
+    
+    return result.questions || ["Kan du berätta mer om projektet?"];
+    
+  } catch (error) {
+    console.error('Follow-up questions error:', error);
+    return ["Berätta mer om projektet så kan jag göra en bättre offert."];
+  }
+}
+
 async function calculateBaseTotals(
   description: string, 
   apiKey: string,
@@ -1187,41 +1276,45 @@ Lägg till dem i materials-array med dessa standardpriser:
       console.log('AI_FALLBACK aktiverad - granska material noga i resulterande offert!');
     }
 
-    // STEG 2: PRE-FLIGHT CHECK - Kör innan första meddelandet
-    console.log('Step 2: Running pre-flight check...');
-    const preflightCheck = await performPreflightCheck(description, conversation_history, LOVABLE_API_KEY!);
     console.log('✅ Base totals calculated:', baseTotals);
-    
+
+    // STEG 2: KONVERSATIONSFAS - Ställ alltid följdfrågor först
     // Check if this is the first message in a conversation (no history)
     const isFirstMessage = !conversation_history || conversation_history.length === 0;
-    
-    if (isFirstMessage) {
-      // FÖRSTA MEDDELANDET - Kolla om vi kan generera direkt eller behöver frågor
-      if (preflightCheck.canProceed) {
-        console.log('✅ First message has sufficient info - generating quote directly');
-        // Fortsätt med offertgenerering (kod fortsätter nedan)
-      } else {
-        // Behöver mer info - ställ MAX 1-2 kritiska frågor
-        console.log('⚠️ First message needs clarification:', preflightCheck.missingCritical);
-        
-        const limitedQuestions = preflightCheck.missingCritical.slice(0, 2); // Max 2 frågor
-        
-        return new Response(
-          JSON.stringify({
-            type: 'clarification',
-            message: 'Jag behöver veta lite mer för att kunna göra en bra offert:',
-            questions: limitedQuestions
-          }),
-          { 
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-            status: 200 
-          }
-        );
-      }
+
+    // Count conversation exchanges (user + assistant pairs)
+    const exchangeCount = conversation_history ? Math.floor(conversation_history.length / 2) : 0;
+
+    // Check if user explicitly wants to generate quote now
+    const userWantsQuoteNow = description.toLowerCase().match(/(generera|skapa|gör) (offert|offerten|nu|direkt)/);
+
+    if (isFirstMessage || (!userWantsQuoteNow && exchangeCount < 3)) {
+      // KONVERSATIONSFAS - Ställ följdfrågor (max 3 omgångar)
+      console.log(`💬 Conversation mode (exchange ${exchangeCount + 1}/3)`);
+      
+      const followUpQuestions = await generateFollowUpQuestions(
+        description, 
+        conversation_history, 
+        LOVABLE_API_KEY!
+      );
+      
+      return new Response(
+        JSON.stringify({
+          type: 'clarification',
+          message: exchangeCount === 0 
+            ? 'Tack för din förfrågan! För att ge dig en så exakt offert som möjligt behöver jag veta lite mer:'
+            : 'Bra! Några fler frågor så jag kan göra offerten perfekt:',
+          questions: followUpQuestions
+        }),
+        { 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          status: 200 
+        }
+      );
     }
-    
-    // Om vi kommer hit ska vi generera offert (antingen första meddelande med canProceed=true, eller senare i konversationen)
-    console.log('Generating complete quote...');
+
+    // Om vi kommer hit ska vi generera offert
+    console.log('✅ Enough information gathered - generating quote...');
 
     // Define strict JSON schema for tool calling
     const quoteSchema = {
