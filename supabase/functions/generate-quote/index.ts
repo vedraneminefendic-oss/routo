@@ -339,21 +339,57 @@ Returnera JSON:
   "missingCritical": []  // ENDAST kritiska saker som MÅSTE ha svar
 }
 
+**KRITISKA KRAV PER PROJEKTTYP:**
+
+**Trädfällning/Arborist:**
+- Höjd på träd (måste ha för att beräkna timmar)
+- Närhet till byggnader/hinder/ledningar (avgör svårighetsgrad)
+- Bortforsling av virke (ja/nej - påverkar pris kraftigt)
+- Stubbfräsning (ja/nej)
+
+**Målning:**
+- Area eller antal rum (måste ha för att beräkna material/timmar)
+- Tak inkluderat? (ja/nej)
+- Befintligt underlag (tapet/färg/puts)
+
+**Badrum/Kök/Renovering:**
+- Storlek/area (måste ha)
+- Omfattning (total renovering/delvis?)
+- Rivning av befintligt? (ja/nej)
+
+**Elektriker:**
+- Typ av arbete (installation/fel/utbyte)
+- Omfattning/antal punkter
+
+**VVS:**
+- Typ av arbete (rör/avlopp/uppgradering)
+- Omfattning
+
+**Snickare:**
+- Typ av arbete (montering/bygg/reparation)
+- Material (tillhandahålls av kund eller inkluderat?)
+
 **VIKTIGT:**
-- canProceed = true om du kan göra rimliga antaganden baserat på erfarenhet
-- missingCritical = tom array om projektet är tydligt nog
+- canProceed = true om du kan göra rimliga antaganden för ICKE-kritiska detaljer
+- missingCritical = tom array om kritiska krav är uppfyllda
 - Var INTE överdrivet försiktig - hantverkare gör antaganden hela tiden
 - Fokusera på VEM/VAD/VAR, inte detaljerade specifikationer
 
 **Exempel:**
-"Fälla två ekar 15m" 
-→ canProceed: true (kan anta normalsvårighet, bortforsling, stubbfräsning)
+"Fälla två ekar 15m nära huset, jag tar bortforsling" 
+→ canProceed: true, missingCritical: [] (alla kritiska detaljer finns)
+
+"Fälla två ekar 15m"
+→ canProceed: false, missingCritical: ["Närhet till byggnader/hinder?", "Bortforsling (ja/nej)?"]
 
 "Renovera något"
 → canProceed: false, missingCritical: ["Vad ska renoveras? (badrum/kök/etc)"]
 
-"Måla om vardagsrum"
-→ canProceed: true (kan anta normalstorlek ~20 kvm, standardfärg)`;
+"Måla om vardagsrum 25 kvm"
+→ canProceed: false, missingCritical: ["Ska taket målas?", "Befintlig färg/tapet?"]
+
+"Måla om vardagsrum 25 kvm, väggar och tak, befintlig färg"
+→ canProceed: true, missingCritical: [] (alla kritiska detaljer finns)`;
 
   try {
     const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
@@ -571,24 +607,32 @@ async function generateFollowUpQuestions(
       .split(/[.!?]/)
       .filter((s: string) => s.trim().length > 10);
     
-    // FAS 16J: Om användaren gav 3+ påståenden OCH vi har täckt in rimliga topics → skippa
-    if (statements.length >= 3 && exchangeCount < 2) {
-      // Kontrollera om vi täckt in rimligt antal topics för projekttypen
-      const minTopicsForProject: Record<string, number> = {
-        'trädfällning': 3, // Höjd/diameter, hinder, bortforsling, stubbfräsning
-        'målning': 3, // Yta, förarbete, tak/väggar
-        'badrum': 3, // Storlek, nivå, rör
-        'renovering': 3,
-        'städning': 2,
-        'okänt': 2
+    // FAS 16K: Om användaren gav 5+ påståenden OCH vi har täckt in rimliga topics → skippa (höjt från 3)
+    if (statements.length >= 5 && exchangeCount < 2) {
+      // FAS 16K: Anpassa tröskel baserat på projekttyp (höjda värden)
+      const minTopicsMap: Record<string, number> = {
+        'trädfällning': 4,    // Höjd/diameter, hinder, bortforsling, stubbfräsning
+        'arborist': 4,        // Samma som trädfällning
+        'målning': 4,         // Yta, förarbete, tak/väggar, befintligt underlag
+        'badrum': 5,          // Storlek, nivå, rör, kakel, rivning
+        'kök': 5,             // Storlek, skåp, bänkskiva, vitvaror, rivning
+        'renovering': 5,      // Omfattning, rum, material, rivning, el/vvs
+        'elektriker': 4,      // Typ, omfattning, tillgänglighet, befintligt
+        'vvs': 4,             // Typ, omfattning, tillgänglighet, befintligt
+        'snickare': 4,        // Typ, material, omfattning, placering
+        'städning': 3,        // Area, frekvens, typ
+        'trädgård': 4,        // Area, typ av arbete, frekvens, material
+        'okänt': 5            // Högt krav för okända projekt
       };
       
       const projectTypeLower = projectType.toLowerCase();
-      const minTopics = minTopicsForProject[projectTypeLower] || minTopicsForProject['okänt'];
+      const minTopics = minTopicsMap[projectTypeLower] || minTopicsMap['okänt'];
       
       if (uniqueTopics.length >= minTopics) {
-        console.log(`✅ Smart skip pga: user provided ${statements.length} statements AND covered ${uniqueTopics.length}/${minTopics} required topics for ${projectType}`);
+        console.log(`✅ Smart skip v2 pga: user provided ${statements.length} statements AND covered ${uniqueTopics.length}/${minTopics} required topics for ${projectType}`);
         return [];
+      } else {
+        console.log(`⏭️ Not skipping: ${statements.length} statements but only ${uniqueTopics.length}/${minTopics} topics for ${projectType}`);
       }
     }
   }
@@ -1506,6 +1550,45 @@ Lägg till dem i materials-array med dessa standardpriser:
 
     // FAS 16J: SÄNKT GRÄNS - max 2 rundor istället för 3
     if (isFirstMessage || (!userWantsQuoteNow && exchangeCount < 2)) {
+      
+      // FAS 16K: CONVERSATION STARTER MODE - Om beskrivningen är extremt kort, fråga alltid
+      const latestUserMessage = conversation_history && conversation_history.length > 0
+        ? conversation_history[conversation_history.length - 1].content
+        : description;
+      const isVeryShortDescription = latestUserMessage.length < 50;
+      
+      if (isFirstMessage && isVeryShortDescription) {
+        console.log(`🗣️ Conversation Starter Mode: Description too short (${latestUserMessage.length} chars), asking initial questions...`);
+        
+        // Kör en snabb preflight för att identifiera projekttyp
+        const quickPreflight = await performPreflightCheck(
+          description,
+          conversation_history,
+          LOVABLE_API_KEY!
+        );
+        
+        const initialQuestions = await generateFollowUpQuestions(
+          description,
+          conversation_history,
+          LOVABLE_API_KEY!,
+          {
+            exchangeCount: 0,
+            projectType: quickPreflight.projectType || 'general'
+          }
+        );
+        
+        return new Response(
+          JSON.stringify({
+            type: 'clarification',
+            message: 'Tack för din förfrågan! För att ge dig en så exakt offert som möjligt behöver jag veta lite mer:',
+            questions: initialQuestions
+          }),
+          {
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+            status: 200
+          }
+        );
+      }
       
       // FAS 16J: Kör preflight check INNAN vi bestämmer om vi ska fråga eller generera
       console.log(`🛫 Running preflight check before deciding conversation mode (exchange ${exchangeCount}/2)...`);
