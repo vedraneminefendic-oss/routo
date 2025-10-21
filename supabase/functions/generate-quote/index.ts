@@ -994,6 +994,13 @@ Lägg till dem i materials-array med dessa standardpriser:
       // FÖRSTA MEDDELANDET - Ställ motfrågor istället för att generera komplett offert
       console.log('First message detected - generating clarification questions');
       
+      // Build conversation summary for context
+      const conversationSummary = conversation_history && conversation_history.length > 0
+        ? conversation_history.filter((m: any) => m.role === 'user').map((m: any) => m.content).join(' → ')
+        : description;
+      
+      console.log(`📝 Konversationssammanfattning: ${conversationSummary}`);
+      
       const clarificationPrompt = `Du är en AI-assistent som hjälper hantverkare att skapa professionella offerter.
 
 Användaren har skrivit: "${description}"
@@ -1151,8 +1158,27 @@ GENERERA INGEN KOMPLETT OFFERT ÄNNU. Returnera endast JSON-objektet ovan.`;
         messages: [
           {
             role: 'system',
-            content: `Du är en AI-assistent som hjälper hantverkare att skapa professionella offerter. 
+            content: `Du är en expert på att skapa professionella offerter för svenska hantverkare.
 
+**═══════════════════════════════════════════════════════════════**
+**KRITISKT - FÖLJ EXAKT VAD ANVÄNDAREN BER OM**
+**═══════════════════════════════════════════════════════════════**
+
+Användarens önskemål: "${conversation_history && conversation_history.length > 0 ? conversation_history.filter((m: any) => m.role === 'user').map((m: any) => m.content).join(' → ') : description}"
+
+Din uppgift är att skapa en offert som EXAKT matchar användarens beskrivning.
+
+**ABSOLUTA REGLER:**
+- Om användaren säger "målning" → skapa EN MÅLNINGSOFFERT (INTE altan, kök, eller annat)
+- Om användaren säger "altan" → skapa EN ALTANOFFERT (INTE målning)  
+- Om användaren säger "kök" → skapa EN KÖKSOFFERT (INTE målning, altan eller annat)
+- Om användaren säger "badrum" → skapa EN BADRUMSOFFERT (INTE målning, kök eller annat)
+
+**VIKTIGT:** Kontrollera att ALLA arbetsmoment, material och beskrivningar matchar det användaren faktiskt begärt!
+Om användaren bad om målning får det INTE finnas rivning av tak, altanbygge eller annat i offerten.
+
+**═══════════════════════════════════════════════════════════════**
+            
 ${ratesText}
 ${equipmentText}
 ${customerHistoryText}
@@ -1609,6 +1635,63 @@ Viktig information:
       generatedQuote = JSON.parse(data.choices[0].message.content);
     }
     
+    // SANITY CHECK: Verify quote matches user's actual request
+    console.log('🔍 Performing sanity check on generated quote...');
+    
+    const projectTypeCheck: Record<string, RegExp> = {
+      målning: /målning|måla|färg|spackling|målare/i,
+      altan: /altan|trall|uteplats|däck|spjäl/i,
+      kök: /kök|köks|diskbänk|skåp|köksinredning/i,
+      badrum: /badrum|kakel|dusch|toalett|wc|våtrum/i,
+      tak: /tak|takläggning|takpannor|taktäckning|takrenovering/i,
+      'trädfällning': /träd|fälla|fällning|arborist|stam/i
+    };
+    
+    const userWanted = (conversation_history && conversation_history.length > 0 
+      ? conversation_history.filter((m: any) => m.role === 'user').map((m: any) => m.content).join(' ')
+      : description).toLowerCase();
+    
+    let expectedType: string | null = null;
+    for (const [type, pattern] of Object.entries(projectTypeCheck)) {
+      if (pattern.test(userWanted)) {
+        expectedType = type;
+        break;
+      }
+    }
+    
+    if (expectedType) {
+      const quoteTitle = generatedQuote.title?.toLowerCase() || '';
+      const workItemsText = generatedQuote.workItems?.map((w: any) => w.name + ' ' + w.description).join(' ').toLowerCase() || '';
+      const materialsText = generatedQuote.materials?.map((m: any) => m.name).join(' ').toLowerCase() || '';
+      const allQuoteText = quoteTitle + ' ' + workItemsText + ' ' + materialsText;
+      
+      const matchesExpectedType = projectTypeCheck[expectedType].test(allQuoteText);
+      
+      if (!matchesExpectedType) {
+        console.error(`❌ KRITISKT FEL: Användaren bad om "${expectedType}" men offerten handlar om något annat!`);
+        console.error(`Offertens innehåll: ${allQuoteText.substring(0, 200)}...`);
+        console.error(`Användarens begäran: ${userWanted.substring(0, 200)}...`);
+        
+        return new Response(
+          JSON.stringify({ 
+            error: 'AI-kontextfel',
+            message: `Tyvärr, AI:n skapade en offert för fel projekttyp. Du bad om "${expectedType}"-arbete men offerten verkar handla om något annat. Försök att omformulera din förfrågan mer specifikt.`,
+            needsClarification: true,
+            expectedType: expectedType,
+            detectedContent: allQuoteText.substring(0, 100)
+          }),
+          {
+            status: 500,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          }
+        );
+      }
+      
+      console.log(`✅ Sanity check OK: Offerten matchar förväntad projekttyp "${expectedType}"`);
+    } else {
+      console.log('ℹ️ Sanity check skipped: Kunde inte identifiera specifik projekttyp');
+    }
+    
     // VALIDATION STEP 1: Validate AI output against base totals
     console.log('Validating quote output...');
     const validation = validateQuoteOutput(generatedQuote, baseTotals, baseTotals.hourlyRatesByType, detailLevel);
@@ -1705,17 +1788,74 @@ Du MÅSTE:
         const retryValidation = validateQuoteOutput(retryQuote, baseTotals, baseTotals.hourlyRatesByType, detailLevel);
         
         if (retryValidation.valid) {
-          console.log('Retry successful!');
+          console.log('✅ Retry successful!');
           finalQuote = retryQuote;
         } else {
-          console.warn('Retry also failed, applying auto-correction');
-          finalQuote = autoCorrectQuote(retryQuote, baseTotals);
-          wasAutoCorrected = true;
+          console.error('⚠️ Retry also failed. Validation errors:', retryValidation.errors);
+          
+          // Check if errors are minor and can be auto-corrected
+          const hasOnlyMinorErrors = retryValidation.errors.every(err => 
+            err.includes('Material: Förväntade') || 
+            err.includes('Notes ska vara') ||
+            err.includes('Ska ha') && err.includes('poster')
+          );
+          
+          if (hasOnlyMinorErrors) {
+            console.log('→ Applying intelligent auto-correction for minor errors...');
+            
+            // Fix material cost if needed
+            if (retryValidation.errors.some(e => e.includes('Material: Förväntade'))) {
+              const expectedMaterialCost = baseTotals.materialCost + baseTotals.equipmentCost;
+              console.log(`→ Korrigerar materialkostnad till ${expectedMaterialCost} kr`);
+              retryQuote.summary.materialCost = expectedMaterialCost;
+              retryQuote.summary.totalBeforeVAT = retryQuote.summary.workCost + expectedMaterialCost;
+              retryQuote.summary.vat = Math.round(retryQuote.summary.totalBeforeVAT * 0.25);
+              retryQuote.summary.totalWithVAT = retryQuote.summary.totalBeforeVAT + retryQuote.summary.vat;
+            }
+            
+            // Fix notes length if needed
+            if (retryValidation.errors.some(e => e.includes('Notes ska vara'))) {
+              const targetLength = detailLevel === 'standard' ? 250 : detailLevel === 'detailed' ? 650 : 75;
+              if (retryQuote.notes && retryQuote.notes.length > targetLength) {
+                console.log(`→ Trimmar notes till ${targetLength} tecken`);
+                retryQuote.notes = retryQuote.notes.substring(0, targetLength - 3) + '...';
+              }
+            }
+            
+            finalQuote = retryQuote;
+            wasAutoCorrected = true;
+            console.log('✅ Auto-correction applied successfully');
+          } else {
+            console.error('❌ Retry failed with major errors. Returning error to user.');
+            
+            return new Response(
+              JSON.stringify({ 
+                error: 'Validering misslyckades',
+                message: 'AI:n kunde inte generera en korrekt offert efter flera försök. Försök omformulera din förfrågan eller ge mer specifika detaljer.',
+                validationErrors: retryValidation.errors,
+                needsClarification: true
+              }),
+              {
+                status: 500,
+                headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+              }
+            );
+          }
         }
       } else {
-        console.warn('Retry failed, applying auto-correction to original');
-        finalQuote = autoCorrectQuote(generatedQuote, baseTotals);
-        wasAutoCorrected = true;
+        console.error('❌ Retry request failed. Returning error to user.');
+        
+        return new Response(
+          JSON.stringify({ 
+            error: 'AI-generering misslyckades',
+            message: 'Kunde inte generera offert efter flera försök. Försök igen eller kontakta support.',
+            needsClarification: true
+          }),
+          {
+            status: 500,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          }
+        );
       }
     }
     
@@ -1840,11 +1980,14 @@ async function detectDeductionType(description: string, apiKey: string): Promise
 
 **ROT-arbeten (Reparation, Ombyggnad, Tillbyggnad):**
 - Renovering av badrum, kök, våtrum
-- Målning, tapetsering, golvläggning, kakelläggning
+- Målning, måla om, tapetsering, spackling, väggmålning, fasadmålning
+- Golvläggning, kakelläggning, plattsättning
 - El- och VVS-installation som kräver byggarbete
 - Värmepump, solpaneler, fönsterbyte
-- Fasadrenovering, takläggning, takbyte
+- Fasadrenovering, fasadarbeten, puts
+- Takläggning, takbyte, takrenovering
 - Tillbyggnad, ombyggnad av bostaden
+- Altanbygge, trallbygge, uteplatser
 - Installation av hiss
 - Dränering runt huset
 - KRÄVER OFTA SPECIALISTKUNSKAP OCH BYGGARBETE
