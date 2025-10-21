@@ -325,7 +325,7 @@ function validateRealism(quote: any, description: string): string[] {
 // Pre-flight check: Validate context before generating quote
 async function performPreflightCheck(
   description: string,
-  conversationHistory: any[],
+  conversationHistory: any[] | undefined,
   apiKey: string
 ): Promise<{ valid: boolean; errors: string[]; projectType?: string }> {
   console.log('🛫 Running pre-flight check...');
@@ -1281,6 +1281,9 @@ GENERERA INGEN KOMPLETT OFFERT ÄNNU. Returnera endast JSON-objektet ovan.`;
    ${detailLevel === 'detailed' ? '→ 6-10 arbetsposter, 10-15 material, notes 500-800 tecken med fasindelning' : ''}
    ${detailLevel === 'construction' ? '→ 10-15 arbetsposter (inkl. projektledning), 15-25 material, notes 1200-2000 tecken med projektledning+tidsplan+garanti+besiktning' : ''}
 
+
+**═══════════════════════════════════════════════════════════════**
+**PROJEKTSPECIFIK KONTEXT**
 **═══════════════════════════════════════════════════════════════**
             
 ${ratesText}
