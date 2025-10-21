@@ -413,10 +413,28 @@ async function generateFollowUpQuestions(
   // Count how many exchanges we've had
   const exchangeCount = conversationHistory ? Math.floor(conversationHistory.length / 2) : 0;
   
+  // NYTT: Bygg strukturerad vy av tidigare konversation för att undvika upprepade frågor
+  let previousQA = "";
+  if (conversationHistory && conversationHistory.length > 0) {
+    previousQA = "\n\n**TIDIGARE FRÅGOR OCH SVAR:**";
+    for (let i = 0; i < conversationHistory.length; i++) {
+      const msg = conversationHistory[i];
+      if (msg.role === 'assistant' && msg.content.includes('?')) {
+        // Detta är en fråga från AI:n
+        previousQA += `\n\n🤖 AI frågade: ${msg.content}`;
+      } else if (msg.role === 'user') {
+        // Detta är användarens svar
+        previousQA += `\n👤 Användare svarade: ${msg.content}`;
+      }
+    }
+    previousQA += "\n";
+  }
+  
   const questionsPrompt = `Du är en professionell hantverkare som skapar offerter. 
 
 NUVARANDE KONVERSATION:
 ${fullDescription}
+${previousQA}
 
 UPPGIFT: Ställ 2-4 relevanta följdfrågor för att få MER DETALJERAD information.
 
@@ -440,6 +458,9 @@ Exempel för trädfällning:
 - Exakta mått
 - Specifika tekniska krav
 - Budget/tidsram
+
+⚠️ **KRITISKT: Fråga ALDRIG om information som användaren redan givit ovan!**
+⚠️ **Läs igenom "TIDIGARE FRÅGOR OCH SVAR" noggrant innan du skapar nya frågor!**
 `}
 
 Returnera JSON med array av frågor:
@@ -452,6 +473,7 @@ Returnera JSON med array av frågor:
 - Max 4 frågor
 - Var SPECIFIK och RELEVANT för just detta projekt
 - Ställ INTE generiska frågor
+- Ställ ALDRIG frågor om saker som redan besvarats i "TIDIGARE FRÅGOR OCH SVAR"
 - Om användaren svarar "generera offerten nu" → sätt readyToGenerate: true`;
 
   try {
