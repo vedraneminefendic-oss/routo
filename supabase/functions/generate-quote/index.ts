@@ -1258,13 +1258,61 @@ Lägg till dem i materials-array med dessa standardpriser:
       ? `RUT-avdrag: 50% av arbetskostnaden (max 75 000 kr per person/år). Gäller städning, underhåll, trädgård, hemservice.`
       : `Inget skatteavdrag tillämpas på detta arbete.`;
 
-    // STEG 1: Beräkna bastotaler först (för priskonsistens)
-    console.log('Step 1: Calculating base totals for price consistency...');
-    const baseTotals = await calculateBaseTotals(description, LOVABLE_API_KEY!, hourlyRates, equipmentRates);
+    // STEG 1: KONVERSATIONSFAS - Ställ alltid följdfrågor först
+    // Check if this is the first message in a conversation (no history)
+    const isFirstMessage = !conversation_history || conversation_history.length === 0;
+
+    // Count conversation exchanges (user + assistant pairs)
+    const exchangeCount = conversation_history ? Math.floor(conversation_history.length / 2) : 0;
+
+    // Check if user explicitly wants to generate quote now
+    const userWantsQuoteNow = description.toLowerCase().match(/(generera|skapa|gör) (offert|offerten|nu|direkt)/);
+
+    if (isFirstMessage || (!userWantsQuoteNow && exchangeCount < 3)) {
+      // KONVERSATIONSFAS - Ställ följdfrågor (max 3 omgångar)
+      console.log(`💬 Conversation mode (exchange ${exchangeCount + 1}/3)`);
+      
+      const followUpQuestions = await generateFollowUpQuestions(
+        description, 
+        conversation_history, 
+        LOVABLE_API_KEY!
+      );
+      
+      return new Response(
+        JSON.stringify({
+          type: 'clarification',
+          message: exchangeCount === 0 
+            ? 'Tack för din förfrågan! För att ge dig en så exakt offert som möjligt behöver jag veta lite mer:'
+            : 'Bra! Några fler frågor så jag kan göra offerten perfekt:',
+          questions: followUpQuestions
+        }),
+        { 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          status: 200 
+        }
+      );
+    }
+
+    // Om vi kommer hit ska vi generera offert
+    console.log('✅ Enough information gathered - generating quote...');
+
+    // STEG 2: Beräkna baseTotals EFTER konversationen med HELA beskrivningen
+    console.log('Step 2: Calculating base totals with complete conversation context...');
+    
+    // Bygg komplett beskrivning från hela konversationen
+    const completeDescription = buildConversationSummary(conversation_history || [], description);
+    console.log('Complete description for base totals:', completeDescription);
+    
+    const baseTotals = await calculateBaseTotals(
+      completeDescription,  // <- HELA beskrivningen från konversationen!
+      LOVABLE_API_KEY!, 
+      hourlyRates, 
+      equipmentRates
+    );
     console.log('Base totals calculated:', baseTotals);
 
     // KRITISK VALIDERING: Säkerställ att materialCost INTE är 0 för renoveringsprojekt
-    const descLower = description.toLowerCase();
+    const descLower = completeDescription.toLowerCase();
     const isRenovationProject = 
       descLower.includes('renovera') || 
       descLower.includes('bygga') || 
@@ -1310,44 +1358,6 @@ Lägg till dem i materials-array med dessa standardpriser:
     }
 
     console.log('✅ Base totals calculated:', baseTotals);
-
-    // STEG 2: KONVERSATIONSFAS - Ställ alltid följdfrågor först
-    // Check if this is the first message in a conversation (no history)
-    const isFirstMessage = !conversation_history || conversation_history.length === 0;
-
-    // Count conversation exchanges (user + assistant pairs)
-    const exchangeCount = conversation_history ? Math.floor(conversation_history.length / 2) : 0;
-
-    // Check if user explicitly wants to generate quote now
-    const userWantsQuoteNow = description.toLowerCase().match(/(generera|skapa|gör) (offert|offerten|nu|direkt)/);
-
-    if (isFirstMessage || (!userWantsQuoteNow && exchangeCount < 3)) {
-      // KONVERSATIONSFAS - Ställ följdfrågor (max 3 omgångar)
-      console.log(`💬 Conversation mode (exchange ${exchangeCount + 1}/3)`);
-      
-      const followUpQuestions = await generateFollowUpQuestions(
-        description, 
-        conversation_history, 
-        LOVABLE_API_KEY!
-      );
-      
-      return new Response(
-        JSON.stringify({
-          type: 'clarification',
-          message: exchangeCount === 0 
-            ? 'Tack för din förfrågan! För att ge dig en så exakt offert som möjligt behöver jag veta lite mer:'
-            : 'Bra! Några fler frågor så jag kan göra offerten perfekt:',
-          questions: followUpQuestions
-        }),
-        { 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-          status: 200 
-        }
-      );
-    }
-
-    // Om vi kommer hit ska vi generera offert
-    console.log('✅ Enough information gathered - generating quote...');
 
     // Define strict JSON schema for tool calling
     const quoteSchema = {
