@@ -250,23 +250,29 @@ export const ChatInterface = ({ onQuoteGenerated, isGenerating }: ChatInterfaceP
     onQuoteGenerated(generatedQuote);
   };
 
-  // Mappa backend quote sections till LineItemData format
-  const mapQuoteSections = (sections: any[]): { title: string; items: LineItemData[] }[] => {
-    if (!sections || !Array.isArray(sections)) return [];
-    
-    return sections.map(section => ({
-      title: section.title || 'Arbete',
-      items: (section.items || []).map((item: any) => ({
-        name: item.name || item.description || 'Post',
-        quantity: item.quantity || 1,
-        unit: item.unit || 'st',
-        unitPrice: item.unitPrice || item.rate || 0
-      }))
-    }));
-  };
-
   const handleStarterClick = (text: string) => {
     handleSendMessage(text);
+  };
+
+  // Smart Suggestions based on quote
+  const getSmartSuggestions = () => {
+    if (!generatedQuote) return [];
+    
+    const projectType = generatedQuote.title?.toLowerCase() || '';
+    const suggestions = [];
+
+    if (projectType.includes('badrum')) {
+      suggestions.push({ text: '➕ Lägg till golvvärme (+4500 kr)', estimate: 4500 });
+      suggestions.push({ text: '➕ Lägg till handdukstork (+2800 kr)', estimate: 2800 });
+    } else if (projectType.includes('altan') || projectType.includes('däck')) {
+      suggestions.push({ text: '➕ Lägg till belysning (+3200 kr)', estimate: 3200 });
+      suggestions.push({ text: '➕ Lägg till inglasning (+15000 kr)', estimate: 15000 });
+    } else if (projectType.includes('målning')) {
+      suggestions.push({ text: '➕ Inkludera spackling (+1500 kr)', estimate: 1500 });
+      suggestions.push({ text: '➕ Lägg till grundmålning (+2000 kr)', estimate: 2000 });
+    }
+
+    return suggestions;
   };
 
   return (
@@ -332,11 +338,16 @@ export const ChatInterface = ({ onQuoteGenerated, isGenerating }: ChatInterfaceP
 
                     {/* Sections (Arbete, Material, etc.) */}
                     <div className="space-y-4">
-                      {generatedQuote.sections && mapQuoteSections(generatedQuote.sections).map((section, index) => (
+                      {generatedQuote.sections && generatedQuote.sections.map((section: any, index: number) => (
                         <EstimateSection
                           key={index}
                           title={section.title}
-                          items={section.items}
+                          items={section.items.map((item: any) => ({
+                            name: item.name || item.description || 'Post',
+                            quantity: item.quantity || 1,
+                            unit: item.unit || 'st',
+                            unitPrice: item.unitPrice || item.rate || 0
+                          }))}
                           onItemUpdate={() => {}}
                           onItemDelete={() => {}}
                           defaultOpen={true}
@@ -391,6 +402,28 @@ export const ChatInterface = ({ onQuoteGenerated, isGenerating }: ChatInterfaceP
                         Redigera
                       </Button>
                     </div>
+
+                    {/* Smart Suggestions (Fas 6E) */}
+                    {getSmartSuggestions().length > 0 && (
+                      <div className="border-t pt-4">
+                        <p className="text-sm font-medium text-muted-foreground mb-3">
+                          💡 Kanske intressant att lägga till?
+                        </p>
+                        <div className="flex flex-wrap gap-2">
+                          {getSmartSuggestions().map((suggestion, idx) => (
+                            <Button
+                              key={idx}
+                              variant="outline"
+                              size="sm"
+                              onClick={() => handleSendMessage(suggestion.text)}
+                              className="text-xs"
+                            >
+                              {suggestion.text}
+                            </Button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
               )}

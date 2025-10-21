@@ -1,4 +1,4 @@
-import { Home, Ruler, Gem, Hammer, HelpCircle, Sparkles } from "lucide-react";
+import { Home, Ruler, Gem, Hammer, HelpCircle, Sparkles, Edit, Calendar } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -8,6 +8,7 @@ export interface ContextData {
   area?: string;
   materialLevel?: string;
   workType?: string;
+  deadline?: string;
 }
 
 interface ContextPillsProps {
@@ -60,6 +61,15 @@ export const ContextPills = ({ messages, onPillClick }: ContextPillsProps) => {
       }
     }
 
+    // Extrahera deadline
+    const deadlineMatch = allContent.match(/deadline|färdig|klar|slutdatum/i);
+    if (deadlineMatch) {
+      const dateMatch = allContent.match(/(\d{1,2})[\s\-\/]?([a-zå]{3,}|\d{1,2})[\s\-\/]?(\d{2,4})?/i);
+      if (dateMatch) {
+        context.deadline = 'Deadline angiven';
+      }
+    }
+
     return context;
   };
 
@@ -74,28 +84,45 @@ export const ContextPills = ({ messages, onPillClick }: ContextPillsProps) => {
       icon: Home,
       label: 'Projekt',
       value: context.projectType,
-      color: 'text-blue-600 dark:text-blue-400'
+      color: 'text-blue-600 dark:text-blue-400',
+      bgColor: 'bg-blue-50 dark:bg-blue-950/30',
+      borderColor: 'border-blue-200 dark:border-blue-800'
     },
     {
       key: 'area' as keyof ContextData,
       icon: Ruler,
       label: 'Storlek',
       value: context.area,
-      color: 'text-purple-600 dark:text-purple-400'
+      color: 'text-purple-600 dark:text-purple-400',
+      bgColor: 'bg-purple-50 dark:bg-purple-950/30',
+      borderColor: 'border-purple-200 dark:border-purple-800'
     },
     {
       key: 'materialLevel' as keyof ContextData,
       icon: Gem,
       label: 'Material',
       value: context.materialLevel,
-      color: 'text-amber-600 dark:text-amber-400'
+      color: 'text-amber-600 dark:text-amber-400',
+      bgColor: 'bg-amber-50 dark:bg-amber-950/30',
+      borderColor: 'border-amber-200 dark:border-amber-800'
     },
     {
       key: 'workType' as keyof ContextData,
       icon: Hammer,
       label: 'Arbetstyp',
       value: context.workType,
-      color: 'text-green-600 dark:text-green-400'
+      color: 'text-green-600 dark:text-green-400',
+      bgColor: 'bg-green-50 dark:bg-green-950/30',
+      borderColor: 'border-green-200 dark:border-green-800'
+    },
+    {
+      key: 'deadline' as keyof ContextData,
+      icon: Calendar,
+      label: 'Deadline',
+      value: context.deadline,
+      color: 'text-red-600 dark:text-red-400',
+      bgColor: 'bg-red-50 dark:bg-red-950/30',
+      borderColor: 'border-red-200 dark:border-red-800'
     }
   ];
 
@@ -104,8 +131,9 @@ export const ContextPills = ({ messages, onPillClick }: ContextPillsProps) => {
   if (!hasAnyValue) return null;
 
   return (
-    <div className="flex items-center gap-2 px-4 py-3 bg-muted/30 border-t">
-      <Sparkles className="h-4 w-4 text-primary shrink-0" />
+    <div className="flex items-center gap-2 px-4 py-3 bg-gradient-to-r from-primary/5 to-transparent border-t">
+      <Sparkles className="h-4 w-4 text-primary shrink-0 animate-pulse" />
+      <span className="text-xs font-medium text-muted-foreground mr-2">AI förstod:</span>
       <div className="flex flex-wrap items-center gap-2">
         {pills.map(pill => {
           const Icon = pill.icon;
@@ -114,23 +142,26 @@ export const ContextPills = ({ messages, onPillClick }: ContextPillsProps) => {
           return (
             <Button
               key={pill.key}
-              variant="outline"
+              variant="ghost"
               size="sm"
               onClick={() => onPillClick?.(pill.key)}
               className={cn(
-                "h-7 px-2.5 gap-1.5 text-xs transition-all",
-                hasMissingValue && "border-dashed border-muted-foreground/40 text-muted-foreground hover:border-primary hover:text-primary"
+                "h-8 px-3 gap-1.5 text-xs font-medium transition-all rounded-full border",
+                hasMissingValue 
+                  ? "border-dashed border-muted-foreground/30 text-muted-foreground hover:border-primary hover:text-primary hover:bg-primary/5" 
+                  : cn(pill.bgColor, pill.borderColor, pill.color, "hover:scale-105")
               )}
             >
               {hasMissingValue ? (
                 <>
                   <HelpCircle className="h-3.5 w-3.5" />
-                  <span>{pill.label}</span>
+                  <span>{pill.label} saknas</span>
                 </>
               ) : (
                 <>
-                  <Icon className={cn("h-3.5 w-3.5", pill.color)} />
-                  <span className="font-medium">{pill.value}</span>
+                  <Icon className="h-3.5 w-3.5" />
+                  <span>{pill.value}</span>
+                  <Edit className="h-3 w-3 opacity-50" />
                 </>
               )}
             </Button>

@@ -9,7 +9,7 @@ const corsHeaders = {
 };
 
 // Validation function to ensure AI output matches base totals
-function validateQuoteOutput(quote: any, baseTotals: any, hourlyRates?: any[] | null, detailLevel?: string): { valid: boolean; errors: string[] } {
+function validateQuoteOutput(quote: any, baseTotals: any, hourlyRatesByType?: { [workType: string]: number } | null, detailLevel?: string): { valid: boolean; errors: string[] } {
   const errors: string[] = [];
   
   // 1. Validate work hours by type
@@ -52,15 +52,15 @@ function validateQuoteOutput(quote: any, baseTotals: any, hourlyRates?: any[] | 
   }
   
   // 4. Validate hourly rates match user's custom rates
-  if (hourlyRates && hourlyRates.length > 0) {
+  if (hourlyRatesByType && Object.keys(hourlyRatesByType).length > 0) {
     quote.workItems.forEach((item: any) => {
       const workTypeName = item.name.split(' - ')[0]; // "Snickare - Rivning" → "Snickare"
-      const matchingRate = hourlyRates.find(r => r.work_type === workTypeName);
+      const expectedRate = hourlyRatesByType[workTypeName];
       
-      if (matchingRate) {
+      if (expectedRate) {
         const tolerance = 1; // Allow 1 kr difference
-        if (Math.abs(item.hourlyRate - matchingRate.rate) > tolerance) {
-          errors.push(`${workTypeName}: Förväntade timpris ${matchingRate.rate} kr/h men fick ${item.hourlyRate} kr/h`);
+        if (Math.abs(item.hourlyRate - expectedRate) > tolerance) {
+          errors.push(`${workTypeName}: Förväntade timpris ${expectedRate} kr/h men fick ${item.hourlyRate} kr/h`);
         }
       }
     });
@@ -222,7 +222,12 @@ async function calculateBaseTotals(
   apiKey: string,
   hourlyRates: any[] | null,
   equipmentRates: any[] | null
-) {
+): Promise<{
+  workHours: any;
+  materialCost: number;
+  equipmentCost: number;
+  hourlyRatesByType: { [workType: string]: number };
+}> {
   const ratesContext = hourlyRates && hourlyRates.length > 0
     ? `Timpriserna är: ${hourlyRates.map(r => `${r.work_type}: ${r.rate} kr/h`).join(', ')}`
     : 'Standardpris: 650 kr/h';
@@ -472,7 +477,29 @@ Input: "Bygga altan"
   }
 
   const data = await response.json();
-  return JSON.parse(data.choices[0].message.content);
+  const result = JSON.parse(data.choices[0].message.content);
+  
+  // Map hourly rates to dictionary for easier validation
+  const hourlyRatesByType: { [key: string]: number } = {};
+  if (hourlyRates && hourlyRates.length > 0) {
+    hourlyRates.forEach(r => {
+      hourlyRatesByType[r.work_type] = r.rate;
+    });
+  }
+
+  console.log('✅ Base totals calculated:', { 
+    workHours: result.workHours, 
+    materialCost: result.materialCost, 
+    equipmentCost: result.equipmentCost,
+    hourlyRatesByType
+  });
+
+  return { 
+    workHours: result.workHours, 
+    materialCost: result.materialCost, 
+    equipmentCost: result.equipmentCost,
+    hourlyRatesByType
+  };
 }
 
 serve(async (req) => {
@@ -806,6 +833,19 @@ Lägg till dem i materials-array med dessa standardpriser:
       descLower.includes('målning') ||
       descLower.includes('måla');
 
+    // CRITICAL: Validate material cost BEFORE generating quote
+    if (isRenovationProject && baseTotals.materialCost < 1000) {
+      console.warn('⚠️ Material cost too low for renovation project, requesting clarification');
+      return new Response(
+        JSON.stringify({
+          type: 'clarification',
+          message: 'Jag behöver veta vilken materialnivå du vill ha för att kunna beräkna materialkostnaden korrekt. Välj mellan:\n\n• **Budget** - Enklare material, god kvalitet\n• **Mellan** - Standardmaterial från kända märken\n• **Premium** - Exklusiva material och design\n\nVilken nivå passar ditt projekt?',
+          currentData: {}
+        }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
+      );
+    }
+
     if (isRenovationProject && baseTotals.materialCost === 0) {
       console.warn('⚠️ MATERIAL FALLBACK: materialCost är 0 för renoveringsprojekt!');
       
@@ -1138,12 +1178,20 @@ VIKTIGA PRINCIPER FÖR KONSEKVENTA OFFERTER:
 **🔒 KRITISKT - LÅS DESSA FÖRUTBERÄKNADE TOTALER:**
 
 Du MÅSTE använda EXAKT dessa värden som redan beräknats för projektet:
-${JSON.stringify(baseTotals, null, 2)}
+Arbetstimmar: ${JSON.stringify(baseTotals.workHours, null, 2)}
+Materialkostnad: ${baseTotals.materialCost} kr
+Utrustningskostnad: ${baseTotals.equipmentCost} kr
+
+**KRITISKT - DU MÅSTE ANVÄNDA EXAKT DESSA TIMPRISER:**
+${JSON.stringify(baseTotals.hourlyRatesByType, null, 2)}
+
+Du MÅSTE använda exakt dessa timpriser för varje arbetstyp. INGEN avvikelse tillåts!
 
 **DU FÅR ABSOLUT INTE:**
 - Ändra totalsumman
 - Lägga till eller ta bort arbetstimmar
 - Ändra materialkostnaden
+- Ändra timpriserna
 - "Anpassa" priserna
 
 **DIN UPPGIFT:**
@@ -1334,7 +1382,7 @@ Viktig information:
     
     // VALIDATION STEP 1: Validate AI output against base totals
     console.log('Validating quote output...');
-    const validation = validateQuoteOutput(generatedQuote, baseTotals, hourlyRates, detailLevel);
+    const validation = validateQuoteOutput(generatedQuote, baseTotals, baseTotals.hourlyRatesByType, detailLevel);
     const realismWarnings = validateRealism(generatedQuote, description);
     
     let finalQuote = generatedQuote;
@@ -1425,7 +1473,7 @@ Du MÅSTE:
           retryQuote = JSON.parse(retryData.choices[0].message.content);
         }
         
-        const retryValidation = validateQuoteOutput(retryQuote, baseTotals, hourlyRates, detailLevel);
+        const retryValidation = validateQuoteOutput(retryQuote, baseTotals, baseTotals.hourlyRatesByType, detailLevel);
         
         if (retryValidation.valid) {
           console.log('Retry successful!');
