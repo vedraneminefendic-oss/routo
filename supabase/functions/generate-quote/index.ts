@@ -8,6 +8,111 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+// Industry benchmarks for realistic pricing validation
+const INDUSTRY_BENCHMARKS: Record<string, {
+  avgMaterialPerSqm: number;
+  avgWorkHoursPerSqm: number;
+  minMaterial: number;
+  workTypes: string[];
+  avgTotalPerSqm: number;
+  minPricePerSqm: number;
+  maxPricePerSqm: number;
+}> = {
+  'badrum_renovering': {
+    avgMaterialPerSqm: 3500,
+    avgWorkHoursPerSqm: 12,
+    minMaterial: 15000,
+    workTypes: ['Plattsättare', 'VVS', 'Elektriker', 'Snickare'],
+    avgTotalPerSqm: 20000,
+    minPricePerSqm: 15000,
+    maxPricePerSqm: 30000
+  },
+  'kok_renovering': {
+    avgMaterialPerSqm: 4000,
+    avgWorkHoursPerSqm: 10,
+    minMaterial: 30000,
+    workTypes: ['Snickare', 'Elektriker', 'VVS'],
+    avgTotalPerSqm: 25000,
+    minPricePerSqm: 20000,
+    maxPricePerSqm: 40000
+  },
+  'altan': {
+    avgMaterialPerSqm: 1500,
+    avgWorkHoursPerSqm: 6,
+    minMaterial: 8000,
+    workTypes: ['Snickare'],
+    avgTotalPerSqm: 3500,
+    minPricePerSqm: 2500,
+    maxPricePerSqm: 5000
+  },
+  'malning': {
+    avgMaterialPerSqm: 50,
+    avgWorkHoursPerSqm: 0.5,
+    minMaterial: 3000,
+    workTypes: ['Målare'],
+    avgTotalPerSqm: 400,
+    minPricePerSqm: 300,
+    maxPricePerSqm: 600
+  },
+  'golvlaggning': {
+    avgMaterialPerSqm: 400,
+    avgWorkHoursPerSqm: 2,
+    minMaterial: 8000,
+    workTypes: ['Snickare'],
+    avgTotalPerSqm: 1800,
+    minPricePerSqm: 1200,
+    maxPricePerSqm: 2500
+  }
+};
+
+// Reality check validation against industry benchmarks
+function performRealityCheck(
+  quote: any,
+  projectType: string,
+  area?: number
+): { valid: boolean; reason?: string } {
+  const totalValue = quote.summary.totalBeforeVAT;
+  
+  // Map project description keywords to benchmark keys
+  const projectLower = projectType.toLowerCase();
+  let benchmarkKey: string | null = null;
+  
+  if (projectLower.includes('badrum') || projectLower.includes('våtrum')) {
+    benchmarkKey = 'badrum_renovering';
+  } else if (projectLower.includes('kök')) {
+    benchmarkKey = 'kok_renovering';
+  } else if (projectLower.includes('altan') || projectLower.includes('däck')) {
+    benchmarkKey = 'altan';
+  } else if (projectLower.includes('mål') || projectLower.includes('färg')) {
+    benchmarkKey = 'malning';
+  } else if (projectLower.includes('golv')) {
+    benchmarkKey = 'golvlaggning';
+  }
+  
+  if (!benchmarkKey || !area) {
+    return { valid: true }; // Can't validate without benchmark or area
+  }
+  
+  const benchmark = INDUSTRY_BENCHMARKS[benchmarkKey];
+  const pricePerSqm = totalValue / area;
+  
+  if (pricePerSqm < benchmark.minPricePerSqm) {
+    return {
+      valid: false,
+      reason: `Priset ${Math.round(pricePerSqm)} kr/m² är orealistiskt lågt för ${projectType}. Branschnorm: ${benchmark.minPricePerSqm}-${benchmark.maxPricePerSqm} kr/m². Kontrollera material och arbetstid.`
+    };
+  }
+  
+  if (pricePerSqm > benchmark.maxPricePerSqm * 1.5) {
+    return {
+      valid: false,
+      reason: `Priset ${Math.round(pricePerSqm)} kr/m² är orealistiskt högt för ${projectType}. Branschnorm: ${benchmark.minPricePerSqm}-${benchmark.maxPricePerSqm} kr/m². Kontrollera om något dubbelräknats.`
+    };
+  }
+  
+  return { valid: true };
+}
+
 // Validation function to ensure AI output matches base totals
 function validateQuoteOutput(quote: any, baseTotals: any, hourlyRatesByType?: { [workType: string]: number } | null, detailLevel?: string): { valid: boolean; errors: string[] } {
   const errors: string[] = [];
@@ -1197,6 +1302,50 @@ Du MÅSTE använda exakt dessa timpriser för varje arbetstyp. INGEN avvikelse t
 **DIN UPPGIFT:**
 Fördela dessa EXAKTA totaler över arbetsposter och material enligt detaljnivån nedan.
 
+**═══════════════════════════════════════════════════════════════**
+**CHAIN-OF-THOUGHT PRISSÄTTNING (för att säkerställa realism)**
+**═══════════════════════════════════════════════════════════════**
+
+INNAN du skapar offerten, tänk igenom dessa steg:
+
+**STEG 1 - PROJEKTETS OMFATTNING:**
+• Vad ska faktiskt göras? (Lista alla moment)
+• Hur många kvadratmeter/enheter?
+• Finns dolda kostnader? (rivning, transport, bortforsling)
+• Vilka yrkesgrupper behövs?
+
+**STEG 2 - BRANSCHKONTROLL:**
+Badrum 5 kvm renovering:
+→ Branschnorm: 15,000-30,000 kr/m² = 75,000-150,000 kr totalt
+→ Material: 15,000-25,000 kr minimum
+→ Arbete: 50-80 timmar
+
+Altan 25 kvm:
+→ Branschnorm: 2,500-5,000 kr/m² = 62,500-125,000 kr totalt
+→ Material: 30,000-50,000 kr
+→ Arbete: 120-180 timmar
+
+Kök 15 kvm renovering:
+→ Branschnorm: 20,000-40,000 kr/m² = 300,000-600,000 kr totalt
+→ Material: 150,000-300,000 kr
+→ Arbete: 120-200 timmar
+
+**STEG 3 - VERKLIGHETSKOLL:**
+• Jämför dina baseTotals mot branschnormen ovan
+• Om baseTotals är <60% av norm → FLAGGA FÖR ANVÄNDARENS GRANSKNING
+• Om baseTotals är >150% av norm → FLAGGA FÖR ANVÄNDARENS GRANSKNING
+• Detta är AUTOMATISKT - du ska INTE ändra priserna, bara följa baseTotals
+
+**EXEMPEL PÅ REALISTISK PRISSÄTTNING:**
+Projekt: "Renovera badrum 5 kvm"
+baseTotals: { workHours: { "Plattsättare": 32, "VVS": 16, "Elektriker": 12, "Snickare": 8 }, materialCost: 20000 }
+
+→ TÄNK: "68 timmar totalt för 5 kvm = 13.6 h/m² - detta är INOM branschnorm (10-15 h/m²) ✓"
+→ TÄNK: "Material 20,000 kr för 5 kvm = 4,000 kr/m² - detta är INOM branschnorm (3,000-5,000 kr/m²) ✓"
+→ RESULTAT: Fortsätt med dessa totaler!
+
+**═══════════════════════════════════════════════════════════════**
+
 **📦 KRITISKT - MATERIAL MÅSTE HA REALISTISKA PRISER:**
 
 ALLA material-poster i "materials"-arrayen MÅSTE ha:
@@ -1320,6 +1469,61 @@ Du MÅSTE inkludera exakt detta i ditt svar:
 ${finalDeductionType === 'rot' ? '- Använd fältet "rotDeduction" för avdraget (INTE rutDeduction)' : ''}
 ${finalDeductionType === 'rut' ? '- Använd fältet "rutDeduction" för avdraget (INTE rotDeduction)' : ''}
 ${finalDeductionType === 'none' ? '- Inkludera INGET avdragsfält (varken rotDeduction eller rutDeduction)' : ''}
+
+**═══════════════════════════════════════════════════════════════**
+**KRITISKT - ROT/RUT-AVDRAG BERÄKNING (FÖLJ EXAKT!)**
+**═══════════════════════════════════════════════════════════════**
+
+**ROT-AVDRAG (Renovering, Ombyggnad, Tillbyggnad):**
+1. Beräkna arbetskostnad INKL moms: workCost × 1.25
+2. ROT-avdrag = (workCost × 1.25) × 0.30
+3. Max 50,000 kr per person och år
+4. Gäller ENDAST arbetskostnad, INTE material
+5. Kund betalar: (workCost + materialCost) × 1.25 - rotDeduction
+
+**EXEMPEL ROT:**
+• Arbetskostnad: 40,000 kr (exkl moms)
+• Arbetskostnad inkl moms: 40,000 × 1.25 = 50,000 kr
+• ROT-avdrag: 50,000 × 0.30 = 15,000 kr
+• Material: 10,000 kr (× 1.25 = 12,500 kr inkl moms)
+• Total inkl moms: 50,000 + 12,500 = 62,500 kr
+• Kund betalar: 62,500 - 15,000 = 47,500 kr
+
+**RUT-AVDRAG (Rengöring, Underhåll, Trädgård):**
+1. Beräkna arbetskostnad INKL moms: workCost × 1.25
+2. RUT-avdrag = (workCost × 1.25) × 0.50
+3. Max 75,000 kr per person och år
+4. Gäller ENDAST arbetskostnad, INTE material
+5. Kund betalar: (workCost + materialCost) × 1.25 - rutDeduction
+
+**EXEMPEL RUT:**
+• Arbetskostnad: 4,000 kr (exkl moms)
+• Arbetskostnad inkl moms: 4,000 × 1.25 = 5,000 kr
+• RUT-avdrag: 5,000 × 0.50 = 2,500 kr
+• Material: 500 kr (× 1.25 = 625 kr inkl moms)
+• Total inkl moms: 5,000 + 625 = 5,625 kr
+• Kund betalar: 5,625 - 2,500 = 3,125 kr
+
+**KORREKT BERÄKNING I SUMMARY:**
+{
+  "workCost": 40000,           // Exkl moms
+  "materialCost": 10000,       // Exkl moms
+  "totalBeforeVAT": 50000,     // workCost + materialCost
+  "vat": 12500,                // totalBeforeVAT × 0.25
+  "totalWithVAT": 62500,       // totalBeforeVAT + vat
+  "deductionAmount": 15000,    // (workCost × 1.25) × 0.30
+  "deductionType": "rot",
+  "rotDeduction": 15000,       // Samma som deductionAmount
+  "customerPays": 47500        // totalWithVAT - rotDeduction
+}
+
+**FEL BERÄKNING (gör INTE så här!):**
+{
+  "deductionAmount": 12000,    // ❌ FEL: Använder workCost direkt (40000 × 0.30)
+  "customerPays": 50500        // ❌ FEL: Blir fel totalt
+}
+
+**═══════════════════════════════════════════════════════════════**
 
 **SKATTEAVDRAG:**
 ${deductionInfo}
@@ -1518,6 +1722,18 @@ Du MÅSTE:
 
     console.log('Generated quote successfully with detail level:', detailLevel);
     
+    // REALITY CHECK: Validate against industry benchmarks
+    const areaMatch = description.match(/(\d+(?:[.,]\d+)?)\s*(?:kvm|m2|kvadratmeter|kvadrat|m²)/i);
+    const extractedArea = areaMatch ? parseFloat(areaMatch[1].replace(',', '.')) : undefined;
+    
+    let realityCheckResult: { valid: boolean; reason?: string } = { valid: true };
+    if (extractedArea) {
+      realityCheckResult = performRealityCheck(finalQuote, description, extractedArea);
+      if (!realityCheckResult.valid) {
+        console.warn('⚠️ REALITY CHECK FAILED:', realityCheckResult.reason);
+      }
+    }
+    
     // Prepare response with quality indicators
     const responseData: any = {
       type: 'complete_quote',  // VIKTIGT: Lägg till type för frontend
@@ -1542,6 +1758,15 @@ Du MÅSTE:
     
     if (realismWarnings.length > 0) {
       responseData.realismWarnings = realismWarnings;
+    }
+    
+    // Add reality check warning if failed
+    if (!realityCheckResult.valid && realityCheckResult.reason) {
+      responseData.realityCheckWarning = realityCheckResult.reason;
+      if (!responseData.realismWarnings) {
+        responseData.realismWarnings = [];
+      }
+      responseData.realismWarnings.push(realityCheckResult.reason);
     }
 
     return new Response(
