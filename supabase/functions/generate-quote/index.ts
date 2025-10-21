@@ -285,7 +285,7 @@ function autoCorrectQuote(quote: any, baseTotals: any): any {
 }
 
 // Helper function to build intelligent conversation summary
-function buildConversationSummary(history: any[], fallbackDescription?: string): string {
+function buildConversationSummary(history: any[], fallbackDescription?: string, preserveMainDescription: boolean = false): string {
   // Om historiken är tom, använd fallback description
   if (!history || history.length === 0) {
     return fallbackDescription || '';
@@ -302,8 +302,10 @@ function buildConversationSummary(history: any[], fallbackDescription?: string):
     return userMessages[0].content;
   }
   
-  // Första meddelandet är huvudbeskrivningen
-  const mainRequest = userMessages[0].content;
+  // NYTT: Om preserveMainDescription är true, använd ALLTID första meddelandet som bas
+  const mainRequest = preserveMainDescription && fallbackDescription 
+    ? fallbackDescription  // Använd den ursprungliga beskrivningen från conversation_history[0]
+    : userMessages[0].content;
   
   // Övriga svar är kompletteringar (filtrera bort korta/icke-informativa svar)
   const clarifications = userMessages.slice(1)
@@ -863,7 +865,16 @@ serve(async (req) => {
     let finalDeductionType = deductionType;
     if (deductionType === 'auto') {
       console.log('Auto-detecting deduction type...');
-      finalDeductionType = await detectDeductionType(description, LOVABLE_API_KEY);
+      
+      // NYTT: Använd FÖRSTA meddelandet från conversation_history för avdragsdetektion
+      // eftersom det innehåller huvudbeskrivningen av projektet
+      const firstUserMessage = conversation_history && conversation_history.length > 0
+        ? conversation_history.find(m => m.role === 'user')?.content || description
+        : description;
+      
+      console.log(`Description for deduction detection: ${firstUserMessage}`);
+      
+      finalDeductionType = await detectDeductionType(firstUserMessage, LOVABLE_API_KEY);
       console.log('Detected deduction type:', finalDeductionType);
     }
 
