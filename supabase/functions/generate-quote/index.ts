@@ -258,66 +258,122 @@ lägg ändå till dem i equipmentCost med branschstandardpriser.
 
   const materialPriceKnowledge = `
 
+**═══════════════════════════════════════════════════════════════**
 **KRITISKT - MATERIAL MÅSTE ALLTID HA REALISTISKA PRISER!**
+**═══════════════════════════════════════════════════════════════**
 
-BADRUMSRENOVERING (priser per kvm):
-Budget-nivå (5 kvm):
-- Kakel vägg: 150-250 kr/kvm → 5 kvm = 1000 kr
-- Klinker golv: 200-300 kr/kvm → 5 kvm = 1250 kr
-- Tätskikt: 800-1200 kr totalt
-- VVS-material (rör, kopplingar): 3000-5000 kr
-- El-material (kablar, dosor): 1500-2500 kr
-- Golvvärmesystem: 2000-3500 kr
-- Fästmassor och fog: 800-1200 kr
-Total materialkostnad budget: 10 000-15 000 kr
+**VIKTIGA REGLER:**
+1. materialCost FÅR ALDRIG vara 0 för renoveringsprojekt!
+2. Använd chain-of-thought: "Vad behövs? → Räkna ut kvantitet → Uppskattar pris per enhet → Summera"
+3. Om du är osäker, använd 30-40% av arbetskostnaden som estimat
 
-Mellan-nivå (5 kvm):
-- Kakel vägg: 300-450 kr/kvm → 5 kvm = 1875 kr
-- Klinker golv: 350-500 kr/kvm → 5 kvm = 2125 kr
-- Tätskikt: 1200-1800 kr totalt
-- VVS-material: 5000-7000 kr
-- El-material: 2500-3500 kr
-- Golvvärmesystem: 3500-5000 kr
-- Fästmassor och fog: 1200-1800 kr
-Total materialkostnad mellan: 18 000-25 000 kr
+**CHAIN-OF-THOUGHT EXEMPEL:**
+Projekt: "Renovera badrum 5 kvm, mellan-nivå"
+→ Tänk: "Vad behöver ett badrum?"
+→ Kakel på väggar: 5 kvm vägg × 375 kr/kvm = 1875 kr
+→ Klinker på golv: 5 kvm golv × 425 kr/kvm = 2125 kr
+→ VVS: rör + kopplingar + kranar = 6000 kr
+→ El: kablar + dosor = 3000 kr
+→ Tätskikt: 1500 kr
+→ Golvvärme: 4250 kr
+→ Fästmassor och fog: 1500 kr
+→ TOTAL: 20 250 kr ✅
 
-Premium (5 kvm):
-- Kakel vägg: 500-800 kr/kvm → 5 kvm = 3250 kr
-- Klinker golv: 600-900 kr/kvm → 5 kvm = 3750 kr
-- Tätskikt: 1800-2500 kr totalt
-- VVS-material premium: 7000-10000 kr
-- El-material premium: 3500-5000 kr
-- Golvvärmesystem premium: 5000-7000 kr
-- Fästmassor och fog premium: 1800-2500 kr
-Total materialkostnad premium: 28 000-38 000 kr
+Projekt: "Bygga altandäck 25 kvm, budget"
+→ Tänk: "Vad behövs för ett däck?"
+→ Virke konstruktion: 25 kvm × 300 kr/kvm = 7500 kr
+→ Däckbräder: 25 kvm × 200 kr/kvm = 5000 kr
+→ Räcke: 15 löpmeter × 650 kr/m = 9750 kr
+→ Trappa: 4000 kr
+→ Skruv och beslag: 2500 kr
+→ TOTAL: 28 750 kr ✅
 
-ALTANBYGGE (priser per kvm):
-Budget tryckimpregnerat (25 kvm):
-- Virke (reglar, bärbalkar): 250-350 kr/kvm → 25 kvm = 7500 kr
-- Altangolv (träribbor): 150-250 kr/kvm → 25 kvm = 5000 kr
-- Räcke (stolpar, spjälor): 500-800 kr/löpmeter → 15m = 10500 kr
-- Trappa: 3000-5000 kr
-- Fästmaterial (skruv, beslag): 2000-3000 kr
-Total materialkostnad budget altan: 28 000-36 000 kr
+**DETALJERADE PRISGUIDER PER PROJEKTTYP:**
+
+BADRUMSRENOVERING (per kvm):
+═══════════════════════════════════════════════════════════════
+Budget-nivå (ex: 5 kvm):
+• Kakel vägg: 150-250 kr/kvm → 5 kvm = 1000 kr
+• Klinker golv: 200-300 kr/kvm → 5 kvm = 1250 kr
+• Tätskikt: 800-1200 kr totalt
+• VVS-material (rör, kopplingar): 3000-5000 kr
+• El-material (kablar, dosor): 1500-2500 kr
+• Golvvärmesystem: 2000-3500 kr
+• Fästmassor och fog: 800-1200 kr
+→ TOTAL: 10 000-15 000 kr
+
+Mellan-nivå (ex: 5 kvm):
+• Kakel vägg: 300-450 kr/kvm → 5 kvm = 1875 kr
+• Klinker golv: 350-500 kr/kvm → 5 kvm = 2125 kr
+• Tätskikt: 1200-1800 kr totalt
+• VVS-material: 5000-7000 kr
+• El-material: 2500-3500 kr
+• Golvvärmesystem: 3500-5000 kr
+• Fästmassor och fog: 1200-1800 kr
+→ TOTAL: 18 000-25 000 kr
+
+Premium (ex: 5 kvm):
+• Kakel vägg: 500-800 kr/kvm → 5 kvm = 3250 kr
+• Klinker golv: 600-900 kr/kvm → 5 kvm = 3750 kr
+• Tätskikt: 1800-2500 kr totalt
+• VVS-material premium: 7000-10000 kr
+• El-material premium: 3500-5000 kr
+• Golvvärmesystem premium: 5000-7000 kr
+• Fästmassor och fog premium: 1800-2500 kr
+→ TOTAL: 28 000-38 000 kr
+
+ALTANBYGGE (per kvm):
+═══════════════════════════════════════════════════════════════
+Budget tryckimpregnerat (ex: 25 kvm):
+• Virke konstruktion (reglar, bärbalkar): 250-350 kr/kvm → 25 kvm = 7500 kr
+• Altangolv (däckbräder): 150-250 kr/kvm → 25 kvm = 5000 kr
+• Räcke (stolpar, spjälor): 500-800 kr/löpmeter → 15m = 10500 kr
+• Trappa: 3000-5000 kr
+• Fästmaterial (skruv, beslag): 2000-3000 kr
+→ TOTAL: 28 000-36 000 kr
+
+Mellan-nivå (ex: 25 kvm):
+• Virke konstruktion: 350-450 kr/kvm → 25 kvm = 10000 kr
+• Altangolv premium: 250-350 kr/kvm → 25 kvm = 7500 kr
+• Räcke premium: 800-1200 kr/löpmeter → 15m = 15000 kr
+• Trappa: 5000-7000 kr
+• Fästmaterial: 3000-4000 kr
+→ TOTAL: 40 500-53 500 kr
 
 MÅLNING (rum):
-Budget färg (120 kvm yta):
-- Vägfärg: 80-120 kr/liter → 30 liter = 3000 kr
-- Spackel: 500-800 kr
-- Grundfärg: 1000-1500 kr
-- Målartejp, presenning: 500-800 kr
-Total materialkostnad målning budget: 5 000-6 500 kr
+═══════════════════════════════════════════════════════════════
+Budget färg (ex: 120 kvm yta):
+• Vägfärg: 80-120 kr/liter → 30 liter = 3000 kr
+• Spackel: 500-800 kr
+• Grundfärg: 1000-1500 kr
+• Målartejp, presenning: 500-800 kr
+→ TOTAL: 5 000-6 500 kr
 
-Mellan-nivå färg (120 kvm):
-- Vägfärg premium: 150-200 kr/liter → 30 liter = 5250 kr
-- Spackel premium: 800-1200 kr
-- Grundfärg: 1500-2000 kr
-- Målartillbehör: 800-1200 kr
-Total materialkostnad målning mellan: 8 500-10 500 kr
+Mellan-nivå (ex: 120 kvm yta):
+• Vägfärg premium: 150-200 kr/liter → 30 liter = 5250 kr
+• Spackel premium: 800-1200 kr
+• Grundfärg: 1500-2000 kr
+• Målartillbehör: 800-1200 kr
+→ TOTAL: 8 500-10 500 kr
 
-**VIKTIG REGEL:**
-Om projektet kräver material, materialCost FÅR ALDRIG vara 0!
-Använd prisguiderna ovan och räkna realistiskt.
+GOLVLÄGGNING:
+═══════════════════════════════════════════════════════════════
+Laminat budget (ex: 40 kvm):
+• Laminatgolv: 150-250 kr/kvm → 40 kvm = 8000 kr
+• Underlag: 50-80 kr/kvm → 40 kvm = 2600 kr
+• Sockel: 30-50 kr/löpmeter → 30m = 1200 kr
+→ TOTAL: 11 800 kr
+
+Trägolv mellan (ex: 40 kvm):
+• Trägolv: 400-600 kr/kvm → 40 kvm = 20000 kr
+• Underlag: 80-120 kr/kvm → 40 kvm = 4000 kr
+• Sockel: 60-80 kr/löpmeter → 30m = 2100 kr
+→ TOTAL: 26 100 kr
+
+**FALLBACK-REGEL:**
+Om du inte hittar exakt projekttyp i guiderna ovan:
+→ Använd denna formel: materialCost = arbetskostnad × 0.35 (35%)
+→ Förklaring: Material är typiskt 30-40% av arbetskostnaden i de flesta renoveringsprojekt
 `;
 
   const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
@@ -358,16 +414,49 @@ Returnera ENDAST JSON i detta format:
   "equipmentCost": 0
 }
 
-**KRITISKA REGLER:**
-1. workHours: Total arbetstid per FAKTISK arbetstyp som projektet kräver (svenska yrkestitlar)
-2. materialCost: MÅSTE VARA REALISTISKT! Använd prisguiderna ovan. FÅR EJ vara 0 om projektet kräver material!
-3. equipmentCost: Kostnad för maskiner/utrustning (0 om inget behövs)
-4. Var specifik med arbetstyper - använd INTE "Snickare" för städning!
+**═══════════════════════════════════════════════════════════════**
+**KRITISKA REGLER - FÖLJ DESSA EXAKT:**
+**═══════════════════════════════════════════════════════════════**
 
-**EXEMPEL:**
-"Renovera badrum 5 kvm, mellan-nivå" → materialCost: 20000 (se prisguiden ovan)
-"Bygga altan 25 kvm, tryckimpregnerat" → materialCost: 32000 (se prisguiden ovan)
-"Måla 3 rum, budget-färg" → materialCost: 5500 (se prisguiden ovan)`
+1. **workHours:** Total arbetstid per FAKTISK arbetstyp som projektet kräver (svenska yrkestitlar)
+
+2. **materialCost:** MÅSTE VARA REALISTISKT! FÅR ALDRIG vara 0 för renovering/byggprojekt!
+   → Använd chain-of-thought (se exempel ovan)
+   → Om osäker: materialCost = arbetskostnad × 0.35
+
+3. **equipmentCost:** Kostnad för maskiner/utrustning (0 om inget behövs)
+
+4. **Var specifik med arbetstyper** - använd INTE "Snickare" för städning!
+
+**KORREKTA EXEMPEL:**
+─────────────────────────────────────────────────────────────────
+Input: "Renovera badrum 5 kvm, mellan-nivå"
+→ workHours: {"Plattsättare": 12, "VVS": 8, "Elektriker": 4}
+→ materialCost: 21500 (följ chain-of-thought ovan)
+→ equipmentCost: 0
+✅ KORREKT!
+
+Input: "Bygga altandäck 25 kvm, tryckimpregnerat"
+→ workHours: {"Snickare": 40}
+→ materialCost: 32000 (följ prisguiden)
+→ equipmentCost: 0
+✅ KORREKT!
+
+Input: "Måla 3 rum (ca 120 kvm yta), budget"
+→ workHours: {"Målare": 16}
+→ materialCost: 5500 (följ prisguiden)
+→ equipmentCost: 0
+✅ KORREKT!
+
+**FELAKTIGA EXEMPEL (GÖR ALDRIG SÅHÄR):**
+─────────────────────────────────────────────────────────────────
+Input: "Renovera badrum 5 kvm"
+→ materialCost: 0
+❌ FEL! Badrumsrenovering MÅSTE ha material!
+
+Input: "Bygga altan"
+→ materialCost: 0
+❌ FEL! Altanbygge MÅSTE ha virke och material!`
         },
         {
           role: 'user',
@@ -700,6 +789,39 @@ Lägg till dem i materials-array med dessa standardpriser:
     console.log('Step 1: Calculating base totals for price consistency...');
     const baseTotals = await calculateBaseTotals(description, LOVABLE_API_KEY!, hourlyRates, equipmentRates);
     console.log('Base totals calculated:', baseTotals);
+
+    // KRITISK VALIDERING: Säkerställ att materialCost INTE är 0 för renoveringsprojekt
+    const descLower = description.toLowerCase();
+    const isRenovationProject = 
+      descLower.includes('renovera') || 
+      descLower.includes('bygga') || 
+      descLower.includes('byta') ||
+      descLower.includes('installera') ||
+      descLower.includes('altandäck') ||
+      descLower.includes('altan') ||
+      descLower.includes('badrum') ||
+      descLower.includes('kök') ||
+      descLower.includes('kakel') ||
+      descLower.includes('golv') ||
+      descLower.includes('målning') ||
+      descLower.includes('måla');
+
+    if (isRenovationProject && baseTotals.materialCost === 0) {
+      console.warn('⚠️ MATERIAL FALLBACK: materialCost är 0 för renoveringsprojekt!');
+      
+      // Fallback: Beräkna materialCost baserat på arbetskostnad (branschnorm ~30-40%)
+      const totalWorkCost = Object.values(baseTotals.workHours as Record<string, number>).reduce((sum, hours) => {
+        const rate = hourlyRates && hourlyRates.length > 0 
+          ? (hourlyRates.find(r => Object.keys(baseTotals.workHours).includes(r.work_type))?.rate || 650)
+          : 650;
+        return sum + (hours * rate);
+      }, 0);
+      
+      // Material är typiskt 30-40% av arbetskostnaden för renovering
+      baseTotals.materialCost = Math.round(totalWorkCost * 0.35);
+      console.log(`✅ AUTO-GENERATED materialCost: ${baseTotals.materialCost} kr (35% av arbetskostnad ${totalWorkCost} kr)`);
+      console.log('AI_FALLBACK aktiverad - granska material noga i resulterande offert!');
+    }
 
     // Check if this is the first message in a conversation (no history)
     const isFirstMessage = !conversation_history || conversation_history.length === 0;
