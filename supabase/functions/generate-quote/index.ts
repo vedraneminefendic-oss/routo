@@ -1262,9 +1262,12 @@ GENERERA INGEN KOMPLETT OFFERT ÄNNU. Returnera endast JSON-objektet ovan.`;
    Användaren bad om: "${conversation_history && conversation_history.length > 0 ? conversation_history.filter((m: any) => m.role === 'user').map((m: any) => m.content).join(' → ') : description}"
    → Skapa offert för EXAKT detta (om "målning" → målningsoffert, INTE altan/kök)
 
-2. **LÅS FÖRUTBERÄKNADE TOTALER**
+2. **LÅS FÖRUTBERÄKNADE TOTALER (VIKTIGAST AV ALLT!)**
    Arbetstimmar: ${JSON.stringify(baseTotals.workHours)}
    Material: ${baseTotals.materialCost} kr | Utrustning: ${baseTotals.equipmentCost} kr
+   → **DU MÅSTE** använda exakt dessa timmar i din offert
+   → **ALDRIG** sätt 0 timmar om baseTotals säger något annat!
+   → Summan av hours i alla workItems MÅSTE = baseTotals.workHours
    → FÅR INTE ändras, endast fördelas över poster!
 
 3. **ANVÄND EXAKTA TIMPRISER**
@@ -1478,6 +1481,21 @@ ${deductionPeriodText}
 • Arbetskostnad: 4,000 kr (exkl moms)
 • Arbetskostnad inkl moms: 4,000 × 1.25 = 5,000 kr
 • RUT-avdrag (${deductionRate * 100}%): 5,000 × ${deductionRate} = ${Math.round(5000 * deductionRate)} kr
+
+**═══════════════════════════════════════════════════════════════**
+**SJÄLVKONTROLL INNAN DU RETURNERAR OFFERTEN**
+**═══════════════════════════════════════════════════════════════**
+
+Innan du returnerar offerten, kontrollera:
+1. **Arbetstimmar matchar:** Summera hours från alla workItems
+   → MÅSTE = ${JSON.stringify(baseTotals.workHours)}
+   → Om inte: Justera hours i dina workItems tills det stämmer!
+   
+2. **Projektet matchar förfrågan:** Offerten är för "${conversation_history && conversation_history.length > 0 ? conversation_history.filter((m: any) => m.role === 'user').map((m: any) => m.content).join(' → ') : description}"
+   → Om offerten är för något annat: BÖRJA OM!
+   
+3. **Detaljnivå följs:** Antal poster = "${detailLevel}" kraven
+   → Om inte: Lägg till/ta bort poster tills det stämmer!
 • Max-gräns: ${totalMaxRut} kr
 • Faktiskt avdrag: ${Math.min(Math.round(5000 * deductionRate), totalMaxRut)} kr
 • Material: 500 kr (× 1.25 = 625 kr inkl moms)
@@ -1756,6 +1774,29 @@ Du MÅSTE:
             console.log('✅ Auto-correction applied successfully');
           } else {
             console.error('❌ Retry failed with major errors. Returning error to user.');
+            
+            // Check if error is about 0 hours when baseTotals expected hours
+            const hasZeroHoursError = retryValidation.errors.some((err: string) => 
+              err.includes('Förväntade') && err.includes('men fick 0h')
+            );
+            
+            if (hasZeroHoursError) {
+              return new Response(
+                JSON.stringify({ 
+                  type: 'clarification',
+                  message: 'Jag behöver lite mer information för att kunna skapa en korrekt offert.',
+                  questions: [
+                    'Kan du berätta mer detaljerat om vilka arbetsmoment som ingår?',
+                    'Finns det några specifika krav eller önskemål för hur arbetet ska utföras?',
+                    'Är det något särskilt jag bör tänka på för detta projekt?'
+                  ]
+                }),
+                {
+                  status: 200,
+                  headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+                }
+              );
+            }
             
             return new Response(
               JSON.stringify({ 
