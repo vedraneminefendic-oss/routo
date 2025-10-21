@@ -1488,19 +1488,52 @@ ${deductionPeriodText}
 • RUT-avdrag (${deductionRate * 100}%): 5,000 × ${deductionRate} = ${Math.round(5000 * deductionRate)} kr
 
 **═══════════════════════════════════════════════════════════════**
-**SJÄLVKONTROLL INNAN DU RETURNERAR OFFERTEN**
+**SJÄLVKONTROLL OCH AUTO-KORRIGERING (KRITISKT!)**
 **═══════════════════════════════════════════════════════════════**
 
-Innan du returnerar offerten, kontrollera:
-1. **Arbetstimmar matchar:** Summera hours från alla workItems
-   → MÅSTE = ${JSON.stringify(baseTotals.workHours)}
-   → Om inte: Justera hours i dina workItems tills det stämmer!
-   
-2. **Projektet matchar förfrågan:** Offerten är för "${conversation_history && conversation_history.length > 0 ? conversation_history.filter((m: any) => m.role === 'user').map((m: any) => m.content).join(' → ') : description}"
-   → Om offerten är för något annat: BÖRJA OM!
-   
-3. **Detaljnivå följs:** Antal poster = "${detailLevel}" kraven
-   → Om inte: Lägg till/ta bort poster tills det stämmer!
+⚠️ **INNAN DU ANROPAR create_quote - GENOMFÖR DESSA KONTROLLER OCH KORRIGERINGAR:**
+
+**STEG 1: KONTROLLERA ARBETSTIMMAR**
+• Summera hours från ALLA workItems per arbetstyp
+• MÅSTE exakt matcha: ${JSON.stringify(baseTotals.workHours)}
+• **OM FEL:** Justera hours-värdena tills det stämmer EXAKT!
+• **FÖRBJUDET:** Att ha 0 hours för någon arbetstyp som finns i baseTotals
+
+**Exempel fel:**
+baseTotals: { "Snickare": 20, "Målare": 10 }
+workItems: [{ name: "Snickare - Rivning", hours: 15 }, { name: "Målare - Målning", hours: 0 }] ❌
+
+**Korrigerat:**
+workItems: [{ name: "Snickare - Rivning", hours: 20 }, { name: "Målare - Målning", hours: 10 }] ✓
+
+**STEG 2: KONTROLLERA MATERIALKOSTNAD**
+• Summera subtotal från ALLA materials
+• MÅSTE exakt = ${baseTotals.materialCost + baseTotals.equipmentCost} kr
+• **OM FEL:** Justera pricePerUnit eller lägg till/ta bort material!
+• **FÖRBJUDET:** pricePerUnit = 0 kr för någon material
+
+**STEG 3: KONTROLLERA PROJEKTMATCHNING**
+• Offerten MÅSTE vara för: "${conversation_history && conversation_history.length > 0 ? conversation_history.filter((m: any) => m.role === 'user').map((m: any) => m.content).join(' → ') : description}"
+• **OM FEL:** Generera en HELT NY offert för rätt projekt!
+• Exempel: Om användare bad om "målning" → skapa INTE en altanoffert!
+
+**STEG 4: KONTROLLERA DETALJNIVÅ**
+• Antal workItems och materials MÅSTE följa "${detailLevel}"-kraven:
+  - quick: 2-3 workItems, 3-5 materials
+  - standard: 4-6 workItems, 5-10 materials
+  - detailed: 6-10 workItems, 10-15 materials
+  - construction: 10-15 workItems, 15-25 materials
+• **OM FEL:** Lägg till eller slå ihop poster tills det stämmer!
+
+**STEG 5: KONTROLLERA TIMPRISER**
+• Varje workItem.hourlyRate MÅSTE matcha baseTotals.hourlyRatesByType
+• **OM FEL:** Korrigera hourlyRate OCH räkna om subtotal!
+
+⚠️ **NÄR ALLT STÄMMER → ANROPA create_quote**
+⚠️ **OM NÅGOT ÄR FEL → KORRIGERA FÖRST, SEDAN ANROPA create_quote**
+
+**═══════════════════════════════════════════════════════════════**
+
 • Max-gräns: ${totalMaxRut} kr
 • Faktiskt avdrag: ${Math.min(Math.round(5000 * deductionRate), totalMaxRut)} kr
 • Material: 500 kr (× 1.25 = 625 kr inkl moms)
