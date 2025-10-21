@@ -472,15 +472,6 @@ export const ChatInterface = ({ onQuoteGenerated, isGenerating }: ChatInterfaceP
         {/* Context Pills - visar vad AI:n förstått */}
         <ContextPills 
           messages={messages}
-          onPillClick={(key) => {
-            const prompts = {
-              projectType: "Vilken typ av projekt handlar det om?",
-              area: "Hur stor är ytan i kvadratmeter?",
-              materialLevel: "Vilken materialnivå önskar du? (Budget/Mellan/Premium)",
-              workType: "Är det ROT- eller RUT-arbete?"
-            };
-            handleSendMessage(prompts[key]);
-          }}
         />
 
         {/* Input Area */}

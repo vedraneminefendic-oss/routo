@@ -1,4 +1,4 @@
-import { Home, Ruler, Gem, Hammer, HelpCircle, Sparkles, Edit, Calendar, Users } from "lucide-react";
+import { Home, Ruler, Gem, Hammer, HelpCircle, Sparkles, Calendar, Users } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -14,10 +14,9 @@ export interface ContextData {
 
 interface ContextPillsProps {
   messages: Array<{ role: string; content: string }>;
-  onPillClick?: (key: keyof ContextData) => void;
 }
 
-export const ContextPills = ({ messages, onPillClick }: ContextPillsProps) => {
+export const ContextPills = ({ messages }: ContextPillsProps) => {
   const extractContext = (): ContextData => {
     const allContent = messages
       .filter(m => m.role === 'user')
@@ -159,16 +158,14 @@ export const ContextPills = ({ messages, onPillClick }: ContextPillsProps) => {
           const hasMissingValue = !pill.value;
 
           return (
-            <Button
+            <Badge
               key={pill.key}
-              variant="ghost"
-              size="sm"
-              onClick={() => onPillClick?.(pill.key)}
+              variant="outline"
               className={cn(
-                "h-8 px-3 gap-1.5 text-xs font-medium transition-all rounded-full border",
+                "h-8 px-3 gap-1.5 text-xs font-medium rounded-full border",
                 hasMissingValue 
-                  ? "border-dashed border-muted-foreground/30 text-muted-foreground hover:border-primary hover:text-primary hover:bg-primary/5" 
-                  : cn(pill.bgColor, pill.borderColor, pill.color, "hover:scale-105")
+                  ? "border-dashed border-muted-foreground/30 text-muted-foreground" 
+                  : cn(pill.bgColor, pill.borderColor, pill.color)
               )}
             >
               {hasMissingValue ? (
@@ -180,10 +177,9 @@ export const ContextPills = ({ messages, onPillClick }: ContextPillsProps) => {
                 <>
                   <Icon className="h-3.5 w-3.5" />
                   <span>{pill.value}</span>
-                  <Edit className="h-3 w-3 opacity-50" />
                 </>
               )}
-            </Button>
+            </Badge>
           );
         })}
       </div>
