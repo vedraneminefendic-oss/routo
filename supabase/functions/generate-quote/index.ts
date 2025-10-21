@@ -413,21 +413,61 @@ async function generateFollowUpQuestions(
   // Count how many exchanges we've had
   const exchangeCount = conversationHistory ? Math.floor(conversationHistory.length / 2) : 0;
   
-  // NYTT: Bygg strukturerad vy av tidigare konversation för att undvika upprepade frågor
+  // FAS 16A-FIX: Bygg strukturerad vy av tidigare konversation för att undvika upprepade frågor
   let previousQA = "";
   if (conversationHistory && conversationHistory.length > 0) {
     previousQA = "\n\n**TIDIGARE FRÅGOR OCH SVAR:**";
+    
+    let lastQuestions: string[] = [];
+    
     for (let i = 0; i < conversationHistory.length; i++) {
       const msg = conversationHistory[i];
-      if (msg.role === 'assistant' && msg.content.includes('?')) {
-        // Detta är en fråga från AI:n
-        previousQA += `\n\n🤖 AI frågade: ${msg.content}`;
+      
+      if (msg.role === 'assistant') {
+        // Splitta på dubbelradbrytningar för att hitta individuella frågor
+        const questions = msg.content.split('\n\n')
+          .map((q: string) => q.trim())
+          .filter((q: string) => q.includes('?') && q.length > 5);
+        
+        if (questions.length > 0) {
+          lastQuestions = questions;
+          questions.forEach((q: string) => {
+            previousQA += `\n\n🤖 AI frågade: ${q}`;
+          });
+        }
       } else if (msg.role === 'user') {
-        // Detta är användarens svar
-        previousQA += `\n👤 Användare svarade: ${msg.content}`;
+        // Om användaren gav ett långt svar, försök matcha mot tidigare frågor
+        const userAnswer = msg.content.trim();
+        previousQA += `\n👤 Användare svarade: ${userAnswer}`;
+        
+        // Om svaret är kort (< 50 tecken) och vi har frågor, matcha det mot senaste frågan
+        if (userAnswer.length < 50 && lastQuestions.length > 0) {
+          previousQA += ` (på frågan: "${lastQuestions[lastQuestions.length - 1]}")`;
+        }
+        
+        lastQuestions = []; // Reset efter svar
       }
     }
+    
     previousQA += "\n";
+  }
+  
+  // FAS 16D-BONUS: Smart detection - Om användaren redan svarat på allt, hoppa över frågor
+  if (conversationHistory && conversationHistory.length >= 2) {
+    const lastUserMessage = conversationHistory
+      .filter(m => m.role === 'user')
+      .pop()?.content || '';
+    
+    // Räkna meningsfulla påståenden i senaste svaret
+    const statements = lastUserMessage
+      .split(/[.!?]/)
+      .filter((s: string) => s.trim().length > 10);
+    
+    // Om användaren gav 3+ påståenden → antag att alla frågor besvarats
+    if (statements.length >= 3 && exchangeCount < 3) {
+      console.log(`✅ Smart skip: User provided ${statements.length} detailed statements - generating quote directly`);
+      return [];
+    }
   }
   
   const questionsPrompt = `Du är en professionell hantverkare som skapar offerter. 
