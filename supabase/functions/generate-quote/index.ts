@@ -545,6 +545,7 @@ Returnera JSON med array av frågor:
 - Var SPECIFIK och RELEVANT för just detta projekt
 - Ställ INTE generiska frågor
 - Ställ ALDRIG frågor om saker som redan besvarats i "TIDIGARE FRÅGOR OCH SVAR"
+- **EN FRÅGA = EN FRÅGESTÄLLNING. Dela ALDRIG upp flera frågor med "och", "eller", kommatecken i samma fråga**
 - **PERSPEKTIV: Kom ihåg att "du" = hantverkaren som skapar offerten, "kunden" = hantverkarens kund**
 - Om användaren svarar "generera offerten nu" → sätt readyToGenerate: true`;
 
@@ -1344,12 +1345,17 @@ Lägg till dem i materials-array med dessa standardpriser:
       // KONVERSATIONSFAS - Ställ följdfrågor (max 3 omgångar)
       console.log(`💬 Conversation mode (exchange ${exchangeCount + 1}/3)`);
       
-      const followUpQuestions = await generateFollowUpQuestions(
-        description, 
-        conversation_history, 
-        LOVABLE_API_KEY!
-      );
-      
+    const followUpQuestions = await generateFollowUpQuestions(
+      description, 
+      conversation_history, 
+      LOVABLE_API_KEY!
+    );
+    
+    // FAS 16F-FIX: Om Smart skip aktiverades (tom array), gå direkt till offert
+    if (followUpQuestions.length === 0) {
+      console.log('✅ Smart skip activated - proceeding to quote generation');
+      // Fall through to quote generation
+    } else {
       return new Response(
         JSON.stringify({
           type: 'clarification',
@@ -1363,6 +1369,7 @@ Lägg till dem i materials-array med dessa standardpriser:
           status: 200 
         }
       );
+    }
     }
 
     // Om vi kommer hit ska vi generera offert
