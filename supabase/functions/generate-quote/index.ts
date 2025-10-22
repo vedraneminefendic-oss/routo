@@ -2129,7 +2129,7 @@ serve(async (req) => {
         workScope: z.string().optional(),
         specialRequirements: z.array(z.string()).optional(),
         confidence: z.string().optional()
-      }).optional() // FIX 1: Image analysis data
+      }).nullable().optional() // FIX 1: Image analysis data (nullable when no images)
     });
 
     // Parse and validate request body
