@@ -9,14 +9,14 @@ const corsHeaders = {
 };
 
 // AI Model Configuration (OPTIMIZED FOR SPEED)
-const TEXT_MODEL = 'openai/gpt-5-mini'; // Main generation model - Best Swedish comprehension
-const EXTRACTION_MODEL = 'openai/gpt-5-nano'; // Fast & reliable extraction with Swedish support
+const TEXT_MODEL = 'google/gemini-2.5-flash'; // Main generation - Fast & excellent Swedish support
+const EXTRACTION_MODEL = 'google/gemini-2.5-flash-lite'; // Fastest extraction with good Swedish
 const MAX_AI_TIME = 18000; // 18 seconds max for AI steps (increased for reliability)
 
-// Per-call timeouts (FAS 4: Increased for reliability)
-const TIMEOUT_EXTRACT_MEASUREMENTS = 8000; // 8s for measurements (increased from 4s)
-const TIMEOUT_DETECT_DEDUCTION = 4000; // 4s for deduction
-const TIMEOUT_MAIN_GENERATION = 15000; // 15s for main quote generation (increased from 10s)
+// Per-call timeouts (Gemini Flash is faster than GPT-5-mini)
+const TIMEOUT_EXTRACT_MEASUREMENTS = 6000; // 6s for measurements (Gemini-lite is fast)
+const TIMEOUT_DETECT_DEDUCTION = 3000; // 3s for deduction (simple classification)
+const TIMEOUT_MAIN_GENERATION = 12000; // 12s for main quote generation (Gemini Flash is faster)
 
 // FAS 7: Industry-specific material to work cost ratios (FAS 3.6: REALISTISKA VÄRDEN)
 const MATERIAL_RATIOS: Record<string, number> = {
