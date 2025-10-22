@@ -474,8 +474,11 @@ export type Database = {
         Row: {
           id: string
           ip_address: string
+          message: string | null
           property_designation: string | null
           quote_id: string
+          response: string | null
+          signature_data: string | null
           signed_at: string
           signer_email: string
           signer_name: string
@@ -485,8 +488,11 @@ export type Database = {
         Insert: {
           id?: string
           ip_address: string
+          message?: string | null
           property_designation?: string | null
           quote_id: string
+          response?: string | null
+          signature_data?: string | null
           signed_at?: string
           signer_email: string
           signer_name: string
@@ -496,8 +502,11 @@ export type Database = {
         Update: {
           id?: string
           ip_address?: string
+          message?: string | null
           property_designation?: string | null
           quote_id?: string
+          response?: string | null
+          signature_data?: string | null
           signed_at?: string
           signer_email?: string
           signer_name?: string
