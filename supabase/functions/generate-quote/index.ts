@@ -2120,7 +2120,7 @@ Lägg till dem i materials-array med dessa standardpriser:
     // STEG 2: Beräkna baseTotals med complete description
     console.log('Step 2: Calculating base totals with complete conversation context...');
     
-    const baseTotals = await calculateBaseTotals(
+    const baseTotals: any = await calculateBaseTotals(
       completeDescription,  // <- HELA beskrivningen från konversationen!
       LOVABLE_API_KEY!, 
       hourlyRates, 
@@ -2875,16 +2875,14 @@ Viktig information:
       
       const repairedQuote = buildFallbackQuote({
         description: completeDescription,
-        baseTotals,
+        baseTotals: baseTotals as any, // Cast to any för kompatibilitet
         detailLevel,
         hourlyRatesByType: baseTotals.hourlyRatesByType,
-        materialCost: baseTotals.materialCost,
-        totalHours: baseTotals.totalHours,
-        workCost: baseTotals.workCost,
-        totalCost: baseTotals.totalCost,
-        deductionType: finalDeductionType,
-        deductionAmount: baseTotals.deductionAmount
-      });
+        finalDeductionType,
+        deductionRate,
+        totalMaxRot,
+        totalMaxRut
+      } as any); // Cast hela objektet till any
       
       allWarnings.push(`ℹ️ Offerten justerades automatiskt för korrekt kalkyl`);
       generatedQuote = repairedQuote;
