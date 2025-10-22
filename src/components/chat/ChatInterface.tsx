@@ -103,11 +103,12 @@ export const ChatInterface = ({ onQuoteGenerated, isGenerating }: ChatInterfaceP
       }));
       // OBS: Vi lägger INTE till det nya meddelandet här eftersom backend läser description
 
-      // Anropa generate-quote med conversation_history
+      // Anropa generate-quote med conversation_history OCH sessionId
       const { data, error } = await supabase.functions.invoke('generate-quote', {
         body: {
           description: content,
           conversation_history: conversationHistory,
+          sessionId: sessionId, // ✅ FIX 1: Skicka sessionId för lärande (FAS 5)
           detailLevel: 'standard',
           deductionType: 'auto',
           numberOfRecipients: 1 // Default to 1 recipient

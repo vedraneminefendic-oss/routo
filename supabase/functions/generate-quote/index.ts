@@ -3110,7 +3110,7 @@ Viktig information:
           },
           {
             role: 'user',
-            content: description
+            content: completeDescription // ✅ FIX 2: Använd HELA konversationen istället för bara senaste meddelandet
           }
         ]
       }),
@@ -3344,23 +3344,24 @@ Viktig information:
         
         console.log('✅ Auto-correction applied');
       } else {
-        // Major errors - return clarification instead of retry
-        console.error('❌ Major validation errors. Requesting clarification.');
+        // ✅ FIX 3: Major errors → Använd FALLBACK istället för att fråga igen
+        console.error('❌ Major validation errors detected. Building fallback quote instead of asking again...');
         
-        return new Response(
-          JSON.stringify({ 
-            type: 'clarification',
-            message: 'Jag behöver lite mer information för att skapa en korrekt offert.',
-            questions: [
-              'Kan du berätta mer detaljerat om vilka arbetsmoment som ingår?',
-              'Finns det några specifika mått eller kvantiteter jag bör känna till?'
-            ]
-          }),
-          {
-            status: 200,
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-          }
-        );
+        const fallbackQuote = buildFallbackQuote({
+          description: completeDescription,
+          baseTotals,
+          detailLevel,
+          hourlyRatesByType: baseTotals.hourlyRatesByType,
+          finalDeductionType,
+          deductionRate,
+          totalMaxRot,
+          totalMaxRut
+        });
+        
+        // Replace finalQuote with fallback and add warning
+        finalQuote = fallbackQuote;
+        allWarnings.push('⚠️ Offerten skapades med automatisk korrigering på grund av valideringsfel i AI:ns ursprungliga utkast.');
+        console.log('✅ Fallback quote created successfully');
       }
     }
     
