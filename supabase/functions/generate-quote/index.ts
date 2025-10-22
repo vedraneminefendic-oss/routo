@@ -933,7 +933,26 @@ EXEMPEL PÅ TVETYDIGA MÅTT (ambiguous=true):
     const toolCall = data.choices[0].message.tool_calls?.[0];
     
     if (toolCall) {
-      const parsed = JSON.parse(toolCall.function.arguments);
+      let parsed;
+      try {
+        // Clean up the arguments string before parsing
+        let argsStr = toolCall.function.arguments;
+        
+        // Log the raw arguments for debugging
+        console.log('🔍 Raw tool call arguments:', argsStr.substring(0, 200));
+        
+        // Try to extract JSON if there's extra text
+        const jsonMatch = argsStr.match(/\{[\s\S]*\}/);
+        if (jsonMatch) {
+          argsStr = jsonMatch[0];
+        }
+        
+        parsed = JSON.parse(argsStr);
+      } catch (parseError) {
+        console.warn('Measurement extraction JSON parse error:', parseError);
+        console.warn('Failed to parse:', toolCall.function.arguments);
+        return { ambiguous: false }; // Fallback to continuing without measurements
+      }
       
       // REGEX FALLBACK: Om AI säger "ambiguous" men vi hittar tydliga mått i texten
       if (parsed.ambiguous) {
