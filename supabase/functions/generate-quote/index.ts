@@ -420,15 +420,31 @@ function performRealityCheck(
   const benchmark = INDUSTRY_BENCHMARKS[benchmarkKey];
   const pricePerSqm = totalValue / area;
   
+  // FIX 3: Kolla om kunden står för dyra material (kakel, klinker, köksskåp, etc)
+  const customerProvidesExpensiveMaterials = 
+    /kund.*står.*för.*(material|kakel|klinker|köksskåp|vitvaror|bänkskiv)/i.test(projectType);
+  
+  let adjustedMinPrice = benchmark.minPricePerSqm;
+  let adjustedMaxPrice = benchmark.maxPricePerSqm;
+  
+  if (customerProvidesExpensiveMaterials) {
+    // Justera benchmark nedåt med 40-60% för saknade material (material utgör ~50-70% av kostnad)
+    adjustedMinPrice = benchmark.minPricePerSqm * 0.4;  
+    adjustedMaxPrice = benchmark.maxPricePerSqm * 0.6;
+    console.log(`📦 Customer provides materials - adjusted price range: ${Math.round(adjustedMinPrice)}-${Math.round(adjustedMaxPrice)} kr/m² (original: ${benchmark.minPricePerSqm}-${benchmark.maxPricePerSqm} kr/m²)`);
+  }
+  
   // FAS 3.6: Critical errors now THROW instead of just warning
-  if (pricePerSqm < benchmark.minPricePerSqm) {
-    const errorMsg = `Priset ${Math.round(pricePerSqm)} kr/m² är orealistiskt lågt för ${projectType}. Branschnorm: ${benchmark.minPricePerSqm}-${benchmark.maxPricePerSqm} kr/m². Kontrollera material och arbetstid.`;
+  if (pricePerSqm < adjustedMinPrice * 0.7) {  // 30% tolerans
+    const errorMsg = customerProvidesExpensiveMaterials
+      ? `Priset ${Math.round(pricePerSqm)} kr/m² är orealistiskt lågt även när kunden står för material. Förväntat: ${Math.round(adjustedMinPrice)}-${Math.round(adjustedMaxPrice)} kr/m². Kontrollera arbetstid.`
+      : `Priset ${Math.round(pricePerSqm)} kr/m² är orealistiskt lågt för ${projectType}. Branschnorm: ${benchmark.minPricePerSqm}-${benchmark.maxPricePerSqm} kr/m². Kontrollera material och arbetstid.`;
     console.error(`❌ Reality check failed: ${errorMsg}`);
     throw new Error(`VALIDATION_FAILED: ${errorMsg}`);
   }
   
-  if (pricePerSqm > benchmark.maxPricePerSqm * 1.5) {
-    const errorMsg = `Priset ${Math.round(pricePerSqm)} kr/m² är orealistiskt högt för ${projectType}. Branschnorm: ${benchmark.minPricePerSqm}-${benchmark.maxPricePerSqm} kr/m². Kontrollera om något dubbelräknats.`;
+  if (pricePerSqm > adjustedMaxPrice * 1.5) {
+    const errorMsg = `Priset ${Math.round(pricePerSqm)} kr/m² är orealistiskt högt för ${projectType}. Branschnorm: ${Math.round(adjustedMinPrice)}-${Math.round(adjustedMaxPrice)} kr/m². Kontrollera om något dubbelräknats.`;
     console.error(`❌ Reality check failed: ${errorMsg}`);
     throw new Error(`VALIDATION_FAILED: ${errorMsg}`);
   }
@@ -950,8 +966,12 @@ async function handleConversation(
   apiKey: string
 ): Promise<{ action: 'ask' | 'generate'; questions?: string[]; reasoning?: string }> {
   
-  // STEG 1: Extrahera mått strukturerat
-  const measurements = await extractMeasurements(description, apiKey);
+  // STEG 1: Extrahera mått strukturerat - ANVÄND HELA KONVERSATIONEN!
+  const fullDescription = conversationHistory && conversationHistory.length > 0
+    ? buildConversationSummary(conversationHistory, description)
+    : description;
+  
+  const measurements = await extractMeasurements(fullDescription, apiKey);
   
   // Om tvetydigt → tvinga clarification
   if (measurements.ambiguous && measurements.clarificationNeeded) {
@@ -2407,8 +2427,11 @@ Lägg till dem i materials-array med dessa standardpriser:
     // FAS 3 STEG 1: PRE-GENERATION VALIDATION
     console.log('🔍 Running pre-generation validation...');
     
-    // Extract measurements and domain knowledge for validation
-    const preValidationMeasurements = await extractMeasurements(description, LOVABLE_API_KEY!);
+    // Extract measurements and domain knowledge for validation - ANVÄND HELA KONVERSATIONEN!
+    const fullDescriptionForValidation = conversation_history && conversation_history.length > 0
+      ? buildConversationSummary(conversation_history, description)
+      : description;
+    const preValidationMeasurements = await extractMeasurements(fullDescriptionForValidation, LOVABLE_API_KEY!);
     const { criticalFactors } = getDomainKnowledge(description);
     
     const preValidation = validateBeforeGeneration(
@@ -2454,8 +2477,13 @@ Lägg till dem i materials-array med dessa standardpriser:
     // FAS 3.6: PROAKTIV REALITY CHECK (FÖRE calculateBaseTotals!)
     console.log('🔍 FAS 3.6: Running proactive reality check...');
     
-    const proactiveMeasurements = await extractMeasurements(description, LOVABLE_API_KEY!);
-    const { projectType: proactiveProjectType } = getDomainKnowledge(description);
+    // ANVÄND HELA KONVERSATIONEN för measurements och context
+    const fullContextForProactive = conversation_history && conversation_history.length > 0
+      ? buildConversationSummary(conversation_history, description)
+      : description;
+    
+    const proactiveMeasurements = await extractMeasurements(fullContextForProactive, LOVABLE_API_KEY!);
+    const { projectType: proactiveProjectType } = getDomainKnowledge(fullContextForProactive);
     
     let proactiveArea: number | undefined = undefined;
     if (proactiveMeasurements.area) {
@@ -2466,8 +2494,8 @@ Lägg till dem i materials-array med dessa standardpriser:
     }
     
     const proactiveCheck = await performProactiveRealityCheck({
-      projectType: proactiveProjectType || description, // Fallback to description if undefined
-      description: description,
+      projectType: proactiveProjectType || fullContextForProactive, // Fallback to full description
+      description: fullContextForProactive,  // HELA KONVERSATIONEN
       area: proactiveArea,
       conversationHistory: conversation_history,
       learningContext // FAS 5: Include learning context
