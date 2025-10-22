@@ -8,20 +8,27 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-// FAS 7: Industry-specific material to work cost ratios
+// FAS 7: Industry-specific material to work cost ratios (FAS 3.6: REALISTISKA VÄRDEN)
 const MATERIAL_RATIOS: Record<string, number> = {
   'Snickare': 0.45,           // Virke, beslag, skruv
-  'Elektriker': 0.25,         // Kablar, dosor - mest arbetskostnad
-  'VVS': 0.40,                // Rör, kopplingar, kranar
-  'Målare': 0.30,             // Färg, spackel, förberedelse
+  'Elektriker': 0.40,         // Kablar, dosor, uttag - mer material än tidigare
+  'VVS': 0.50,                // Rör, kopplingar, kranar - betydande materialkostnad
+  'Målare': 0.20,             // Färg, spackel, förberedelse - mest arbete
   'Murare': 0.50,             // Tegel, murbruk, isolering
-  'Plattsättare': 0.55,       // Kakel, klinker, fog - högt materialpris
-  'Städare': 0.15,            // Städmaterial - minst material
-  'Trädgårdsskötare': 0.20,   // Lite material, mest arbete
-  'Arborist': 0.15,           // Mest arbete, lite förbrukningsmaterial
-  'Fönsterputsare': 0.10,     // Minimal material
+  'Plattsättare': 0.65,       // ⬆️ Kakel, klinker, fog - MYCKET högt materialpris (badrum!)
+  'Städare': 0.05,            // ⬇️ Städmaterial - nästan bara arbete
+  'Trädgårdsskötare': 0.30,   // Växter, jord, gödsel
+  'Arborist': 0.10,           // ⬇️ Mest arbete + transport
+  'Fönsterputsare': 0.05,     // ⬇️ Minimal material
   'Takläggare': 0.60,         // Takpannor, underlag - dyrt material
-  'Hantverkare': 0.35         // Generic fallback
+  'Hantverkare': 0.35,        // Generic fallback
+  // FAS 3.6: Projektbaserade ratios (används när flera arbetstyper kombineras)
+  'badrum': 0.65,             // ⬆️ Kakel + VVS + klinker
+  'kok': 0.70,                // ⬆️ Vitvaror, skåp, bänkskivor
+  'altan': 0.50,              // Virke, beslag
+  'malning': 0.20,            // Färg är billigt
+  'golv': 0.55,               // Golv-material kostar mycket
+  'fönster': 0.75             // Fönstren själva är dyrast
 };
 
 // FAS 4: Smart industry defaults to reduce unnecessary questions
@@ -125,6 +132,87 @@ const INDUSTRY_BENCHMARKS: Record<string, {
   }
 };
 
+// FAS 3.6: PROACTIVE REALITY CHECK (runs BEFORE calculateBaseTotals)
+async function performProactiveRealityCheck(params: {
+  projectType: string;
+  description: string;
+  area?: number;
+  conversationHistory?: any[];
+}): Promise<{ 
+  shouldProceed: boolean; 
+  suggestedMaterialRatio?: number; 
+  reasoning: string;
+  estimatedMinCost?: number;
+  estimatedMaxCost?: number;
+}> {
+  const { projectType, description, area, conversationHistory } = params;
+  
+  // Map project type to benchmark key
+  const projectLower = projectType.toLowerCase();
+  let benchmarkKey: string | null = null;
+  
+  if (projectLower.includes('badrum') || projectLower.includes('våtrum')) {
+    benchmarkKey = 'badrum_renovering';
+  } else if (projectLower.includes('kök')) {
+    benchmarkKey = 'kok_renovering';
+  } else if (projectLower.includes('altan') || projectLower.includes('däck')) {
+    benchmarkKey = 'altan';
+  } else if (projectLower.includes('mål') || projectLower.includes('färg')) {
+    benchmarkKey = 'malning';
+  } else if (projectLower.includes('golv')) {
+    benchmarkKey = 'golvlaggning';
+  }
+  
+  // If no area or benchmark, can't validate proactively
+  if (!benchmarkKey || !area) {
+    return { 
+      shouldProceed: true, 
+      reasoning: 'Ingen benchmark eller area - kan ej validera proaktivt' 
+    };
+  }
+  
+  const benchmark = INDUSTRY_BENCHMARKS[benchmarkKey];
+  if (!benchmark) {
+    return { 
+      shouldProceed: true, 
+      reasoning: 'Benchmark saknas för denna projekttyp' 
+    };
+  }
+  
+  const estimatedMinCost = area * benchmark.minPricePerSqm;
+  const estimatedMaxCost = area * benchmark.maxPricePerSqm;
+  
+  console.log(`🔍 FAS 3.6 Proaktiv check: ${projectType} ${area} kvm`);
+  console.log(`   → Förväntat pris: ${Math.round(estimatedMinCost)}-${Math.round(estimatedMaxCost)} kr (${benchmark.minPricePerSqm}-${benchmark.maxPricePerSqm} kr/kvm)`);
+  
+  // Extract material level from conversation
+  const fullText = conversationHistory 
+    ? conversationHistory.map(m => m.content).join(' ').toLowerCase()
+    : description.toLowerCase();
+  
+  const isBudget = /budget|billig|enkel|grundläggande/i.test(fullText);
+  const isPremium = /premium|exklusiv|lyx|högkvalitet|kvalitet|dyr|bäst/i.test(fullText);
+  
+  // Suggest material ratio based on project type and quality level
+  let suggestedMaterialRatio = MATERIAL_RATIOS[benchmarkKey] || 0.35;
+  
+  if (isBudget) {
+    suggestedMaterialRatio *= 0.85; // 15% lägre material för budget
+  } else if (isPremium) {
+    suggestedMaterialRatio *= 1.25; // 25% högre material för premium
+  }
+  
+  console.log(`   → Föreslagen materialratio: ${(suggestedMaterialRatio * 100).toFixed(0)}% (${isBudget ? 'budget' : isPremium ? 'premium' : 'mellan'})`);
+  
+  return {
+    shouldProceed: true,
+    suggestedMaterialRatio,
+    reasoning: `${projectType} ${area} kvm bör kosta ${Math.round(estimatedMinCost)}-${Math.round(estimatedMaxCost)} kr (${benchmark.minPricePerSqm}-${benchmark.maxPricePerSqm} kr/kvm)`,
+    estimatedMinCost,
+    estimatedMaxCost
+  };
+}
+
 // FAS 3 STEG 1: PRE-GENERATION VALIDATION
 // Validates BEFORE quote generation to catch issues early
 function validateBeforeGeneration(
@@ -172,8 +260,8 @@ function validateBeforeGeneration(
   };
 }
 
-// FAS 3 STEG 2: POST-GENERATION REALITY CHECK
-// Enhanced reality check with detailed warnings
+// FAS 3 STEG 2: POST-GENERATION REALITY CHECK (FAS 3.6: KASTAR ERROR VID FEL)
+// Enhanced reality check with detailed warnings - NOW THROWS ERROR ON CRITICAL FAILURES
 function performRealityCheck(
   quote: any,
   projectType: string,
@@ -205,21 +293,17 @@ function performRealityCheck(
   const benchmark = INDUSTRY_BENCHMARKS[benchmarkKey];
   const pricePerSqm = totalValue / area;
   
-  // Critical errors (invalid quote)
+  // FAS 3.6: Critical errors now THROW instead of just warning
   if (pricePerSqm < benchmark.minPricePerSqm) {
-    return {
-      valid: false,
-      reason: `Priset ${Math.round(pricePerSqm)} kr/m² är orealistiskt lågt för ${projectType}. Branschnorm: ${benchmark.minPricePerSqm}-${benchmark.maxPricePerSqm} kr/m². Kontrollera material och arbetstid.`,
-      warnings
-    };
+    const errorMsg = `Priset ${Math.round(pricePerSqm)} kr/m² är orealistiskt lågt för ${projectType}. Branschnorm: ${benchmark.minPricePerSqm}-${benchmark.maxPricePerSqm} kr/m². Kontrollera material och arbetstid.`;
+    console.error(`❌ Reality check failed: ${errorMsg}`);
+    throw new Error(`VALIDATION_FAILED: ${errorMsg}`);
   }
   
   if (pricePerSqm > benchmark.maxPricePerSqm * 1.5) {
-    return {
-      valid: false,
-      reason: `Priset ${Math.round(pricePerSqm)} kr/m² är orealistiskt högt för ${projectType}. Branschnorm: ${benchmark.minPricePerSqm}-${benchmark.maxPricePerSqm} kr/m². Kontrollera om något dubbelräknats.`,
-      warnings
-    };
+    const errorMsg = `Priset ${Math.round(pricePerSqm)} kr/m² är orealistiskt högt för ${projectType}. Branschnorm: ${benchmark.minPricePerSqm}-${benchmark.maxPricePerSqm} kr/m². Kontrollera om något dubbelräknats.`;
+    console.error(`❌ Reality check failed: ${errorMsg}`);
+    throw new Error(`VALIDATION_FAILED: ${errorMsg}`);
   }
   
   // Soft warnings (quote is valid but may need attention)
@@ -1190,10 +1274,11 @@ Som professionell hantverkare-assistent: Analysera detta och bestäm om du behö
 
 
 async function calculateBaseTotals(
-  description: string, 
+  description: string,
   apiKey: string,
   hourlyRates: any[] | null,
-  equipmentRates: any[] | null
+  equipmentRates: any[] | null,
+  suggestedMaterialRatio?: number // FAS 3.6: Optional override från proaktiv check
 ): Promise<{
   workHours: any;
   materialCost: number;
@@ -2230,6 +2315,32 @@ Lägg till dem i materials-array med dessa standardpriser:
     // Om vi kommer hit ska vi generera offert
     console.log('✅ Enough information gathered - generating quote...');
 
+    // FAS 3.6: PROAKTIV REALITY CHECK (FÖRE calculateBaseTotals!)
+    console.log('🔍 FAS 3.6: Running proactive reality check...');
+    
+    const proactiveMeasurements = await extractMeasurements(description, LOVABLE_API_KEY!);
+    const { projectType: proactiveProjectType } = getDomainKnowledge(description);
+    
+    let proactiveArea: number | undefined = undefined;
+    if (proactiveMeasurements.area) {
+      const areaMatch = proactiveMeasurements.area.match(/(\d+(?:[.,]\d+)?)/);
+      if (areaMatch) {
+        proactiveArea = parseFloat(areaMatch[1].replace(',', '.'));
+      }
+    }
+    
+    const proactiveCheck = await performProactiveRealityCheck({
+      projectType: proactiveProjectType || description, // Fallback to description if undefined
+      description: description,
+      area: proactiveArea,
+      conversationHistory: conversation_history
+    });
+    
+    console.log(`✅ Proaktiv check: ${proactiveCheck.reasoning}`);
+    if (proactiveCheck.suggestedMaterialRatio) {
+      console.log(`   → Materialratio justeras till ${(proactiveCheck.suggestedMaterialRatio * 100).toFixed(0)}%`);
+    }
+
     // STEG 2: Beräkna baseTotals EFTER konversationen med HELA beskrivningen
     console.log('Step 2: Calculating base totals with complete conversation context...');
     
@@ -2241,7 +2352,8 @@ Lägg till dem i materials-array med dessa standardpriser:
       completeDescription,  // <- HELA beskrivningen från konversationen!
       LOVABLE_API_KEY!, 
       hourlyRates, 
-      equipmentRates
+      equipmentRates,
+      proactiveCheck.suggestedMaterialRatio // FAS 3.6: Använd justerad ratio från proaktiv check
     );
     console.log('Base totals calculated:', baseTotals);
 
@@ -2955,36 +3067,57 @@ Viktig information:
       console.log('ℹ️ Sanity check skipped: Kunde inte identifiera specifik projekttyp');
     }
     
-    // FAS 3 STEG 2: POST-GENERATION REALITY CHECK
+    // FAS 3 STEG 2: POST-GENERATION REALITY CHECK (FAS 3.6: KASTAR ERROR)
     console.log('🔍 Performing post-generation reality check against benchmarks...');
-    
-    // Extract area from measurements if available
-    let realityCheckArea: number | undefined = undefined;
-    const realityCheckAreaMatch = completeDescription.match(/(\d+(?:[.,]\d+)?)\s*(kvm|m2|kvadratmeter|kvadrat)/i);
-    if (realityCheckAreaMatch) {
-      realityCheckArea = parseFloat(realityCheckAreaMatch[1].replace(',', '.'));
-    }
-    
-    const realityCheck = performRealityCheck(
-      generatedQuote,
-      completeDescription,
-      realityCheckArea
-    );
     
     const allWarnings: string[] = [];
     
-    if (!realityCheck.valid) {
-      console.error('❌ Reality check failed:', realityCheck.reason);
-      allWarnings.push(`🚨 ${realityCheck.reason}`);
-    }
-    
-    if (realityCheck.warnings && realityCheck.warnings.length > 0) {
-      console.log('⚠️ Reality check warnings:', realityCheck.warnings);
-      allWarnings.push(...realityCheck.warnings);
-    }
-    
-    if (realityCheck.valid) {
+    try {
+      // Extract area from measurements if available
+      let realityCheckArea: number | undefined = undefined;
+      const realityCheckAreaMatch = completeDescription.match(/(\d+(?:[.,]\d+)?)\s*(kvm|m2|kvadratmeter|kvadrat)/i);
+      if (realityCheckAreaMatch) {
+        realityCheckArea = parseFloat(realityCheckAreaMatch[1].replace(',', '.'));
+      }
+      
+      const realityCheck = performRealityCheck(
+        generatedQuote,
+        completeDescription,
+        realityCheckArea
+      );
+      
+      if (realityCheck.warnings && realityCheck.warnings.length > 0) {
+        console.log('⚠️ Reality check warnings:', realityCheck.warnings);
+        allWarnings.push(...realityCheck.warnings);
+      }
+      
       console.log('✅ Reality check passed - quote is within industry standards');
+      
+    } catch (error: any) {
+      // FAS 3.6: VALIDATION_FAILED → returnera clarification istället för offert
+      if (error.message?.includes('VALIDATION_FAILED')) {
+        const failureReason = error.message.split('VALIDATION_FAILED: ')[1];
+        console.error(`🚨 FAS 3.6: Stoppar offertgenerering - ${failureReason}`);
+        
+        return new Response(
+          JSON.stringify({
+            type: 'clarification',
+            message: `Jag behöver justera beräkningen för att få ett realistiskt pris.\n\n${failureReason}`,
+            questions: [
+              'Har du några specifika önskemål om material eller arbetskvalitet som kan påverka priset?',
+              'Finns det andra faktorer som gör projektet mer komplext än vanligt?'
+            ],
+            reasoning: `FAS 3.6: Reality check failed - priset blev orealistiskt. ${proactiveCheck.estimatedMinCost ? `Förväntat pris: ${Math.round(proactiveCheck.estimatedMinCost)}-${Math.round(proactiveCheck.estimatedMaxCost!)} kr` : ''}`
+          }),
+          { 
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+            status: 200 
+          }
+        );
+      }
+      
+      // Re-throw other errors
+      throw error;
     }
     
     // VALIDATION: Only mathematical validation (no retry loop)
