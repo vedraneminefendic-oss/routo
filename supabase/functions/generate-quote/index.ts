@@ -2812,7 +2812,7 @@ Lägg till dem i materials-array med dessa standardpriser:
 
 ${personalContext}
 
-${learningContext}
+${aiLearningContext}
 
 **═══════════════════════════════════════════════════════════════**
 **PROJEKTSPECIFIK KONTEXT**
