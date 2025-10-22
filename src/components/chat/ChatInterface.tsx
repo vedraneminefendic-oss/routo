@@ -181,7 +181,7 @@ export const ChatInterface = ({ onQuoteGenerated, isGenerating }: ChatInterfaceP
       }));
 
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 30000);
+      const timeoutId = setTimeout(() => controller.abort(), 60000);
 
       try {
         const { data, error } = await supabase.functions.invoke('generate-quote', {
@@ -275,7 +275,7 @@ export const ChatInterface = ({ onQuoteGenerated, isGenerating }: ChatInterfaceP
         clearTimeout(timeoutId);
         
         if (invokeError.name === 'AbortError') {
-          throw new Error('Offertgenereringen tog för lång tid (>30s). Försök igen.');
+          throw new Error('Offertgenereringen tog för lång tid (>60s). Försök igen.');
         }
         throw invokeError;
       }
