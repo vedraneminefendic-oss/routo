@@ -10,6 +10,7 @@ const corsHeaders = {
 
 // AI Model Configuration
 const TEXT_MODEL = 'openai/gpt-5-mini'; // För bästa svenska språkstöd
+const EXTRACTION_MODEL = 'openai/gpt-5-nano'; // 4x snabbare för data-extraktion (Fas 4)
 // const VISION_MODEL = 'google/gemini-2.5-flash'; // För framtida bildanalys
 
 // FAS 7: Industry-specific material to work cost ratios (FAS 3.6: REALISTISKA VÄRDEN)
@@ -844,7 +845,7 @@ FULLSTÄNDIG KONTEXT: ${buildConversationSummary(conversationHistory, descriptio
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: TEXT_MODEL,
+        model: EXTRACTION_MODEL, // Fas 4: Snabbare modell för data-extraktion
         messages: [{
           role: 'user',
           content: `Extrahera mått och kvantiteter från denna beskrivning: "${contextPrompt}"
@@ -1096,7 +1097,8 @@ async function calculateBaseTotals(
   hourlyRates: any[] | null,
   equipmentRates: any[] | null,
   conversationHistory?: any[],
-  suggestedMaterialRatio?: number
+  suggestedMaterialRatio?: number,
+  measurements?: any // Fas 1.2: Tillåt pre-beräknade measurements
 ): Promise<{
   workHours: any;
   materialCost: number;
@@ -1106,7 +1108,12 @@ async function calculateBaseTotals(
 }> {
   
   console.log('📊 FIX #2: Calculating base totals with DETERMINISTIC logic');
-  const measurements = await extractMeasurements(description, apiKey, conversationHistory);
+  
+  // Fas 1.2: Skippa extraktion om measurements redan finns
+  if (!measurements) {
+    measurements = await extractMeasurements(description, apiKey, conversationHistory);
+  }
+  
   console.log('📐 Measurements:', {
     quantity: measurements.quantity || 'not specified',
     height: measurements.height || 'not specified',
@@ -1141,7 +1148,7 @@ async function calculateBaseTotals(
       const heightStr = measurements.height.toString();
       const heights = heightStr.match(/\d+/g);
       if (heights && heights.length > 0) {
-        const sum = heights.reduce((acc, h) => acc + parseInt(h), 0);
+        const sum = heights.reduce((acc: number, h: string) => acc + parseInt(h), 0);
         avgHeightMeters = sum / heights.length;
       }
     }
@@ -1152,7 +1159,7 @@ async function calculateBaseTotals(
       const diamStr = measurements.diameter.toString();
       const diameters = diamStr.match(/\d+/g);
       if (diameters && diameters.length > 0) {
-        const sum = diameters.reduce((acc, d) => acc + parseInt(d), 0);
+        const sum = diameters.reduce((acc: number, d: string) => acc + parseInt(d), 0);
         avgDiameterCm = sum / diameters.length;
       }
     }
@@ -1445,6 +1452,178 @@ async function calculateBaseTotals(
     };
   }
   
+  // 7. ELINSTALLATION (Fas 2: Förbättrad pattern matching)
+  const isElectrical = descLower.includes('el-installation') || descLower.includes('elinstallation') || 
+                       (descLower.includes('elektriker') && (descLower.includes('byta') || descLower.includes('installation')));
+  if (isElectrical) {
+    console.log('⚡ Using deterministic electrical installation calculation');
+    
+    // Extrahera area från measurements eller från beskrivningen
+    let area = 100; // Default villa
+    if (measurements.area) {
+      const areaMatch = measurements.area.toString().match(/(\d+)/);
+      if (areaMatch) area = parseInt(areaMatch[1]);
+    } else {
+      const descAreaMatch = description.match(/(\d+)\s*kvm/);
+      if (descAreaMatch) area = parseInt(descAreaMatch[1]);
+    }
+    
+    // Deterministic formel: 1.6h per kvm för elektriker, 0.4h per kvm för snickare (återställning)
+    const elektrikerHours = Math.round(area * 1.6);
+    const snickareHours = Math.round(area * 0.4);
+    const totalHours = elektrikerHours + snickareHours;
+    
+    const workHours = {
+      'Elektriker': elektrikerHours,
+      'Snickare': snickareHours
+    };
+    
+    const elektrikerRate = hourlyRatesByType['Elektriker'] || 567;
+    const snickareRate = hourlyRatesByType['Snickare'] || 743;
+    const workCost = (elektrikerHours * elektrikerRate) + (snickareHours * snickareRate);
+    
+    // Material: 40% av arbetskostnad (kablar, dosor, uttag, elcentral)
+    const materialRatio = suggestedMaterialRatio || MATERIAL_RATIOS['Elektriker'] || 0.40;
+    const materialCost = Math.round(area * 420); // 420 kr/kvm i material är branschstandard
+    
+    console.log('✅ Deterministic electrical calculation:', {
+      area,
+      elektrikerHours,
+      snickareHours,
+      totalHours,
+      workCost,
+      materialCost,
+      materialRatio: (materialRatio * 100).toFixed(0) + '%'
+    });
+    
+    return {
+      workHours,
+      materialCost,
+      equipmentCost: 0,
+      hourlyRatesByType
+    };
+  }
+  
+  // 8. DÖRRBYTEN (Fas 2: hours = quantity * 2h/dörr)
+  const isDoorReplacement = (descLower.includes('dörr') && (descLower.includes('byta') || descLower.includes('montera'))) ||
+                            descLower.includes('dörrbyten');
+  if (isDoorReplacement && measurements.quantity) {
+    console.log('🚪 Using deterministic door replacement calculation');
+    
+    const quantity = parseInt(measurements.quantity.toString());
+    const hoursPerDoor = 2; // Standard för dörrbyten
+    const totalHours = Math.round(quantity * hoursPerDoor);
+    
+    const workHours = {
+      'Snickare': totalHours
+    };
+    
+    const snickareRate = hourlyRatesByType['Snickare'] || 743;
+    const workCost = totalHours * snickareRate;
+    
+    // Material: Dörr + foder + trösklar (per dörr)
+    const baseDoorCost = 2500; // Budget-dörr
+    const premiumMultiplier = descLower.includes('premium') || descLower.includes('högkvalitet') ? 2.5 : 1;
+    const materialCost = Math.round(quantity * baseDoorCost * premiumMultiplier);
+    
+    console.log('✅ Deterministic door replacement calculation:', {
+      quantity,
+      totalHours,
+      workCost,
+      materialCost: materialCost + ' kr (ca ' + Math.round(materialCost / quantity) + ' kr/dörr)'
+    });
+    
+    return {
+      workHours,
+      materialCost,
+      equipmentCost: 0,
+      hourlyRatesByType
+    };
+  }
+  
+  // 9. LÄCKREPARATION (Fas 2: fast pris baserat på svårighetsgrad)
+  const isLeakRepair = descLower.includes('läcka') || descLower.includes('läck') ||
+                       (descLower.includes('reparera') && (descLower.includes('vvs') || descLower.includes('rör')));
+  if (isLeakRepair) {
+    console.log('💧 Using deterministic leak repair calculation');
+    
+    // Svårighetsgrad baserat på nyckelord
+    let hoursEstimate = 4; // Enkel läcka
+    if (descLower.includes('stor') || descLower.includes('svår') || descLower.includes('komplice')) {
+      hoursEstimate = 8;
+    } else if (descLower.includes('akut') || descLower.includes('nöd')) {
+      hoursEstimate = 6;
+    }
+    
+    const workHours = {
+      'VVS': hoursEstimate
+    };
+    
+    const vvsRate = hourlyRatesByType['VVS'] || 912;
+    const workCost = hoursEstimate * vvsRate;
+    
+    // Material: Rör-kopplingar, packningar, tätningsmedel
+    const materialCost = Math.round(workCost * 0.25); // 25% för läckreparation
+    
+    console.log('✅ Deterministic leak repair calculation:', {
+      difficulty: hoursEstimate === 8 ? 'svår' : hoursEstimate === 6 ? 'akut' : 'enkel',
+      hours: hoursEstimate,
+      workCost,
+      materialCost
+    });
+    
+    return {
+      workHours,
+      materialCost,
+      equipmentCost: 0,
+      hourlyRatesByType
+    };
+  }
+  
+  // 10. STÄDNING (Fas 2: hours = area * 0.15h/kvm)
+  const isCleaning = descLower.includes('städ') || descLower.includes('storstäd');
+  if (isCleaning) {
+    console.log('🧹 Using deterministic cleaning calculation');
+    
+    let area = 100; // Default
+    if (measurements.area) {
+      const areaMatch = measurements.area.toString().match(/(\d+)/);
+      if (areaMatch) area = parseInt(areaMatch[1]);
+    } else {
+      const descAreaMatch = description.match(/(\d+)\s*kvm/);
+      if (descAreaMatch) area = parseInt(descAreaMatch[1]);
+    }
+    
+    const hoursPerSqm = descLower.includes('storstäd') ? 0.20 : 0.15;
+    const totalHours = Math.round(area * hoursPerSqm);
+    
+    const workHours = {
+      'Städare': totalHours
+    };
+    
+    const stadareRate = hourlyRatesByType['Städare'] || 450;
+    const workCost = totalHours * stadareRate;
+    
+    // Material: 5% av arbetskostnad (minimal städmaterial)
+    const materialRatio = suggestedMaterialRatio || MATERIAL_RATIOS['Städare'] || 0.05;
+    const materialCost = Math.round(workCost * materialRatio);
+    
+    console.log('✅ Deterministic cleaning calculation:', {
+      area,
+      type: descLower.includes('storstäd') ? 'storstäd' : 'städ',
+      totalHours,
+      workCost,
+      materialCost
+    });
+    
+    return {
+      workHours,
+      materialCost,
+      equipmentCost: 0,
+      hourlyRatesByType
+    };
+  }
+  
   // ============================================
   // FALLBACK: AI-BASERAD BERÄKNING (för "exotiska" projekt)
   // ============================================
@@ -1621,12 +1800,12 @@ Om du inte hittar exakt projekttyp i guiderna ovan:
       'Authorization': `Bearer ${apiKey}`,
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify({
-      model: TEXT_MODEL,
-      messages: [
-        {
-          role: 'system',
-          content: `Du beräknar ENDAST total arbetstid och materialkostnad för projekt. 
+      body: JSON.stringify({
+        model: EXTRACTION_MODEL, // Fas 4: Snabbare modell för AI-fallback
+        messages: [
+          {
+            role: 'system',
+            content: `Du beräknar ENDAST total arbetstid och materialkostnad för projekt.
 
 ${equipmentKnowledge}
 
@@ -1998,21 +2177,75 @@ serve(async (req) => {
       validatedData.sessionId
     );
 
-    // Detect deduction type if set to auto
+    // Fas 1.1: PARALLELLISERA deduction type detection och measurement extraction
+    // Fas 1.3: Cacha deduction type från learned preferences
     let finalDeductionType = deductionType;
+    let skipMeasurementExtraction = false;
+    let measurementsPromise: Promise<any> | null = null;
+    
+    // Fas 1.2: Skippa measurement extraction om inte nödvändigt
+    const descLower = description.toLowerCase();
+    skipMeasurementExtraction = 
+      descLower.includes('städ') ||
+      descLower.includes('fönsterputsning') ||
+      /\d+\s*(kvm|m2|meter|träd|dörr|rum)/.test(description); // Har redan mått
+    
+    if (skipMeasurementExtraction) {
+      console.log('⏭️ Skipping measurement extraction (not needed or already has measurements)');
+    } else {
+      // Starta measurement extraction parallellt
+      measurementsPromise = extractMeasurements(description, LOVABLE_API_KEY, conversation_history);
+    }
+    
+    // Detect deduction type om set to auto
     if (deductionType === 'auto') {
-      console.log('Auto-detecting deduction type...');
-      
-      // NYTT: Använd FÖRSTA meddelandet från conversation_history för avdragsdetektion
-      // eftersom det innehåller huvudbeskrivningen av projektet
-      const firstUserMessage = conversation_history && conversation_history.length > 0
-        ? conversation_history.find(m => m.role === 'user')?.content || description
-        : description;
-      
-      console.log(`Description for deduction detection: ${firstUserMessage}`);
-      
-      finalDeductionType = await detectDeductionType(firstUserMessage, LOVABLE_API_KEY);
-      console.log('Detected deduction type:', finalDeductionType);
+      // Fas 1.3: Kolla cachad deduction type först
+      if (learningContext?.learnedPreferences?.likely_deduction_type) {
+        finalDeductionType = learningContext.learnedPreferences.likely_deduction_type;
+        console.log('📦 Using cached deduction type:', finalDeductionType);
+      } else {
+        console.log('Auto-detecting deduction type...');
+        
+        const firstUserMessage = conversation_history && conversation_history.length > 0
+          ? conversation_history.find(m => m.role === 'user')?.content || description
+          : description;
+        
+        console.log(`Description for deduction detection: ${firstUserMessage}`);
+        
+        // Fas 1.1: Kör detectDeductionType parallellt om measurements också körs
+        if (measurementsPromise) {
+          // Parallell körning
+          const [detectedType, _] = await Promise.all([
+            detectDeductionType(firstUserMessage, LOVABLE_API_KEY),
+            measurementsPromise
+          ]);
+          finalDeductionType = detectedType;
+        } else {
+          // Sekventiell om measurements hoppas över
+          finalDeductionType = await detectDeductionType(firstUserMessage, LOVABLE_API_KEY);
+        }
+        
+        console.log('Detected deduction type:', finalDeductionType);
+        
+        // Fas 1.3: Spara i session för framtida användning
+        if (validatedData.sessionId && finalDeductionType !== 'none') {
+          try {
+            await supabaseClient
+              .from('conversation_sessions')
+              .update({
+                learned_preferences: {
+                  ...learningContext.learnedPreferences,
+                  likely_deduction_type: finalDeductionType
+                }
+              })
+              .eq('id', validatedData.sessionId)
+              .eq('user_id', user_id);
+            console.log('💾 Cached deduction type for future use');
+          } catch (error) {
+            console.error('Failed to cache deduction type:', error);
+          }
+        }
+      }
     }
 
     // Hämta referensofferter om användaren valt det
@@ -2583,20 +2816,20 @@ Lägg till dem i materials-array med dessa standardpriser:
     }
 
     // KRITISK VALIDERING: Säkerställ att materialCost INTE är 0 för renoveringsprojekt
-    const descLower = completeDescription.toLowerCase();
+    const completeDescLower = completeDescription.toLowerCase();
     const isRenovationProject = 
-      descLower.includes('renovera') || 
-      descLower.includes('bygga') || 
-      descLower.includes('byta') ||
-      descLower.includes('installera') ||
-      descLower.includes('altandäck') ||
-      descLower.includes('altan') ||
-      descLower.includes('badrum') ||
-      descLower.includes('kök') ||
-      descLower.includes('kakel') ||
-      descLower.includes('golv') ||
-      descLower.includes('målning') ||
-      descLower.includes('måla');
+      completeDescLower.includes('renovera') || 
+      completeDescLower.includes('bygga') || 
+      completeDescLower.includes('byta') ||
+      completeDescLower.includes('installera') ||
+      completeDescLower.includes('altandäck') ||
+      completeDescLower.includes('altan') ||
+      completeDescLower.includes('badrum') ||
+      completeDescLower.includes('kök') ||
+      completeDescLower.includes('kakel') ||
+      completeDescLower.includes('golv') ||
+      completeDescLower.includes('målning') ||
+      completeDescLower.includes('måla');
 
     // CRITICAL: Validate material cost BEFORE generating quote
     if (isRenovationProject && baseTotals.materialCost < 1000) {
@@ -3522,7 +3755,7 @@ async function detectDeductionType(description: string, apiKey: string): Promise
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: TEXT_MODEL,
+        model: EXTRACTION_MODEL, // Fas 4: Snabbare modell för deduction type detection
         messages: [
           {
             role: 'system',
