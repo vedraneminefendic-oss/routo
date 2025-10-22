@@ -1098,6 +1098,7 @@ async function calculateBaseTotals(
   equipmentRates: any[] | null,
   conversationHistory?: any[],
   suggestedMaterialRatio?: number,
+  imageAnalysis?: any, // FIX 1: Add image analysis parameter
   measurements?: any // Fas 1.2: Tillåt pre-beräknade measurements
 ): Promise<{
   workHours: any;
@@ -1109,9 +1110,19 @@ async function calculateBaseTotals(
   
   console.log('📊 FIX #2: Calculating base totals with DETERMINISTIC logic');
   
-  // Fas 1.2: Skippa extraktion om measurements redan finns
+  // FIX 1: Prioritize image analysis measurements, then pre-calculated, then extract
   if (!measurements) {
-    measurements = await extractMeasurements(description, apiKey, conversationHistory);
+    if (imageAnalysis?.measurements && (imageAnalysis.measurements.area || imageAnalysis.measurements.quantity)) {
+      console.log('📸 Using measurements from image analysis');
+      measurements = {
+        area: imageAnalysis.measurements.area ? `${imageAnalysis.measurements.area} kvm` : undefined,
+        quantity: imageAnalysis.measurements.quantity || 1,
+        height: imageAnalysis.measurements.height ? `${imageAnalysis.measurements.height} m` : undefined,
+        ambiguous: false
+      };
+    } else {
+      measurements = await extractMeasurements(description, apiKey, conversationHistory);
+    }
   }
   
   console.log('📐 Measurements:', {
@@ -2099,7 +2110,26 @@ serve(async (req) => {
         role: z.enum(['user', 'assistant']),
         content: z.string()
       })).optional(),
-      sessionId: z.string().uuid().optional() // FAS 5: Session context
+      sessionId: z.string().uuid().optional(), // FAS 5: Session context
+      imageAnalysis: z.object({
+        measurements: z.object({
+          area: z.number().nullable().optional(),
+          height: z.number().nullable().optional(),
+          length: z.number().nullable().optional(),
+          width: z.number().nullable().optional(),
+          quantity: z.number().optional()
+        }).optional(),
+        roomType: z.string().optional(),
+        projectCategory: z.string().optional(),
+        damages: z.array(z.string()).optional(),
+        materials: z.object({
+          current: z.string().optional(),
+          qualityLevel: z.string().optional()
+        }).optional(),
+        workScope: z.string().optional(),
+        specialRequirements: z.array(z.string()).optional(),
+        confidence: z.string().optional()
+      }).optional() // FIX 1: Image analysis data
     });
 
     // Parse and validate request body
@@ -2137,13 +2167,29 @@ serve(async (req) => {
     }
 
     const user_id = user.id;
-    const { description, customer_id, detailLevel, deductionType, referenceQuoteId, numberOfRecipients, conversation_history } = validatedData;
+    const { description, customer_id, detailLevel, deductionType, referenceQuoteId, numberOfRecipients, conversation_history, imageAnalysis } = validatedData;
+
+    // FIX 4: Start timing
+    const startTime = Date.now();
+    const logTiming = (step: string) => {
+      const elapsed = Date.now() - startTime;
+      console.log(`⏱️ ${step}: ${elapsed}ms`);
+    };
 
     console.log('Generating quote for user:', user_id);
     console.log('Description:', description);
     console.log('Deduction type requested:', deductionType);
     console.log('Conversation history length:', conversation_history?.length || 0);
     console.log('🤖 AI model (text generation):', TEXT_MODEL);
+    
+    // FIX 1: Log image analysis if present
+    if (imageAnalysis) {
+      console.log('📸 Image analysis received:', {
+        hasArea: !!imageAnalysis.measurements?.area,
+        roomType: imageAnalysis.roomType,
+        confidence: imageAnalysis.confidence
+      });
+    }
 
     // Bestäm avdragssats baserat på datum (Fas 9B)
     const currentDate = new Date();
@@ -2176,58 +2222,53 @@ serve(async (req) => {
       user_id, 
       validatedData.sessionId
     );
+    logTiming('Learning context fetched');
 
-    // Fas 1.1: PARALLELLISERA deduction type detection och measurement extraction
-    // Fas 1.3: Cacha deduction type från learned preferences
+    // FIX 1 + FIX 2: Use image analysis data FIRST, skip AI calls when possible
     let finalDeductionType = deductionType;
     let skipMeasurementExtraction = false;
-    let measurementsPromise: Promise<any> | null = null;
     
-    // Fas 1.2: Skippa measurement extraction om inte nödvändigt
-    const descLower = description.toLowerCase();
-    skipMeasurementExtraction = 
-      descLower.includes('städ') ||
-      descLower.includes('fönsterputsning') ||
-      /\d+\s*(kvm|m2|meter|träd|dörr|rum)/.test(description); // Har redan mått
-    
-    if (skipMeasurementExtraction) {
-      console.log('⏭️ Skipping measurement extraction (not needed or already has measurements)');
+    // FIX 1: Prioritize image analysis for measurements
+    if (imageAnalysis?.measurements) {
+      skipMeasurementExtraction = true;
+      console.log('📸 Using measurements from image analysis - skipping AI extraction');
     } else {
-      // Starta measurement extraction parallellt
-      measurementsPromise = extractMeasurements(description, LOVABLE_API_KEY, conversation_history);
+      // FIX 2: Skip measurement extraction if not necessary
+      const descLower = description.toLowerCase();
+      skipMeasurementExtraction = 
+        descLower.includes('städ') ||
+        descLower.includes('fönsterputsning') ||
+        /\d+\s*(kvm|m2|meter|träd|dörr|rum)/.test(description);
+      
+      if (skipMeasurementExtraction) {
+        console.log('⏭️ Skipping measurement extraction (not needed or already has measurements)');
+      }
     }
     
-    // Detect deduction type om set to auto
+    // FIX 2: Parallel execution of deduction type detection (measurements already done via images)
     if (deductionType === 'auto') {
-      // Fas 1.3: Kolla cachad deduction type först
+      // Check cached deduction type first
       if (learningContext?.learnedPreferences?.likely_deduction_type) {
         finalDeductionType = learningContext.learnedPreferences.likely_deduction_type;
         console.log('📦 Using cached deduction type:', finalDeductionType);
       } else {
         console.log('Auto-detecting deduction type...');
+        logTiming('Starting deduction type detection');
         
         const firstUserMessage = conversation_history && conversation_history.length > 0
           ? conversation_history.find(m => m.role === 'user')?.content || description
           : description;
         
-        console.log(`Description for deduction detection: ${firstUserMessage}`);
+        // FIX 1: Include image context in deduction detection
+        const deductionContext = imageAnalysis 
+          ? `${firstUserMessage}\n\nBildanalys: ${imageAnalysis.projectCategory || ''} ${imageAnalysis.roomType || ''} ${imageAnalysis.workScope || ''}`
+          : firstUserMessage;
         
-        // Fas 1.1: Kör detectDeductionType parallellt om measurements också körs
-        if (measurementsPromise) {
-          // Parallell körning
-          const [detectedType, _] = await Promise.all([
-            detectDeductionType(firstUserMessage, LOVABLE_API_KEY),
-            measurementsPromise
-          ]);
-          finalDeductionType = detectedType;
-        } else {
-          // Sekventiell om measurements hoppas över
-          finalDeductionType = await detectDeductionType(firstUserMessage, LOVABLE_API_KEY);
-        }
-        
+        finalDeductionType = await detectDeductionType(deductionContext, LOVABLE_API_KEY);
         console.log('Detected deduction type:', finalDeductionType);
+        logTiming('Deduction type detected');
         
-        // Fas 1.3: Spara i session för framtida användning
+        // Cache for future use
         if (validatedData.sessionId && finalDeductionType !== 'none') {
           try {
             await supabaseClient
@@ -2749,16 +2790,20 @@ Lägg till dem i materials-array med dessa standardpriser:
 
     // STEG 2: Beräkna baseTotals med complete description
     console.log('Step 2: Calculating base totals with complete conversation context...');
+    logTiming('Starting base totals calculation');
     
+    // FIX 1: Pass image analysis to calculateBaseTotals
     const baseTotals: any = await calculateBaseTotals(
       completeDescription,  // <- HELA beskrivningen från konversationen!
       LOVABLE_API_KEY!, 
       hourlyRates, 
       equipmentRates,
       conversation_history, // NEW: Skicka med hela konversationen för bättre kontext
-      proactiveCheck.suggestedMaterialRatio // FAS 3.6: Använd justerad ratio från proaktiv check
+      proactiveCheck.suggestedMaterialRatio, // FAS 3.6: Använd justerad ratio från proaktiv check
+      imageAnalysis // FIX 1: Include image data
     );
     console.log('Base totals calculated:', baseTotals);
+    logTiming('Base totals calculated');
     
     // ==========================================
     // FIX #4: BERÄKNA ROT/RUT FÖRE AI-GENERERING

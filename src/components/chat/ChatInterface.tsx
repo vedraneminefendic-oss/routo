@@ -86,12 +86,15 @@ export const ChatInterface = ({ onQuoteGenerated, isGenerating }: ChatInterfaceP
     setIsTyping(true);
 
     try {
+      // FIX 3: Progress indicator - Start
+      const startTime = Date.now();
+      
       // Om bilder finns, analysera dem först
       let imageAnalysis = null;
       if (images && images.length > 0) {
         toast({
-          title: "Analyserar bilder...",
-          description: "Detta kan ta några sekunder"
+          title: "📸 Analyserar bilder...",
+          description: "Extraherar mått och detaljer från bilderna"
         });
 
         const { data: analysisData, error: analysisError } = await supabase.functions.invoke('analyze-images', {
@@ -111,6 +114,20 @@ export const ChatInterface = ({ onQuoteGenerated, isGenerating }: ChatInterfaceP
         } else {
           imageAnalysis = analysisData;
           console.log('Image analysis:', imageAnalysis);
+          
+          // FIX 3: Show confidence warning
+          if (imageAnalysis?.confidence === 'low') {
+            toast({
+              title: "⚠️ Osäker bildanalys",
+              description: "Lägg gärna till mer detaljer i beskrivningen för bättre resultat",
+              variant: "default"
+            });
+          } else {
+            toast({
+              title: "✅ Bildanalys klar",
+              description: "Bilder analyserade framgångsrikt"
+            });
+          }
         }
       }
 
@@ -123,34 +140,52 @@ export const ChatInterface = ({ onQuoteGenerated, isGenerating }: ChatInterfaceP
         }
       });
 
+      // FIX 3: Progress indicator - Calculating
+      toast({
+        title: "🧮 Beräknar kostnader...",
+        description: "Analyserar projekt och skapar offert"
+      });
+
       // Bygg conversation_history från messages
       const conversationHistory = messages.map(m => ({
         role: m.role,
         content: m.content
       }));
 
-      // Anropa generate-quote med conversation_history, sessionId OCH imageAnalysis
-      const { data, error } = await supabase.functions.invoke('generate-quote', {
-        body: {
-          description: content,
-          conversation_history: conversationHistory,
-          sessionId: sessionId,
-          detailLevel: 'standard',
-          deductionType: 'auto',
-          numberOfRecipients: 1,
-          imageAnalysis: imageAnalysis // ✅ Bildanalys-data
+      // FIX 3: Timeout protection (30 seconds)
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 30000);
+
+      try {
+        // Anropa generate-quote med conversation_history, sessionId OCH imageAnalysis
+        const { data, error } = await supabase.functions.invoke('generate-quote', {
+          body: {
+            description: content,
+            conversation_history: conversationHistory,
+            sessionId: sessionId,
+            detailLevel: 'standard',
+            deductionType: 'auto',
+            numberOfRecipients: 1,
+            imageAnalysis: imageAnalysis // ✅ Bildanalys-data
+          },
+          signal: controller.signal
+        });
+        
+        clearTimeout(timeoutId);
+
+        if (error) {
+          console.error('Generate quote error:', error);
+          throw error;
         }
-      });
 
-      if (error) {
-        console.error('Generate quote error:', error);
-        throw error;
-      }
+        // FIX 3: Log generation time
+        const elapsedTime = ((Date.now() - startTime) / 1000).toFixed(1);
+        console.log(`✅ Quote generated in ${elapsedTime}s`);
 
-      console.log('Generate quote response:', data);
+        console.log('Generate quote response:', data);
 
-      // Hantera olika response-typer
-      if (data?.type === 'clarification') {
+        // Hantera olika response-typer
+        if (data?.type === 'clarification') {
         // AI:n behöver mer info
         const aiMessage: Message = {
           id: (Date.now() + 1).toString(),
@@ -171,37 +206,48 @@ export const ChatInterface = ({ onQuoteGenerated, isGenerating }: ChatInterfaceP
           }
         });
         
-      } else if (data?.type === 'complete_quote') {
-        // Komplett offert genererad - visa inline
-        setNeedsClarification(false);
-        setClarificationQuestions([]);
-        setGeneratedQuote(data.quote);
+        } else if (data?.type === 'complete_quote') {
+          // FIX 3: Success toast
+          const elapsedTime = ((Date.now() - startTime) / 1000).toFixed(1);
+          toast({
+            title: "✅ Offert genererad!",
+            description: `Klar på ${elapsedTime} sekunder`
+          });
+
+          // Komplett offert genererad - visa inline
+          setNeedsClarification(false);
+          setClarificationQuestions([]);
+          setGeneratedQuote(data.quote);
+          
+          const aiMessage: Message = {
+            id: (Date.now() + 1).toString(),
+            role: 'assistant',
+            content: 'Här är din offert! Du kan skicka den till kunden, spara som utkast eller redigera den.',
+            timestamp: new Date()
+          };
+          setMessages(prev => [...prev, aiMessage]);
+          
+          // Spara AI-svar
+          await supabase.functions.invoke('manage-conversation', {
+            body: {
+              action: 'save_message',
+              sessionId,
+              message: { role: 'assistant', content: aiMessage.content }
+            }
+          });
+        } else {
+          // Okänd response-typ eller fel struktur
+          console.error('Unexpected response format:', data);
+          throw new Error('Oväntat response-format från server');
+        }
+      } catch (invokeError: any) {
+        clearTimeout(timeoutId);
         
-        const aiMessage: Message = {
-          id: (Date.now() + 1).toString(),
-          role: 'assistant',
-          content: 'Här är din offert! Du kan skicka den till kunden, spara som utkast eller redigera den.',
-          timestamp: new Date()
-        };
-        setMessages(prev => [...prev, aiMessage]);
-        
-        // Spara AI-svar
-        await supabase.functions.invoke('manage-conversation', {
-          body: {
-            action: 'save_message',
-            sessionId,
-            message: { role: 'assistant', content: aiMessage.content }
-          }
-        });
-        
-        toast({
-          title: "Offert genererad!",
-          description: "Din offert är klar att granskas."
-        });
-      } else {
-        // Okänd response-typ eller fel struktur
-        console.error('Unexpected response format:', data);
-        throw new Error('Oväntat response-format från server');
+        // FIX 3: Better error messages
+        if (invokeError.name === 'AbortError') {
+          throw new Error('Offertgenereringen tog för lång tid (>30s). Försök igen med mindre komplex beskrivning.');
+        }
+        throw invokeError;
       }
       
     } catch (error) {
