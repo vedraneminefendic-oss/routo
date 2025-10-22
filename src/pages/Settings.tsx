@@ -5,7 +5,9 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Building2, Clock, Wrench, FileText, PlayCircle, Brain } from "lucide-react";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Badge } from "@/components/ui/badge";
+import { Building2, Clock, Wrench, FileText, PlayCircle, Brain, TrendingUp, RefreshCw } from "lucide-react";
 import CompanySettings from "@/components/CompanySettings";
 import HourlyRatesManager from "@/components/HourlyRatesManager";
 import EquipmentRatesManager from "@/components/EquipmentRatesManager";
@@ -20,6 +22,8 @@ const Settings = () => {
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState(searchParams.get("tab") || "company");
   const [showOnboardingResume, setShowOnboardingResume] = useState(false);
+  const [benchmarks, setBenchmarks] = useState<any[]>([]);
+  const [isSyncing, setIsSyncing] = useState(false);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -51,6 +55,41 @@ const Settings = () => {
 
     if (data && !data.completed && !data.skipped) {
       setShowOnboardingResume(true);
+    }
+  };
+
+  const fetchBenchmarks = async () => {
+    const { data } = await supabase
+      .from('industry_benchmarks')
+      .select('*')
+      .order('last_updated', { ascending: false });
+    setBenchmarks(data || []);
+  };
+
+  useEffect(() => {
+    fetchBenchmarks();
+  }, []);
+
+  const handleSyncMarketData = async () => {
+    setIsSyncing(true);
+    try {
+      toast.info('Hämtar marknadsdata från externa källor...');
+      
+      const { data, error } = await supabase.functions.invoke('fetch-market-data');
+      
+      if (error) {
+        console.error('Market data sync error:', error);
+        toast.error('Misslyckades att synka marknadsdata');
+      } else {
+        console.log('Market data sync success:', data);
+        toast.success(`✅ ${data.message || `Uppdaterade ${data.updatedCategories} kategorier`}`);
+        await fetchBenchmarks();
+      }
+    } catch (error) {
+      console.error('Market data sync exception:', error);
+      toast.error('Fel vid synkning av marknadsdata');
+    } finally {
+      setIsSyncing(false);
     }
   };
 
@@ -130,6 +169,87 @@ const Settings = () => {
               <Brain className="h-4 w-4" />
               Uppdatera AI-profil
             </Button>
+          </CardContent>
+        </Card>
+
+        <Card className="mb-6">
+          <CardHeader>
+            <CardTitle className="text-secondary flex items-center gap-2">
+              <TrendingUp className="h-5 w-5" />
+              Branschdata & Marknadsinsikter
+            </CardTitle>
+            <CardDescription>
+              Externa datakällor som håller AI:n uppdaterad med aktuella marknads­priser (SCB + branschsajter)
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-4">
+              {benchmarks.length > 0 ? (
+                <div className="border rounded-lg overflow-hidden">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Kategori</TableHead>
+                        <TableHead>Värde</TableHead>
+                        <TableHead>Min-Max</TableHead>
+                        <TableHead>Senast uppdaterad</TableHead>
+                        <TableHead className="text-center">Källor</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {benchmarks.map((b) => (
+                        <TableRow key={b.id}>
+                          <TableCell className="font-medium">
+                            {b.work_category.replace(/_/g, ' ').replace(/\b\w/g, (l: string) => l.toUpperCase())}
+                          </TableCell>
+                          <TableCell>
+                            {b.metric_type === 'price_per_sqm' 
+                              ? `${Math.round(b.median_value).toLocaleString('sv-SE')} kr/kvm`
+                              : `${(b.median_value * 100).toFixed(0)}%`
+                            }
+                          </TableCell>
+                          <TableCell className="text-sm text-muted-foreground">
+                            {Math.round(b.min_value).toLocaleString('sv-SE')} - {Math.round(b.max_value).toLocaleString('sv-SE')}
+                          </TableCell>
+                          <TableCell className="text-sm">
+                            {new Date(b.last_updated).toLocaleDateString('sv-SE', { 
+                              year: 'numeric', 
+                              month: 'short', 
+                              day: 'numeric' 
+                            })}
+                          </TableCell>
+                          <TableCell className="text-center">
+                            <Badge variant={b.sample_size >= 3 ? 'default' : 'secondary'}>
+                              {b.sample_size} {b.sample_size === 1 ? 'källa' : 'källor'}
+                            </Badge>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              ) : (
+                <div className="text-center py-8 text-muted-foreground">
+                  <TrendingUp className="h-12 w-12 mx-auto mb-3 opacity-50" />
+                  <p className="mb-2">Ingen marknadsdata hämtad än</p>
+                  <p className="text-sm">Klicka på knappen nedan för att hämta aktuella priser från externa källor</p>
+                </div>
+              )}
+              
+              <Button 
+                onClick={handleSyncMarketData} 
+                disabled={isSyncing}
+                className="w-full sm:w-auto flex items-center gap-2"
+              >
+                <RefreshCw className={`h-4 w-4 ${isSyncing ? 'animate-spin' : ''}`} />
+                {isSyncing ? 'Synkar marknadsdata...' : 'Uppdatera marknadsdata nu'}
+              </Button>
+
+              <div className="text-xs text-muted-foreground mt-4 space-y-1">
+                <p><strong>Källor:</strong> SCB (Byggkostnadsindex), byggfakta.se, husbyggaren.se</p>
+                <p><strong>Användning:</strong> AI:n kombinerar dina egna offerter (70% vikt) med branschdata (30% vikt)</p>
+              </div>
+            </div>
           </CardContent>
         </Card>
 
