@@ -132,20 +132,87 @@ const INDUSTRY_BENCHMARKS: Record<string, {
   }
 };
 
-// FAS 3.6: PROACTIVE REALITY CHECK (runs BEFORE calculateBaseTotals)
+// FAS 5: Fetch learned preferences and industry benchmarks from database
+async function fetchLearningContext(supabaseClient: any, userId: string, sessionId?: string) {
+  const context: {
+    learnedPreferences?: any;
+    industryData?: any[];
+    userPatterns?: any;
+  } = {};
+  
+  // 1. Get learned preferences from current session
+  if (sessionId) {
+    try {
+      const { data: session } = await supabaseClient
+        .from('conversation_sessions')
+        .select('learned_preferences')
+        .eq('id', sessionId)
+        .eq('user_id', userId)
+        .single();
+      
+      if (session?.learned_preferences) {
+        context.learnedPreferences = session.learned_preferences;
+        console.log('📚 FAS 5: Loaded learned preferences from session');
+      }
+    } catch (error) {
+      console.error('Error fetching learned preferences:', error);
+    }
+  }
+  
+  // 2. Get industry benchmarks from database
+  try {
+    const { data: benchmarks } = await supabaseClient
+      .from('industry_benchmarks')
+      .select('*')
+      .order('sample_size', { ascending: false });
+    
+    if (benchmarks && benchmarks.length > 0) {
+      context.industryData = benchmarks;
+      console.log(`📊 FAS 5: Loaded ${benchmarks.length} industry benchmarks`);
+    }
+  } catch (error) {
+    console.error('Error fetching industry benchmarks:', error);
+  }
+  
+  // 3. Get user quote patterns
+  try {
+    const { data: patterns } = await supabaseClient
+      .from('user_quote_patterns')
+      .select('*')
+      .eq('user_id', userId)
+      .single();
+    
+    if (patterns) {
+      context.userPatterns = patterns;
+      console.log('👤 FAS 5: Loaded user patterns');
+    }
+  } catch (error) {
+    console.error('Error fetching user patterns:', error);
+  }
+  
+  return context;
+}
+
+// FAS 5: Enhanced PROACTIVE REALITY CHECK with learning
 async function performProactiveRealityCheck(params: {
   projectType: string;
   description: string;
   area?: number;
   conversationHistory?: any[];
+  learningContext?: {
+    learnedPreferences?: any;
+    industryData?: any[];
+    userPatterns?: any;
+  };
 }): Promise<{ 
   shouldProceed: boolean; 
   suggestedMaterialRatio?: number; 
   reasoning: string;
   estimatedMinCost?: number;
   estimatedMaxCost?: number;
+  newLearnings?: any;
 }> {
-  const { projectType, description, area, conversationHistory } = params;
+  const { projectType, description, area, conversationHistory, learningContext } = params;
   
   // Map project type to benchmark key
   const projectLower = projectType.toLowerCase();
@@ -171,7 +238,28 @@ async function performProactiveRealityCheck(params: {
     };
   }
   
-  const benchmark = INDUSTRY_BENCHMARKS[benchmarkKey];
+  // FAS 5: Try to get benchmark from database first, fallback to hardcoded
+  let benchmark = INDUSTRY_BENCHMARKS[benchmarkKey];
+  let usedDatabaseBenchmark = false;
+  
+  if (learningContext?.industryData) {
+    const dbBenchmark = learningContext.industryData.find(
+      (b: any) => b.work_category === benchmarkKey && b.metric_type === 'price_per_sqm'
+    );
+    
+    if (dbBenchmark && dbBenchmark.sample_size >= 3) {
+      // Use database benchmark if we have at least 3 samples
+      benchmark = {
+        ...benchmark,
+        minPricePerSqm: dbBenchmark.min_value,
+        maxPricePerSqm: dbBenchmark.max_value,
+        avgTotalPerSqm: dbBenchmark.median_value
+      };
+      usedDatabaseBenchmark = true;
+      console.log(`📊 FAS 5: Using database benchmark for ${benchmarkKey} (${dbBenchmark.sample_size} samples)`);
+    }
+  }
+  
   if (!benchmark) {
     return { 
       shouldProceed: true, 
@@ -193,23 +281,62 @@ async function performProactiveRealityCheck(params: {
   const isBudget = /budget|billig|enkel|grundläggande/i.test(fullText);
   const isPremium = /premium|exklusiv|lyx|högkvalitet|kvalitet|dyr|bäst/i.test(fullText);
   
-  // Suggest material ratio based on project type and quality level
+  // FAS 5: Smart material ratio calculation with multiple sources
   let suggestedMaterialRatio = MATERIAL_RATIOS[benchmarkKey] || 0.35;
+  let ratioSource = 'hardcoded';
   
+  // Priority 1: Learned preferences from this session
+  if (learningContext?.learnedPreferences?.preferredMaterialRatio) {
+    suggestedMaterialRatio = learningContext.learnedPreferences.preferredMaterialRatio;
+    ratioSource = 'session';
+    console.log(`💡 FAS 5: Using session material ratio: ${(suggestedMaterialRatio * 100).toFixed(0)}%`);
+  }
+  // Priority 2: Database industry benchmark
+  else if (learningContext?.industryData) {
+    const dbMaterialRatio = learningContext.industryData.find(
+      (b: any) => b.work_category === benchmarkKey && b.metric_type === 'material_to_work_ratio'
+    );
+    
+    if (dbMaterialRatio && dbMaterialRatio.sample_size >= 3) {
+      suggestedMaterialRatio = dbMaterialRatio.median_value;
+      ratioSource = 'database';
+      console.log(`📊 FAS 5: Using database material ratio: ${(suggestedMaterialRatio * 100).toFixed(0)}% (${dbMaterialRatio.sample_size} samples)`);
+    }
+  }
+  // Priority 3: User patterns (historical)
+  else if (learningContext?.userPatterns?.avg_material_to_work_ratio) {
+    suggestedMaterialRatio = learningContext.userPatterns.avg_material_to_work_ratio;
+    ratioSource = 'user_patterns';
+    console.log(`👤 FAS 5: Using user pattern material ratio: ${(suggestedMaterialRatio * 100).toFixed(0)}%`);
+  }
+  
+  // Adjust for quality level
+  const originalRatio = suggestedMaterialRatio;
   if (isBudget) {
     suggestedMaterialRatio *= 0.85; // 15% lägre material för budget
   } else if (isPremium) {
     suggestedMaterialRatio *= 1.25; // 25% högre material för premium
   }
   
-  console.log(`   → Föreslagen materialratio: ${(suggestedMaterialRatio * 100).toFixed(0)}% (${isBudget ? 'budget' : isPremium ? 'premium' : 'mellan'})`);
+  const qualityLevel = isBudget ? 'budget' : isPremium ? 'premium' : 'mellan';
+  console.log(`   → Final materialratio: ${(suggestedMaterialRatio * 100).toFixed(0)}% (${ratioSource}, ${qualityLevel})`);
+  
+  // FAS 5: Track new learnings for this session
+  const newLearnings = {
+    projectType: benchmarkKey,
+    qualityPreference: qualityLevel,
+    adjustedMaterialRatio: suggestedMaterialRatio,
+    estimatedPriceRange: { min: estimatedMinCost, max: estimatedMaxCost },
+    usedDatabaseBenchmark
+  };
   
   return {
     shouldProceed: true,
     suggestedMaterialRatio,
-    reasoning: `${projectType} ${area} kvm bör kosta ${Math.round(estimatedMinCost)}-${Math.round(estimatedMaxCost)} kr (${benchmark.minPricePerSqm}-${benchmark.maxPricePerSqm} kr/kvm)`,
+    reasoning: `${projectType} ${area} kvm bör kosta ${Math.round(estimatedMinCost)}-${Math.round(estimatedMaxCost)} kr (${benchmark.minPricePerSqm}-${benchmark.maxPricePerSqm} kr/kvm) [${ratioSource}]`,
     estimatedMinCost,
-    estimatedMaxCost
+    estimatedMaxCost,
+    newLearnings
   };
 }
 
@@ -1753,7 +1880,8 @@ serve(async (req) => {
       conversation_history: z.array(z.object({
         role: z.enum(['user', 'assistant']),
         content: z.string()
-      })).optional()
+      })).optional(),
+      sessionId: z.string().uuid().optional() // FAS 5: Session context
     });
 
     // Parse and validate request body
@@ -1820,6 +1948,14 @@ serve(async (req) => {
     const supabaseClient = createClient(
       SUPABASE_URL!,
       SUPABASE_SERVICE_ROLE_KEY!
+    );
+
+    // FAS 5: Fetch learning context (learned preferences, industry benchmarks, user patterns)
+    console.log('📚 FAS 5: Fetching learning context...');
+    const learningContext = await fetchLearningContext(
+      supabaseClient, 
+      user_id, 
+      validatedData.sessionId
     );
 
     // Detect deduction type if set to auto
@@ -2133,7 +2269,7 @@ Lägg till dem i materials-array med dessa standardpriser:
       return context;
     };
 
-    const learningContext = buildLearningContext(industryBenchmarks);
+    const aiLearningContext = buildLearningContext(industryBenchmarks);
 
     // Fas 14A: Bygg personlig learning context från user patterns
     const buildPersonalContext = (patterns: any) => {
@@ -2333,12 +2469,41 @@ Lägg till dem i materials-array med dessa standardpriser:
       projectType: proactiveProjectType || description, // Fallback to description if undefined
       description: description,
       area: proactiveArea,
-      conversationHistory: conversation_history
+      conversationHistory: conversation_history,
+      learningContext // FAS 5: Include learning context
     });
     
     console.log(`✅ Proaktiv check: ${proactiveCheck.reasoning}`);
     if (proactiveCheck.suggestedMaterialRatio) {
       console.log(`   → Materialratio justeras till ${(proactiveCheck.suggestedMaterialRatio * 100).toFixed(0)}%`);
+    }
+
+    // FAS 5: Save new learnings back to session
+    if (proactiveCheck.newLearnings && validatedData.sessionId) {
+      try {
+        console.log('💾 FAS 5: Saving new learnings to session...');
+        const currentPrefs = learningContext.learnedPreferences || {};
+        const updatedPrefs = {
+          ...currentPrefs,
+          lastProjectType: proactiveCheck.newLearnings.projectType,
+          lastQualityPreference: proactiveCheck.newLearnings.qualityPreference,
+          preferredMaterialRatio: proactiveCheck.newLearnings.adjustedMaterialRatio,
+          lastEstimatedPriceRange: proactiveCheck.newLearnings.estimatedPriceRange,
+          usedDatabaseBenchmark: proactiveCheck.newLearnings.usedDatabaseBenchmark,
+          updatedAt: new Date().toISOString()
+        };
+        
+        await supabaseClient
+          .from('conversation_sessions')
+          .update({ learned_preferences: updatedPrefs })
+          .eq('id', validatedData.sessionId)
+          .eq('user_id', user_id);
+        
+        console.log('✅ FAS 5: Learnings saved successfully');
+      } catch (error) {
+        console.error('Error saving learnings:', error);
+        // Don't fail quote generation if learning save fails
+      }
     }
 
     // STEG 2: Beräkna baseTotals EFTER konversationen med HELA beskrivningen

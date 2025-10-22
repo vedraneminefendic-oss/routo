@@ -31,7 +31,7 @@ serve(async (req) => {
       );
     }
 
-    const { action, sessionId, message, status } = await req.json();
+    const { action, sessionId, message, status, learnedPreferences } = await req.json();
 
     // CREATE SESSION
     if (action === 'create_session') {
@@ -177,6 +177,38 @@ serve(async (req) => {
         console.error('Error updating session:', error);
         return new Response(
           JSON.stringify({ error: 'Failed to update session' }),
+          { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      return new Response(
+        JSON.stringify({ success: true }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // UPDATE LEARNED PREFERENCES (FAS 5)
+    if (action === 'update_learned_preferences') {
+      if (!sessionId || !learnedPreferences) {
+        return new Response(
+          JSON.stringify({ error: 'Missing sessionId or learnedPreferences' }),
+          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      const { error } = await supabaseClient
+        .from('conversation_sessions')
+        .update({ 
+          learned_preferences: learnedPreferences,
+          last_message_at: new Date().toISOString()
+        })
+        .eq('id', sessionId)
+        .eq('user_id', user.id);
+
+      if (error) {
+        console.error('Error updating learned preferences:', error);
+        return new Response(
+          JSON.stringify({ error: 'Failed to update learned preferences' }),
           { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }
