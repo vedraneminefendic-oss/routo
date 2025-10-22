@@ -94,31 +94,90 @@ export const ChatInput = ({ onSendMessage, disabled }: ChatInputProps) => {
     }
   };
 
-  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const compressImage = (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const img = new Image();
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          const ctx = canvas.getContext('2d');
+          if (!ctx) {
+            reject(new Error('Could not get canvas context'));
+            return;
+          }
+
+          // Max 1600px dimension, maintain aspect ratio
+          const MAX_DIM = 1600;
+          let width = img.width;
+          let height = img.height;
+          
+          if (width > height && width > MAX_DIM) {
+            height = (height * MAX_DIM) / width;
+            width = MAX_DIM;
+          } else if (height > MAX_DIM) {
+            width = (width * MAX_DIM) / height;
+            height = MAX_DIM;
+          }
+
+          canvas.width = width;
+          canvas.height = height;
+          ctx.drawImage(img, 0, 0, width, height);
+
+          // Convert to JPEG with 0.65 quality
+          const compressedBase64 = canvas.toDataURL('image/jpeg', 0.65);
+          
+          // Check size (target <1.5MB)
+          const sizeInMB = (compressedBase64.length * 0.75) / (1024 * 1024);
+          console.log(`📸 Compressed image: ${sizeInMB.toFixed(2)} MB`);
+          
+          resolve(compressedBase64);
+        };
+        img.onerror = () => reject(new Error('Failed to load image'));
+        img.src = e.target?.result as string;
+      };
+      reader.onerror = () => reject(new Error('Failed to read file'));
+      reader.readAsDataURL(file);
+    });
+  };
+
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files || files.length === 0) return;
 
-    const maxImages = 5;
-    const maxSize = 10 * 1024 * 1024; // 10MB per bild
+    const maxImages = 3; // Reduced from 5
+    const maxSizeBeforeCompress = 15 * 1024 * 1024; // 15MB before compression
 
-    Array.from(files).slice(0, maxImages).forEach(file => {
-      if (file.size > maxSize) {
-        toast.error(`${file.name} är för stor. Max 10MB per bild.`);
-        return;
+    const filesToProcess = Array.from(files).slice(0, maxImages);
+    
+    for (const file of filesToProcess) {
+      if (file.size > maxSizeBeforeCompress) {
+        toast.error(`${file.name} är för stor (>15MB). Välj en mindre bild.`);
+        continue;
       }
 
       if (!file.type.startsWith('image/')) {
         toast.error(`${file.name} är inte en giltig bild.`);
-        return;
+        continue;
       }
 
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        const base64 = e.target?.result as string;
-        setImages(prev => [...prev, base64]);
-      };
-      reader.readAsDataURL(file);
-    });
+      try {
+        toast(`Komprimerar ${file.name}...`, { duration: 1500 });
+        const compressedBase64 = await compressImage(file);
+        
+        const sizeInMB = (compressedBase64.length * 0.75) / (1024 * 1024);
+        if (sizeInMB > 2) {
+          toast.error(`${file.name} är fortfarande för stor efter komprimering. Prova en mindre bild.`);
+          continue;
+        }
+        
+        setImages(prev => [...prev, compressedBase64]);
+        toast.success(`${file.name} uppladdad (${sizeInMB.toFixed(1)}MB)`);
+      } catch (error) {
+        console.error('Image compression error:', error);
+        toast.error(`Kunde inte bearbeta ${file.name}. Bildanalys hoppas över.`);
+      }
+    }
 
     // Reset input
     if (fileInputRef.current) {
@@ -230,8 +289,8 @@ export const ChatInput = ({ onSendMessage, disabled }: ChatInputProps) => {
               variant="ghost"
               className="h-8 w-8"
               onClick={() => fileInputRef.current?.click()}
-              disabled={disabled || images.length >= 5}
-              title="Ladda upp bilder"
+              disabled={disabled || images.length >= 3}
+              title="Ladda upp bilder (max 3)"
             >
               <Camera className="h-4 w-4" />
             </Button>

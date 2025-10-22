@@ -65,14 +65,31 @@ export const ChatInterface = ({ onQuoteGenerated, isGenerating }: ChatInterfaceP
     createSession();
   }, [toast]);
 
-  const handleSendMessage = async (content: string, images?: string[]) => {
+  const handleSendMessage = async (content: string, images?: string[], retryCount = 0) => {
     if (!sessionId) {
-      toast({
-        title: "Fel",
-        description: "Session ej redo. Vänta ett ögonblick.",
-        variant: "destructive"
-      });
-      return;
+      // Try to recreate session
+      try {
+        const { data, error } = await supabase.functions.invoke('manage-conversation', {
+          body: { action: 'create_session' }
+        });
+        if (error) throw error;
+        if (data?.session?.id) {
+          setSessionId(data.session.id);
+          toast({
+            title: "Session återställd",
+            description: "Försöker igen..."
+          });
+          // Retry the message send
+          return handleSendMessage(content, images, retryCount);
+        }
+      } catch (error) {
+        toast({
+          title: "Fel",
+          description: "Kunde inte skapa session. Ladda om sidan.",
+          variant: "destructive"
+        });
+        return;
+      }
     }
 
     const userMessage: Message = {
@@ -86,48 +103,51 @@ export const ChatInterface = ({ onQuoteGenerated, isGenerating }: ChatInterfaceP
     setIsTyping(true);
 
     try {
-      // FIX 3: Progress indicator - Start
       const startTime = Date.now();
       
-      // Om bilder finns, analysera dem först
+      // Step 1: Analyze images (if present)
       let imageAnalysis = null;
       if (images && images.length > 0) {
         toast({
-          title: "📸 Analyserar bilder...",
-          description: "Extraherar mått och detaljer från bilderna"
+          title: "📸 Steg 1/3: Analyserar bilder...",
+          description: "Extraherar mått och detaljer"
         });
 
-        const { data: analysisData, error: analysisError } = await supabase.functions.invoke('analyze-images', {
-          body: {
-            images,
-            description: content
-          }
-        });
-
-        if (analysisError) {
-          console.error('Image analysis error:', analysisError);
-          toast({
-            title: "Bildanalys misslyckades",
-            description: "Fortsätter utan bildanalys",
-            variant: "destructive"
+        try {
+          const { data: analysisData, error: analysisError } = await supabase.functions.invoke('analyze-images', {
+            body: { images, description: content }
           });
-        } else {
-          imageAnalysis = analysisData;
-          console.log('Image analysis:', imageAnalysis);
-          
-          // FIX 3: Show confidence warning
-          if (imageAnalysis?.confidence === 'low') {
+
+          if (analysisError) {
+            console.error('Image analysis error:', analysisError);
             toast({
-              title: "⚠️ Osäker bildanalys",
-              description: "Lägg gärna till mer detaljer i beskrivningen för bättre resultat",
+              title: "⚠️ Bildanalys hoppades över",
+              description: "Fortsätter med textbeskrivning",
               variant: "default"
             });
           } else {
-            toast({
-              title: "✅ Bildanalys klar",
-              description: "Bilder analyserade framgångsrikt"
-            });
+            imageAnalysis = analysisData;
+            console.log('Image analysis:', imageAnalysis);
+            
+            if (imageAnalysis?.confidence === 'low') {
+              toast({
+                title: "⚠️ Osäker bildanalys",
+                description: "Lägg gärna till mer detaljer",
+                variant: "default"
+              });
+            } else {
+              toast({
+                title: "✅ Bildanalys klar",
+                description: "Bilder analyserade"
+              });
+            }
           }
+        } catch (error) {
+          console.error('Image analysis exception:', error);
+          toast({
+            title: "⚠️ Bildanalys hoppades över",
+            description: "Fortsätter med textbeskrivning"
+          });
         }
       }
 
@@ -140,24 +160,30 @@ export const ChatInterface = ({ onQuoteGenerated, isGenerating }: ChatInterfaceP
         }
       });
 
-      // FIX 3: Progress indicator - Calculating
-      toast({
-        title: "🧮 Beräknar kostnader...",
-        description: "Analyserar projekt och skapar offert"
+      // Step 2: Save user message
+      await supabase.functions.invoke('manage-conversation', {
+        body: {
+          action: 'save_message',
+          sessionId,
+          message: { role: 'user', content }
+        }
       });
 
-      // Bygg conversation_history från messages
+      // Step 3: Generate quote
+      toast({
+        title: imageAnalysis ? "🧮 Steg 2/3: Beräknar..." : "🧮 Steg 1/2: Beräknar...",
+        description: "Analyserar projekt och kostnader"
+      });
+
       const conversationHistory = messages.map(m => ({
         role: m.role,
         content: m.content
       }));
 
-      // FIX 3: Timeout protection (30 seconds)
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 30000);
 
       try {
-        // Anropa generate-quote med conversation_history, sessionId OCH imageAnalysis
         const { data, error } = await supabase.functions.invoke('generate-quote', {
           body: {
             description: content,
@@ -166,7 +192,7 @@ export const ChatInterface = ({ onQuoteGenerated, isGenerating }: ChatInterfaceP
             detailLevel: 'standard',
             deductionType: 'auto',
             numberOfRecipients: 1,
-            imageAnalysis: imageAnalysis // ✅ Bildanalys-data
+            imageAnalysis: imageAnalysis
           },
           signal: controller.signal
         });
@@ -175,10 +201,14 @@ export const ChatInterface = ({ onQuoteGenerated, isGenerating }: ChatInterfaceP
 
         if (error) {
           console.error('Generate quote error:', error);
+          
+          // Check for specific error types
+          if (error.message?.includes('Failed to fetch') || error.message?.includes('NetworkError')) {
+            throw new Error('NETWORK_ERROR');
+          }
           throw error;
         }
 
-        // FIX 3: Log generation time
         const elapsedTime = ((Date.now() - startTime) / 1000).toFixed(1);
         console.log(`✅ Quote generated in ${elapsedTime}s`);
 
@@ -207,11 +237,12 @@ export const ChatInterface = ({ onQuoteGenerated, isGenerating }: ChatInterfaceP
         });
         
         } else if (data?.type === 'complete_quote') {
-          // FIX 3: Success toast
           const elapsedTime = ((Date.now() - startTime) / 1000).toFixed(1);
+          
+          // Show success with timing
           toast({
             title: "✅ Offert genererad!",
-            description: `Klar på ${elapsedTime} sekunder`
+            description: `Klar på ${elapsedTime} sekunder${data.usedFallback ? ' (snabbt läge)' : ''}`
           });
 
           // Komplett offert genererad - visa inline
@@ -243,15 +274,27 @@ export const ChatInterface = ({ onQuoteGenerated, isGenerating }: ChatInterfaceP
       } catch (invokeError: any) {
         clearTimeout(timeoutId);
         
-        // FIX 3: Better error messages
         if (invokeError.name === 'AbortError') {
-          throw new Error('Offertgenereringen tog för lång tid (>30s). Försök igen med mindre komplex beskrivning.');
+          throw new Error('Offertgenereringen tog för lång tid (>30s). Försök igen.');
         }
         throw invokeError;
       }
       
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error:', error);
+      
+      // Retry logic for network errors
+      if (error.message === 'NETWORK_ERROR' && retryCount < 2) {
+        const backoffTime = retryCount === 0 ? 1500 : 3000;
+        toast({
+          title: "⏳ Nätverksfel",
+          description: `Försöker igen om ${backoffTime/1000}s...`
+        });
+        
+        await new Promise(resolve => setTimeout(resolve, backoffTime));
+        return handleSendMessage(content, images, retryCount + 1);
+      }
+      
       toast({
         title: "Fel",
         description: error instanceof Error ? error.message : "Något gick fel. Försök igen.",

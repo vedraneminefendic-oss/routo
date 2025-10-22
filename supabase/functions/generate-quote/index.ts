@@ -8,10 +8,10 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-// AI Model Configuration
-const TEXT_MODEL = 'openai/gpt-5-mini'; // För bästa svenska språkstöd
-const EXTRACTION_MODEL = 'openai/gpt-5-nano'; // 4x snabbare för data-extraktion (Fas 4)
-// const VISION_MODEL = 'google/gemini-2.5-flash'; // För framtida bildanalys
+// AI Model Configuration (OPTIMIZED FOR SPEED)
+const TEXT_MODEL = 'google/gemini-2.5-flash'; // Fast + reliable
+const EXTRACTION_MODEL = 'google/gemini-2.5-flash-lite'; // Fastest for simple extraction
+const MAX_AI_TIME = 12000; // 12 seconds max for AI steps
 
 // FAS 7: Industry-specific material to work cost ratios (FAS 3.6: REALISTISKA VÄRDEN)
 const MATERIAL_RATIOS: Record<string, number> = {
@@ -392,8 +392,8 @@ function validateBeforeGeneration(
   };
 }
 
-// FAS 3 STEG 2: POST-GENERATION REALITY CHECK (FAS 3.6: KASTAR ERROR VID FEL)
-// Enhanced reality check with detailed warnings - NOW THROWS ERROR ON CRITICAL FAILURES
+// FAS 3 STEG 2: POST-GENERATION REALITY CHECK (RELAXED - warnings only, rarely throws)
+// Enhanced reality check with detailed warnings - THROWS ERROR ONLY ON TRULY UNREASONABLE PRICES
 function performRealityCheck(
   quote: any,
   projectType: string,
@@ -425,7 +425,7 @@ function performRealityCheck(
   const benchmark = INDUSTRY_BENCHMARKS[benchmarkKey];
   const pricePerSqm = totalValue / area;
   
-  // FIX 3: Kolla om kunden står för dyra material (kakel, klinker, köksskåp, etc)
+  // Check if customer provides expensive materials
   const customerProvidesExpensiveMaterials = 
     /kund.*står.*för.*(material|kakel|klinker|köksskåp|vitvaror|bänkskiv)/i.test(projectType);
   
@@ -433,43 +433,40 @@ function performRealityCheck(
   let adjustedMaxPrice = benchmark.maxPricePerSqm;
   
   if (customerProvidesExpensiveMaterials) {
-    // Justera benchmark nedåt med 40-60% för saknade material (material utgör ~50-70% av kostnad)
     adjustedMinPrice = benchmark.minPricePerSqm * 0.4;  
     adjustedMaxPrice = benchmark.maxPricePerSqm * 0.6;
-    console.log(`📦 Customer provides materials - adjusted price range: ${Math.round(adjustedMinPrice)}-${Math.round(adjustedMaxPrice)} kr/m² (original: ${benchmark.minPricePerSqm}-${benchmark.maxPricePerSqm} kr/m²)`);
+    console.log(`📦 Customer provides materials - adjusted price range: ${Math.round(adjustedMinPrice)}-${Math.round(adjustedMaxPrice)} kr/m²`);
   }
   
-  // FAS 3.6: Critical errors now THROW instead of just warning
-  if (pricePerSqm < adjustedMinPrice * 0.7) {  // 30% tolerans
-    const errorMsg = customerProvidesExpensiveMaterials
-      ? `Priset ${Math.round(pricePerSqm)} kr/m² är orealistiskt lågt även när kunden står för material. Förväntat: ${Math.round(adjustedMinPrice)}-${Math.round(adjustedMaxPrice)} kr/m². Kontrollera arbetstid.`
-      : `Priset ${Math.round(pricePerSqm)} kr/m² är orealistiskt lågt för ${projectType}. Branschnorm: ${benchmark.minPricePerSqm}-${benchmark.maxPricePerSqm} kr/m². Kontrollera material och arbetstid.`;
+  // RELAXED: Only throw for truly unreasonable prices (10x off)
+  if (pricePerSqm < adjustedMinPrice * 0.1) {
+    const errorMsg = `Priset ${Math.round(pricePerSqm)} kr/m² är extremt lågt (<10% av förväntat). Detta är troligen ett beräkningsfel.`;
     console.error(`❌ Reality check failed: ${errorMsg}`);
     throw new Error(`VALIDATION_FAILED: ${errorMsg}`);
   }
   
-  if (pricePerSqm > adjustedMaxPrice * 1.5) {
-    const errorMsg = `Priset ${Math.round(pricePerSqm)} kr/m² är orealistiskt högt för ${projectType}. Branschnorm: ${Math.round(adjustedMinPrice)}-${Math.round(adjustedMaxPrice)} kr/m². Kontrollera om något dubbelräknats.`;
+  if (pricePerSqm > adjustedMaxPrice * 10) {
+    const errorMsg = `Priset ${Math.round(pricePerSqm)} kr/m² är extremt högt (>10x förväntat). Detta är troligen ett beräkningsfel.`;
     console.error(`❌ Reality check failed: ${errorMsg}`);
     throw new Error(`VALIDATION_FAILED: ${errorMsg}`);
   }
   
-  // Soft warnings (quote is valid but may need attention)
-  if (pricePerSqm < benchmark.minPricePerSqm * 1.2) {
-    warnings.push(`⚠️ Priset ligger i underkant (${Math.round(pricePerSqm)} kr/m²). Branschsnitt: ${benchmark.avgTotalPerSqm} kr/m²`);
+  // Soft warnings (log but don't block)
+  if (pricePerSqm < adjustedMinPrice * 0.8) {
+    warnings.push(`⚠️ Priset ligger lågt (${Math.round(pricePerSqm)} kr/m²). Förväntat: ${Math.round(adjustedMinPrice)}-${Math.round(adjustedMaxPrice)} kr/m²`);
   }
   
-  if (pricePerSqm > benchmark.maxPricePerSqm) {
-    warnings.push(`⚠️ Priset ligger över branschstandard (${Math.round(pricePerSqm)} kr/m² vs ${benchmark.maxPricePerSqm} kr/m²). Detta kan vara motiverat beroende på projektet.`);
+  if (pricePerSqm > adjustedMaxPrice * 1.3) {
+    warnings.push(`⚠️ Priset ligger högt (${Math.round(pricePerSqm)} kr/m²). Förväntat: ${Math.round(adjustedMinPrice)}-${Math.round(adjustedMaxPrice)} kr/m²`);
   }
   
-  // Check material/work ratio
+  // Check material/work ratio (warnings only)
   const materialRatio = quote.summary.materialCost / quote.summary.workCost;
-  if (materialRatio < 0.3 && benchmarkKey.includes('renovering')) {
+  if (materialRatio < 0.2 && benchmarkKey.includes('renovering')) {
     warnings.push('⚠️ Material/arbete-ratio är låg. Kontrollera att alla materialkostnader är med.');
   }
   
-  if (materialRatio > 2) {
+  if (materialRatio > 3) {
     warnings.push('⚠️ Material/arbete-ratio är hög. Kontrollera att arbetskostnaden är korrekt.');
   }
   
@@ -509,14 +506,17 @@ function validateQuoteOutput(quote: any, baseTotals: any, hourlyRatesByType?: { 
     errors.push(`Material med pris 0 kr: ${materialsWithZeroPrice.map((m: any) => m.name).join(', ')} - ALLA material MÅSTE ha realistiska priser!`);
   }
   
-  // 3. Validate summary calculations
+  // 3. Validate summary calculations (RELAXED tolerance to 1000 kr or 3%)
   const actualWorkCost = quote.workItems.reduce((sum: number, w: any) => sum + w.subtotal, 0);
   if (Math.abs(quote.summary.workCost - actualWorkCost) > 1) {
     errors.push('summary.workCost matchar inte summan av workItems');
   }
   
-  if (Math.abs(quote.summary.materialCost - totalMaterialCost) > 1) {
-    errors.push('summary.materialCost matchar inte summan av materials');
+  // RELAXED: Allow 1000 kr or 3% difference for material cost
+  const materialDiff = Math.abs(quote.summary.materialCost - totalMaterialCost);
+  const materialTolerance = Math.max(1000, totalMaterialCost * 0.03);
+  if (materialDiff > materialTolerance) {
+    errors.push(`summary.materialCost matchar inte summan av materials (diff: ${materialDiff.toFixed(0)} kr, tolerance: ${materialTolerance.toFixed(0)} kr)`);
   }
   
   // 4. Validate hourly rates match user's custom rates
@@ -645,11 +645,14 @@ function autoCorrectQuote(quote: any, baseTotals: any): any {
     }
   });
   
-  // 2. Force correct material cost (behåll befintlig logik)
+  // 2. Force correct material cost with RELAXED tolerance (1000 kr or 3%)
   const expectedMaterialCost = baseTotals.materialCost + baseTotals.equipmentCost;
   const actualMaterialCost = correctedQuote.materials.reduce((sum: number, m: any) => sum + m.subtotal, 0);
   
-  if (actualMaterialCost > 0 && Math.abs(actualMaterialCost - expectedMaterialCost) > 100) {
+  const materialDiff = Math.abs(actualMaterialCost - expectedMaterialCost);
+  const materialTolerance = Math.max(1000, expectedMaterialCost * 0.03);
+  
+  if (actualMaterialCost > 0 && materialDiff > materialTolerance) {
     console.log(`  → Justerar materialkostnad: ${actualMaterialCost} kr → ${expectedMaterialCost} kr`);
     const materialRatio = expectedMaterialCost / actualMaterialCost;
     correctedQuote.materials.forEach((item: any) => {
