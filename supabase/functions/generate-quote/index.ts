@@ -800,10 +800,11 @@ function getDomainKnowledge(description: string): {
   return { workType: 'general', criticalFactors: [] };
 }
 
-// Extract measurements with structured data
+// IMPROVED: Extract measurements with full conversation context
 async function extractMeasurements(
   description: string,
-  apiKey: string
+  apiKey: string,
+  conversationHistory?: any[]
 ): Promise<{
   quantity?: number;
   height?: string;
@@ -814,6 +815,23 @@ async function extractMeasurements(
   clarificationNeeded?: string;
 }> {
   try {
+    // Build context-aware prompt with full conversation
+    let contextPrompt = description;
+    
+    if (conversationHistory && conversationHistory.length > 0) {
+      const userMessages = conversationHistory
+        .filter(m => m.role === 'user')
+        .map(m => m.content);
+      
+      if (userMessages.length > 1) {
+        contextPrompt = `KONVERSATION:
+Huvudförfrågan: "${userMessages[0]}"
+Förtydliganden: "${userMessages.slice(1).join('. ')}"
+
+FULLSTÄNDIG KONTEXT: ${buildConversationSummary(conversationHistory, description)}`;
+      }
+    }
+    
     const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
       method: 'POST',
       headers: {
@@ -824,12 +842,13 @@ async function extractMeasurements(
         model: 'google/gemini-2.5-flash',
         messages: [{
           role: 'user',
-          content: `Extrahera mått och kvantiteter från denna beskrivning: "${description}"
+          content: `Extrahera mått och kvantiteter från denna beskrivning: "${contextPrompt}"
 
 VIKTIGT REGLER:
 1. Sätter ENDAST ambiguous=true om mått verkligen saknas eller är otydliga
 2. Om tydliga mått finns → ambiguous=false
 3. Om flera objekt nämns med samma mått, anta att det gäller för alla
+4. ANVÄND HELA KONVERSATIONEN för att förstå vad mått avser
 
 FÖR TRÄD/TRÄDFÄLLNING:
 - Om höjd finns men ej diameter → fråga: "Vilken diameter/tjocklek har stammen vid brösthöjd?"
@@ -840,7 +859,7 @@ EXEMPEL PÅ TYDLIGA MÅTT (ambiguous=false):
 ✅ "renovera badrum 8 kvm" → { area: "8 kvm", ambiguous: false }
 ✅ "två ekar 15 meter höga, 50cm diameter" → { quantity: 2, height: "15 meter", diameter: "50cm", ambiguous: false }
 ✅ "fälla tre träd, 12m, 15m och 8m höga" → { quantity: 3, height: "12m, 15m, 8m", ambiguous: false }
-✅ "installera nytt kök 12 kvm" → { area: "12 kvm", ambiguous: false }
+✅ Konversation: "Fälla träd" → "15 meter" → { height: "15 meter", ambiguous: false } (mått från andra meddelandet!)
 
 EXEMPEL PÅ TVETYDIGA MÅTT (ambiguous=true):
 ❌ "renovera badrum" (ingen yta angiven)
@@ -1071,6 +1090,7 @@ async function calculateBaseTotals(
   apiKey: string,
   hourlyRates: any[] | null,
   equipmentRates: any[] | null,
+  conversationHistory?: any[], // NEW: För bättre kontext i extractMeasurements
   suggestedMaterialRatio?: number // FAS 3.6: Optional override från proaktiv check
 ): Promise<{
   workHours: any;
@@ -1082,7 +1102,7 @@ async function calculateBaseTotals(
   
   // Extract structured measurements for better calculation accuracy
   console.log('📊 Calculating base totals with description:', description);
-  const measurements = await extractMeasurements(description, apiKey);
+  const measurements = await extractMeasurements(description, apiKey, conversationHistory);
   console.log('📐 Structured measurements for calculation:', {
     quantity: measurements.quantity || 'not specified',
     height: measurements.height || 'not specified',
@@ -2044,7 +2064,7 @@ Lägg till dem i materials-array med dessa standardpriser:
         : description;
       
       // Samla ALL info som KANSKE saknas
-      const measurements = await extractMeasurements(fullContext, LOVABLE_API_KEY!);
+      const measurements = await extractMeasurements(fullContext, LOVABLE_API_KEY!, conversation_history);
       const { criticalFactors, projectType } = getDomainKnowledge(fullContext);
       
       // Bygg prioriterad lista av frågor
@@ -2087,7 +2107,7 @@ Lägg till dem i materials-array med dessa standardpriser:
     console.log('🔍 FAS 3.6: Running proactive reality check...');
     
     // ANVÄND completeDescription överallt
-    const proactiveMeasurements = await extractMeasurements(completeDescription, LOVABLE_API_KEY!);
+    const proactiveMeasurements = await extractMeasurements(completeDescription, LOVABLE_API_KEY!, conversation_history);
     const { projectType: proactiveProjectType } = getDomainKnowledge(completeDescription);
     
     let proactiveArea: number | undefined = undefined;
@@ -2147,6 +2167,7 @@ Lägg till dem i materials-array med dessa standardpriser:
       LOVABLE_API_KEY!, 
       hourlyRates, 
       equipmentRates,
+      conversation_history, // NEW: Skicka med hela konversationen för bättre kontext
       proactiveCheck.suggestedMaterialRatio // FAS 3.6: Använd justerad ratio från proaktiv check
     );
     console.log('Base totals calculated:', baseTotals);
