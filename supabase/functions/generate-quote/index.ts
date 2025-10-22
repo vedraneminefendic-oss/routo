@@ -509,11 +509,21 @@ async function extractMeasurements(
           role: 'user',
           content: `Extrahera mått och kvantiteter från denna beskrivning: "${description}"
 
-VIKTIGT: Om flera objekt nämns med flera mått, anta att samma mått gäller för alla objekt såvida inte explicit annat anges.
+VIKTIGT REGLER:
+1. Sätter ENDAST ambiguous=true om mått verkligen saknas eller är otydliga
+2. Om tydliga mått finns → ambiguous=false
+3. Om flera objekt nämns med samma mått, anta att det gäller för alla
 
-Exempel:
-- "två ekar på 15 meter och 5 meter diameter" → quantity=2, height="15 meter", diameter="5 meter", appliesTo="all"
-- "ena är 15m, andra 8m" → quantity=2, height="15 meter och 8 meter", ambiguous=true`
+EXEMPEL PÅ TYDLIGA MÅTT (ambiguous=false):
+✅ "renovera badrum 8 kvm" → { area: "8 kvm", ambiguous: false }
+✅ "två ekar 15 meter höga" → { quantity: 2, height: "15 meter", ambiguous: false, appliesTo: "all" }
+✅ "fälla tre träd, 12m, 15m och 8m" → { quantity: 3, height: "12m, 15m, 8m", ambiguous: false }
+✅ "installera nytt kök 12 kvm" → { area: "12 kvm", ambiguous: false }
+
+EXEMPEL PÅ TVETYDIGA MÅTT (ambiguous=true):
+❌ "renovera badrum" (ingen yta angiven)
+❌ "måla vardagsrum" (ingen yta angiven)
+❌ "fälla träd" (ingen höjd eller antal angivet)`
         }],
         tools: [{
           type: 'function',
@@ -574,6 +584,59 @@ Exempel:
     
     if (toolCall) {
       const parsed = JSON.parse(toolCall.function.arguments);
+      
+      // REGEX FALLBACK: Om AI säger "ambiguous" men vi hittar tydliga mått i texten
+      if (parsed.ambiguous) {
+        const regexFindings: any = {};
+        
+        // Extrahera antal (ord eller siffror)
+        const quantityMatch = description.match(/\b(två|tre|fyra|fem|sex|sju|åtta|nio|tio|\d+)\s+(träd|rum|ekar|badrummen|kök|fönster|dörrar)/i);
+        if (quantityMatch) {
+          const quantityWord = quantityMatch[1].toLowerCase();
+          const quantityMap: Record<string, number> = { 
+            'två': 2, 'tre': 3, 'fyra': 4, 'fem': 5, 'sex': 6, 
+            'sju': 7, 'åtta': 8, 'nio': 9, 'tio': 10 
+          };
+          regexFindings.quantity = quantityMap[quantityWord] || parseInt(quantityWord);
+        }
+        
+        // Extrahera area (kvm, kvadratmeter, m²)
+        const areaMatch = description.match(/(\d+(?:[.,]\d+)?)\s*(kvm|kvadratmeter|m²|m2)/i);
+        if (areaMatch) {
+          regexFindings.area = `${areaMatch[1]} ${areaMatch[2]}`;
+        }
+        
+        // Extrahera höjd (meter, m)
+        const heightMatch = description.match(/(\d+(?:[.,]\d+)?)\s*(meter|m)\s+(hög|höga|höjd)?/i);
+        if (heightMatch) {
+          regexFindings.height = `${heightMatch[1]} ${heightMatch[2]}`;
+        }
+        
+        // Extrahera diameter
+        const diameterMatch = description.match(/(\d+(?:[.,]\d+)?)\s*(meter|m|cm)\s+(diameter|bred)/i);
+        if (diameterMatch) {
+          regexFindings.diameter = `${diameterMatch[1]} ${diameterMatch[2]}`;
+        }
+        
+        // Om regex hittade något som AI missade
+        const foundAnyMeasurement = Object.keys(regexFindings).length > 0;
+        
+        // Kolla om beskrivningen innehåller action-verb (indikerar konkret arbete)
+        const hasActionVerb = /\b(renovera|installera|fälla|måla|byta|reparera|städa|bygga|lägga)\b/i.test(description);
+        
+        if (foundAnyMeasurement && hasActionVerb) {
+          console.log('🔧 Regex fallback override: Found measurements AI missed', regexFindings);
+          parsed.ambiguous = false;
+          // Merge regex findings into parsed (om AI inte redan har dem)
+          if (!parsed.quantity && regexFindings.quantity) parsed.quantity = regexFindings.quantity;
+          if (!parsed.area && regexFindings.area) parsed.area = regexFindings.area;
+          if (!parsed.height && regexFindings.height) parsed.height = regexFindings.height;
+          if (!parsed.diameter && regexFindings.diameter) parsed.diameter = regexFindings.diameter;
+          if (!parsed.appliesTo && regexFindings.quantity) parsed.appliesTo = 'all';
+          delete parsed.clarificationNeeded; // Ta bort onödig fråga
+        }
+      }
+      
       console.log('📏 Extracted measurements:', parsed);
       return parsed;
     }
