@@ -8,6 +8,66 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+// FAS 7: Industry-specific material to work cost ratios
+const MATERIAL_RATIOS: Record<string, number> = {
+  'Snickare': 0.45,           // Virke, beslag, skruv
+  'Elektriker': 0.25,         // Kablar, dosor - mest arbetskostnad
+  'VVS': 0.40,                // Rör, kopplingar, kranar
+  'Målare': 0.30,             // Färg, spackel, förberedelse
+  'Murare': 0.50,             // Tegel, murbruk, isolering
+  'Plattsättare': 0.55,       // Kakel, klinker, fog - högt materialpris
+  'Städare': 0.15,            // Städmaterial - minst material
+  'Trädgårdsskötare': 0.20,   // Lite material, mest arbete
+  'Arborist': 0.15,           // Mest arbete, lite förbrukningsmaterial
+  'Fönsterputsare': 0.10,     // Minimal material
+  'Takläggare': 0.60,         // Takpannor, underlag - dyrt material
+  'Hantverkare': 0.35         // Generic fallback
+};
+
+// FAS 4: Smart industry defaults to reduce unnecessary questions
+const SMART_DEFAULTS: Record<string, {
+  defaultArea?: string;
+  defaultQuantity?: string;
+  assumedFactors: string[];
+  typicalMeasurements: string;
+}> = {
+  'badrum_renovering': {
+    defaultArea: '5 kvm',
+    assumedFactors: ['Standardhöjd 2.4m väggar', 'Inkluderar golv och väggar'],
+    typicalMeasurements: 'Standardbadrum är typiskt 4-6 kvm'
+  },
+  'kok_renovering': {
+    defaultArea: '12 kvm',
+    assumedFactors: ['Standardkök med L-form', 'Inkluderar vitvaror'],
+    typicalMeasurements: 'Standardkök är typiskt 10-15 kvm'
+  },
+  'altan': {
+    defaultArea: '20 kvm',
+    assumedFactors: ['Höjd 0.5m över mark', 'Inkluderar räcke'],
+    typicalMeasurements: 'Standardaltan är typiskt 15-25 kvm'
+  },
+  'malning': {
+    defaultArea: '40 kvm',
+    assumedFactors: ['Standardhöjd 2.5m tak', '2 färglager'],
+    typicalMeasurements: 'Ett rum är typiskt 15-20 kvm golv = 40-50 kvm väggar'
+  },
+  'fonsterputs': {
+    defaultQuantity: '10 fönster',
+    assumedFactors: ['Standardfönster 1.2m x 1.5m', 'Ut- och insida'],
+    typicalMeasurements: 'Villa har typiskt 10-15 fönster'
+  },
+  'tradfallning': {
+    defaultQuantity: '1 träd',
+    assumedFactors: ['Höjd 12m', 'Diameter 40cm', 'Bortforsling ingår'],
+    typicalMeasurements: 'Standardträd är 10-15m högt'
+  },
+  'stadning': {
+    defaultArea: '100 kvm',
+    assumedFactors: ['Standardstädning inkl. badrum och kök'],
+    typicalMeasurements: 'Villa är typiskt 100-150 kvm'
+  }
+};
+
 // Industry benchmarks for realistic pricing validation
 const INDUSTRY_BENCHMARKS: Record<string, {
   avgMaterialPerSqm: number;
@@ -426,13 +486,19 @@ function normalizeText(text: string): string {
   return normalized;
 }
 
-// Domain-specific critical factors per work type
-function getDomainKnowledge(description: string): { workType: string; criticalFactors: string[] } {
+// Domain-specific critical factors per work type  
+function getDomainKnowledge(description: string): {
+  projectType?: string;
+  criticalFactors: string[];
+  advice?: string;
+  workType: string;
+} {
   const descNorm = normalizeText(description);
   
-  const domainMap: Record<string, { keywords: string[]; factors: string[] }> = {
+  const domainMap: Record<string, { keywords: string[]; factors: string[]; projectType?: string }> = {
     'trädfällning': {
       keywords: ['falla', 'trad', 'ek', 'tall', 'gran', 'bjork', 'arborist'],
+      projectType: 'tradfallning',
       factors: [
         '🌳 Trädhöjd påverkar tid och utrustning kraftigt (10m = 2h, 20m = 4-5h)',
         '📏 Diameter avgör svårighetsgrad (>60cm = professionell utrustning)',
@@ -443,6 +509,7 @@ function getDomainKnowledge(description: string): { workType: string; criticalFa
     },
     'badrumsrenovering': {
       keywords: ['badrum', 'wc', 'dusch', 'kakel', 'plattor', 'handfat', 'toalett'],
+      projectType: 'badrum_renovering',
       factors: [
         '🚿 Rivning av gammalt material: 3-6 timmar beroende på storlek',
         '💧 VVS-arbete är kritiskt och tidskrävande (1-2 dagar för komplett byte)',
@@ -453,6 +520,7 @@ function getDomainKnowledge(description: string): { workType: string; criticalFa
     },
     'målning': {
       keywords: ['mala', 'spackel', 'tapetsera', 'farg'],
+      projectType: 'malning',
       factors: [
         '🎨 Area och takhöjd är kritiska faktorer',
         '🧰 Förberedelse (spackling, slipning) = 40% av tiden',
@@ -669,7 +737,7 @@ async function handleConversation(
   description: string,
   conversationHistory: any[] | undefined,
   apiKey: string
-): Promise<{ action: 'ask' | 'generate'; questions?: string[] }> {
+): Promise<{ action: 'ask' | 'generate'; questions?: string[]; reasoning?: string }> {
   
   // STEG 1: Extrahera mått strukturerat
   const measurements = await extractMeasurements(description, apiKey);
@@ -1092,9 +1160,12 @@ Som professionell hantverkare-assistent: Analysera detta och bestäm om du behö
         
         if (!newTopicsMentioned) {
           console.log('⚠️ No new topics in questions after exchange 1 → forcing generate');
-          return { action: 'generate' };
-        }
-      }
+    return { 
+      action: 'generate',
+      reasoning: 'Fel vid AI-svar, genererar offert med tillgänglig information'
+    };
+  }
+}
       
       return {
         action: 'ask',
@@ -1173,6 +1244,18 @@ Om användaren INTE har lagt in dessa verktyg i sina inställningar,
 lägg ändå till dem i equipmentCost med branschstandardpriser.
 `;
 
+  // FAS 7: Calculate industry-specific material ratio
+  const workTypesInDescription = description.toLowerCase();
+  let materialRatio = MATERIAL_RATIOS['Hantverkare']; // Default
+  
+  for (const [workType, ratio] of Object.entries(MATERIAL_RATIOS)) {
+    if (workTypesInDescription.includes(workType.toLowerCase())) {
+      materialRatio = ratio;
+      console.log(`📊 Using material ratio ${ratio} for work type: ${workType}`);
+      break;
+    }
+  }
+
   const materialPriceKnowledge = `
 
 **═══════════════════════════════════════════════════════════════**
@@ -1182,7 +1265,8 @@ lägg ändå till dem i equipmentCost med branschstandardpriser.
 **VIKTIGA REGLER:**
 1. materialCost FÅR ALDRIG vara 0 för renoveringsprojekt!
 2. Använd chain-of-thought: "Vad behövs? → Räkna ut kvantitet → Uppskattar pris per enhet → Summera"
-3. Om du är osäker, använd 30-40% av arbetskostnaden som estimat
+3. Branschspecifikt materialförhållande: ${(materialRatio * 100).toFixed(0)}% av arbetskostnaden
+4. Om du är osäker, använd materialförhållandet som estimat
 
 **CHAIN-OF-THOUGHT EXEMPEL:**
 Projekt: "Renovera badrum 5 kvm, mellan-nivå"
@@ -2045,6 +2129,12 @@ Lägg till dem i materials-array med dessa standardpriser:
       /(generera|skapa|gör|ta fram|räcker|kör på|nu|direkt|klart|det räcker)/
     );
 
+    // FAS 8: Store conversation decision for reasoning
+    let conversationDecision: { action: string; questions?: string[]; reasoning?: string } = {
+      action: 'generate',
+      reasoning: 'Användaren har angett tillräcklig information för att generera offert'
+    };
+
     // FAS 17: Ask questions if under 2 rounds AND user doesn't want quote now
     if (!userWantsQuoteNow && exchangeCount < 2) {
       const lastUserMessage = conversation_history && conversation_history.length > 0
@@ -2060,14 +2150,15 @@ Lägg till dem i materials-array med dessa standardpriser:
       
       console.log(`💬 Running AI conversation handler (exchange ${exchangeCount}/2)...`);
       
-      const decision = await handleConversation(
+      conversationDecision = await handleConversation(
         description,
         conversation_history,
         LOVABLE_API_KEY!
       );
       
-      if (decision.action === 'ask' && decision.questions && decision.questions.length > 0) {
-        console.log(`🤔 AI wants to ask ${decision.questions.length} question(s)`);
+      if (conversationDecision.action === 'ask' && conversationDecision.questions && conversationDecision.questions.length > 0) {
+        console.log(`🤔 AI wants to ask ${conversationDecision.questions.length} question(s)`);
+        console.log('🧠 FAS 8 Reasoning:', conversationDecision.reasoning || 'No reasoning provided');
         
         return new Response(
           JSON.stringify({
@@ -2075,7 +2166,8 @@ Lägg till dem i materials-array med dessa standardpriser:
             message: exchangeCount === 0 
               ? 'Tack för din förfrågan! För att ge dig en så exakt offert som möjligt behöver jag veta lite mer:'
               : 'Perfekt! Bara några sista detaljer:',
-            questions: decision.questions
+            questions: conversationDecision.questions,
+            reasoning: conversationDecision.reasoning // FAS 8
           }),
           { 
             headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -2085,6 +2177,7 @@ Lägg till dem i materials-array med dessa standardpriser:
       }
       
       console.log('✅ AI decided to generate quote');
+      console.log('🧠 FAS 8 Reasoning:', conversationDecision.reasoning || 'No reasoning provided');
     }
 
     // Fall through to quote generation
@@ -2992,7 +3085,8 @@ Viktig information:
       usedReference: referenceQuotes.length > 0,
       referenceTitle: referenceQuotes[0]?.title || undefined,
       learningMetadata, // Include learning metadata for frontend
-      warnings: allWarnings.length > 0 ? allWarnings : undefined // Add reality check warnings
+      warnings: allWarnings.length > 0 ? allWarnings : undefined, // Add reality check warnings
+      reasoning: conversationDecision.reasoning || 'Offert genererad baserat på användarens information' // FAS 8
     };
     
     // Quality metadata (simplified - no warnings in new flow)
