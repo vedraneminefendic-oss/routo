@@ -3177,13 +3177,65 @@ Lägg till dem i materials-array med dessa standardpriser:
       additionalProperties: false
     };
 
-    const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${LOVABLE_API_KEY}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
+    // Wrap main AI generation with timeout
+    const aiGenerationStartTime = Date.now();
+    const aiController = new AbortController();
+    const aiTimeoutId = setTimeout(() => {
+      console.log(`⏱️ Main AI generation timed out after ${TIMEOUT_MAIN_GENERATION}ms`);
+      aiController.abort();
+    }, TIMEOUT_MAIN_GENERATION);
+    
+    // AI kill-switch: if AI_DISABLED is set, skip AI and use fallback immediately
+    const AI_DISABLED = Deno.env.get('AI_DISABLED') === 'true';
+    
+    if (AI_DISABLED) {
+      clearTimeout(aiTimeoutId);
+      console.log('⚡ AI_DISABLED mode: Skipping AI generation, using deterministic fallback');
+      const fallbackQuote = buildFallbackQuote({
+        description: completeDescription,
+        baseTotals: baseTotals as any,
+        detailLevel,
+        hourlyRatesByType: baseTotals.hourlyRatesByType,
+        finalDeductionType,
+        deductionRate,
+        totalMaxRot,
+        totalMaxRut
+      } as any);
+      
+      console.log('Generated quote successfully with detail level:', detailLevel);
+      
+      return new Response(
+        JSON.stringify({
+          type: 'complete_quote',
+          quote: fallbackQuote,
+          hasCustomRates,
+          hasEquipment,
+          detailLevel,
+          deductionType: finalDeductionType,
+          usedFallback: true,
+          meta: { aiDisabled: true },
+          warnings: ['ℹ️ Offerten skapades med deterministisk beräkning (AI avstängd)'],
+          reasoning: 'Offert genererad med deterministisk fallback'
+        }),
+        { 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          status: 200 
+        }
+      );
+    }
+    
+    let response: Response;
+    try {
+      console.log(`⏱️ Starting main AI generation (timeout: ${TIMEOUT_MAIN_GENERATION}ms)...`);
+      
+      response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${LOVABLE_API_KEY}`,
+          'Content-Type': 'application/json',
+        },
+        signal: aiController.signal,
+        body: JSON.stringify({
         model: TEXT_MODEL,
         tools: [{
           type: "function",
@@ -3197,307 +3249,24 @@ Lägg till dem i materials-array med dessa standardpriser:
         messages: [
           {
             role: 'system',
-            content: `Du är en erfaren svensk hantverkare som skapar offerter åt dig själv till dina kunder.
+            content: `Du är en erfaren svensk hantverkare som skapar offerter.
 
-**DIN ROLL:**
-- Du är INTE en assistent som samlar krav
-- Du är EN HANTVERKARE som ska skapa en offert
-- Användaren är DIG (hantverkaren), INTE kunden
-- Du ska göra rimliga antaganden baserat på erfarenhet
+**KRITISKA REGLER:**
 
-**DIN APPROACH:**
-1. Ta emot projektbeskrivning (kan vara kortfattad)
-2. Gör professionella antaganden baserat på branschstandard
-3. Skapa offerten DIREKT med de förutberäknade totalerna
-4. Använd din branscherfarenhet för att fylla i detaljer
+1. ANVÄND dessa förberäknade värden EXAKT:
+   - Arbetstimmar: ${JSON.stringify(baseTotals.workHours)}
+   - Material: ${baseTotals.materialCost} kr
+   - Timpris: ${JSON.stringify(baseTotals.hourlyRatesByType)}
+   - Summa workItems.hours MÅSTE = ${baseTotals.totalHours}h
+   - Summa materials.subtotal MÅSTE = ${baseTotals.materialCost + baseTotals.equipmentCost} kr
 
-**KOMMUNIKATIONSTON:**
-- Professionell och erfaren
-- Gör antaganden där det behövs
-- Fokusera på att leverera en korrekt offert
+2. Projekt: "${description}"
 
-**═══════════════════════════════════════════════════════════════**
-**KRITISKT - FÖR SVENSKA HANTVERKARE**
-**═══════════════════════════════════════════════════════════════**
+3. Detaljnivå "${detailLevel}": ${detailLevel === 'standard' ? '4-6 arbetsposter, 5-10 material' : '2-3 arbetsposter, 3-5 material'}
 
-**═══════════════════════════════════════════════════════════════**
-**DE 5 ABSOLUTA REGLERNA (BRYT ALDRIG DESSA!)**
-**═══════════════════════════════════════════════════════════════**
-
-1. **MATCHA ANVÄNDARENS FÖRFRÅGAN EXAKT**
-   Användaren bad om: "${conversation_history && conversation_history.length > 0 ? conversation_history.filter((m: any) => m.role === 'user').map((m: any) => m.content).join(' → ') : description}"
-   → Skapa offert för EXAKT detta (om "målning" → målningsoffert, INTE altan/kök)
-
-2. **LÅS FÖRUTBERÄKNADE TOTALER (VIKTIGAST AV ALLT!)**
-   Arbetstimmar: ${JSON.stringify(baseTotals.workHours)}
-   Material: ${baseTotals.materialCost} kr | Utrustning: ${baseTotals.equipmentCost} kr
-   → **DU MÅSTE** använda exakt dessa timmar i din offert
-   → **ALDRIG** sätt 0 timmar om baseTotals säger något annat!
-   → Summan av hours i alla workItems MÅSTE = baseTotals.workHours
-   → FÅR INTE ändras, endast fördelas över poster!
-
-3. **ANVÄND EXAKTA TIMPRISER**
-   ${JSON.stringify(baseTotals.hourlyRatesByType, null, 2)}
-   → Använd EXAKT dessa priser för matchande arbetstyper
-
-4. **MATERIAL MÅSTE HA REALISTISKA PRISER**
-   → ALDRIG pricePerUnit = 0 kr
-   → Total materials.subtotal = ${baseTotals.materialCost + baseTotals.equipmentCost} kr
-
-5. **FÖLJ DETALJNIVÅ "${detailLevel}"**
-   ${detailLevel === 'quick' ? '→ 2-3 arbetsposter, 3-5 material, notes <100 tecken' : ''}
-   ${detailLevel === 'standard' ? '→ MINST 4 arbetsposter (helst 4-6), MINST 5 material (helst 5-10), notes 200-300 tecken' : ''}
-   ${detailLevel === 'detailed' ? '→ 6-10 arbetsposter, 10-15 material, notes 500-800 tecken med fasindelning' : ''}
-   ${detailLevel === 'construction' ? '→ 10-15 arbetsposter (inkl. projektledning), 15-25 material, notes 1200-2000 tecken med projektledning+tidsplan+garanti+besiktning' : ''}
-
-**═══════════════════════════════════════════════════════════════**
-**FIX #1 & #3: PRE-SUBMISSION CHECKLIST (KONTROLLERA INNAN DU SKICKAR!)**
-**═══════════════════════════════════════════════════════════════**
-
-INNAN du anropar create_quote, VERIFIERA ALLTID detta:
-
-${detailLevel === 'standard' ? `
-FÖR "STANDARD" DETALJNIVÅ:
-✓ workItems: Har jag 4-6 poster? (MINST 4, helst fler)
-   → Om du har färre än 4: DELA UPP arbetet i mer specifika poster
-   → Exempel: Istället för "Målning 10h", dela upp i "Förberedelse 3h", "Grundmålning 4h", "Slutmålning 3h"
-   
-✓ materials: Har jag 5-10 poster? (MINST 5, helst fler)
-   → Om du har färre än 5: SPECIFICERA mer detaljerat
-   → Exempel: Istället för "Material 5000kr", dela upp i "Färg 2000kr", "Spackel 800kr", "Förbrukning 1200kr", "Skyddsmaterial 600kr", "Verktyg 400kr"
-` : ''}
-
-${detailLevel === 'quick' ? `
-FÖR "QUICK" DETALJNIVÅ:
-✓ workItems: 2-3 poster är OK (kortfattade)
-✓ materials: 3-5 poster är OK (samlade kategorier)
-` : ''}
-
-${detailLevel === 'detailed' ? `
-FÖR "DETAILED" DETALJNIVÅ:
-✓ workItems: 6-10 poster (mycket specifika)
-✓ materials: 10-15 poster (mycket detaljerade)
-✓ notes: 500-800 tecken med fasindelning
-` : ''}
-
-✓ notes: Är längden 200-300 tecken för "standard"?
-   → Om för kort: Lägg till mer information om vad som ingår
-   → Om för lång: Korta ner men behåll viktig info
-
-✓ workHours: Matchar summan av alla workItems.hours mot baseTotals?
-   → Räkna: ${Object.entries(baseTotals.workHours).map(([type, h]) => `${type}: ${h}h`).join(' + ')} = ${baseTotals.totalHours}h
-   → workItems hours-summa MÅSTE vara EXAKT ${baseTotals.totalHours}h
-
-✓ materialCost: Matchar summan av materials.subtotal mot baseTotals.materialCost?
-   → materials.subtotal summa MÅSTE vara ${baseTotals.materialCost + baseTotals.equipmentCost} kr
-
-OM NÅGOT INTE STÄMMER → ÅTGÄRDA DET innan du anropar create_quote!
-
-**EXEMPEL PÅ KORREKT "STANDARD" OFFERT:**
-workItems (4-6 poster):
-- Förberedelse och planering: 2h × 700 kr/h = 1400 kr
-- Grundarbete: 5h × 700 kr/h = 3500 kr
-- Huvudarbete: 8h × 700 kr/h = 5600 kr
-- Finputsning och städning: 3h × 700 kr/h = 2100 kr
-
-materials (5-10 poster):
-- Huvudmaterial: 5000 kr
-- Förbrukningsmaterial: 2000 kr
-- Fästmaterial: 800 kr
-- Skyddsutrustning: 500 kr
-- Verktyg och redskap: 700 kr
-
-notes (200-300 tecken):
-"Offerten omfattar komplett [projekttyp] enligt beskrivning. Priset inkluderar material, arbete och utrustning. ROT/RUT-avdrag är redan avdraget. Arbetet beräknas ta X dagar. Vi ansvarar för alla moment från start till färdig och städad arbetsplats."
-
-**═══════════════════════════════════════════════════════════════**
-
-
-${personalContext}
-
-${aiLearningContext}
-
-**═══════════════════════════════════════════════════════════════**
-**PROJEKTSPECIFIK KONTEXT**
-**═══════════════════════════════════════════════════════════════**
-            
 ${ratesText}
 ${equipmentText}
-${customerHistoryText}
-${pricingHistoryText}
-
-${referenceQuotes.length > 0 ? `
-
-**═══════════════════════════════════════════════════════════════**
-**VIKTIGT - ANVÄND DESSA TIDIGARE OFFERTER SOM REFERENS**
-**═══════════════════════════════════════════════════════════════**
-
-Du har tillgång till ${referenceQuotes.length} tidigare liknande offert(er) från SAMMA användare.
-Använd dessa för att hålla KONSEKVENT prissättning, omfattning och stil.
-
-${referenceQuotes.map((ref, idx) => {
-  const quoteData = ref.quote_data;
-  if (!quoteData) return '';
-  const summary = quoteData.summary;
-  
-  return `
-════════════════════════════════════════════════════════════════
-REFERENS ${idx + 1}: ${ref.title}
-════════════════════════════════════════════════════════════════
-Beskrivning: ${ref.description}
-
-PRISER:
-• Totalt: ${summary.totalWithVAT} kr (inkl. moms)
-• Kund betalar: ${summary.customerPays} kr (efter ${summary.deductionType?.toUpperCase() || 'inget'}-avdrag)
-• Arbete: ${summary.workCost} kr
-• Material: ${summary.materialCost} kr
-• Avdrag: ${summary.deductionAmount || 0} kr
-
-ARBETSPOSTER:
-${quoteData.workItems?.map((w: any) => `• ${w.name}: ${w.hours}h × ${w.hourlyRate} kr/h = ${w.subtotal} kr`).join('\n') || 'Inga arbetsposter'}
-
-MATERIALPOSTER:
-${quoteData.materials?.map((m: any) => `• ${m.name}: ${m.quantity} ${m.unit} × ${m.pricePerUnit} kr = ${m.subtotal} kr`).join('\n') || 'Inga materialposter'}
-`;
-}).join('\n')}
-
-**MATCHNINGSREGLER FÖR REFERENSER:**
-1. Om nya uppdraget är MINDRE än referensen → Skala ner proportionellt men håll struktur
-2. Om nya uppdraget är STÖRRE → Skala upp men håll EXAKT samma timpris
-3. Om materialnivå skiljer sig (budget/mellan/premium) → Justera materialpriser, ALDRIG timpriser
-4. Behåll SAMMA timpris som i referensen för matchande arbetstyper
-5. Om nya uppdraget är NÄSTAN identiskt → använd nästan exakt samma struktur och fördelning
-6. Matcha arbetstyper: Om referens använder "Snickare" → använd samma arbetstyp i nya offerten
-
-` : ''}
-
-${userStyle ? `
-
-**═══════════════════════════════════════════════════════════════**
-**STIL-ANPASSNING (matcha användarens tidigare offerter)**
-**═══════════════════════════════════════════════════════════════**
-
-Analys av användarens senaste ${userStyle.sampleSize} offerter visar:
-• ${userStyle.usesEmojis ? '✅ Använder emojis och ikoner i beskrivningar' : '❌ Använder ren text utan emojis'}
-• Genomsnittlig beskrivningslängd: ~${userStyle.avgDescriptionLength} tecken
-
-**INSTRUKTION:**
-${userStyle.usesEmojis ? 'Inkludera relevanta emojis i workItems-beskrivningar och notes.' : 'Håll texten professionell och emoji-fri.'}
-Håll beskrivningslängder runt ${userStyle.avgDescriptionLength} tecken.
-Matcha tonen och stilen från användarens tidigare offerter.
-
-` : ''}
-
-**══════════════════════════════════════════════════════════════**
-**PROJEKTSPECIFIK KONTEXT**
-**══════════════════════════════════════════════════════════════**
-
-**TIMPRIS-MATCHNING (workItem.name → hourlyRate):**
-• "Snickare - Rivning" → använd ${baseTotals.hourlyRatesByType['Snickare'] || 650} kr/h
-• "Målare - Målning" → använd ${baseTotals.hourlyRatesByType['Målare'] || 700} kr/h
-• workItem.name MÅSTE börja med arbetstypen från baseTotals.hourlyRatesByType
-• Fallback (om arbetstyp saknas): Städare 500, Arborist 1000, Trädgård 550, Elektriker 850, VVS 900
-
-**MATERIAL-FÖRDELNING:**
-• ALDRIG pricePerUnit = 0 kr!
-• Total materials.subtotal = ${baseTotals.materialCost + baseTotals.equipmentCost} kr exakt
-• Exempel badrum 5 kvm: Kakel vägg (1750 kr) + Klinker golv (2125 kr) + VVS (6000 kr) = 20000 kr ✓
-
-**══════════════════════════════════════════════════════════════**
-**MATEMATIK MÅSTE STÄMMA**
-**══════════════════════════════════════════════════════════════**
-
-• workItems.hours per arbetstyp = baseTotals.workHours exakt
-• materials.subtotal totalt = ${baseTotals.materialCost + baseTotals.equipmentCost} kr exakt
-• workItems.hourlyRate = baseTotals.hourlyRatesByType exakt
-            
-Baserat på uppdragsbeskrivningen ska du returnera en strukturerad offert i JSON-format med följande struktur:
-
-{
-  "title": "Kort beskrivande titel",
-  "workItems": [
-    {
-      "name": "Arbetsmoment",
-      "description": "Beskrivning av momentet",
-      "hours": 10,
-      "hourlyRate": 650,
-      "subtotal": 6500
-    }
-  ],
-  "materials": [
-    {
-      "name": "Material/produkt",
-      "quantity": 1,
-      "unit": "st/m2/m",
-      "pricePerUnit": 1000,
-      "subtotal": 1000
-    }
-  ],
-        "summary": {
-          "workCost": 10000,
-          "materialCost": 5000,
-          "totalBeforeVAT": 15000,
-          "vat": 3750,
-          "totalWithVAT": 18750,
-          "deductionAmount": ${finalDeductionType !== 'none' ? '5000' : '0'},
-          "deductionType": "${finalDeductionType}",
-          ${finalDeductionType === 'rot' ? '"rotDeduction": 5000,' : ''}
-          ${finalDeductionType === 'rut' ? '"rutDeduction": 5000,' : ''}
-          "customerPays": ${finalDeductionType !== 'none' ? '13750' : '18750'}
-        },
-  "deductionType": "${finalDeductionType}",
-  "notes": "Eventuella anteckningar eller villkor"
-}
-
-**VIKTIGT - SKATTEAVDRAGSTYP:**
-Du MÅSTE inkludera exakt detta i ditt svar:
-- "deductionType": "${finalDeductionType}"
-${finalDeductionType === 'rot' ? '- Använd fältet "rotDeduction" för avdraget (INTE rutDeduction)' : ''}
-${finalDeductionType === 'rut' ? '- Använd fältet "rutDeduction" för avdraget (INTE rotDeduction)' : ''}
-${finalDeductionType === 'none' ? '- Inkludera INGET avdragsfält (varken rotDeduction eller rutDeduction)' : ''}
-
-**═══════════════════════════════════════════════════════════════**
-**KRITISKT - ROT/RUT-AVDRAG BERÄKNING (FÖLJ EXAKT!)**
-**═══════════════════════════════════════════════════════════════**
-
-${deductionPeriodText}
-
-**ROT-AVDRAG (Renovering, Ombyggnad, Tillbyggnad):**
-1. Beräkna arbetskostnad INKL moms: workCost × 1.25
-2. ROT-avdrag = (workCost × 1.25) × ${deductionRate}
-3. Max ${totalMaxRot} kr (${numberOfRecipients} ${numberOfRecipients === 1 ? 'person' : 'personer'} × ${maxRotPerPerson} kr/person)
-4. Gäller ENDAST arbetskostnad, INTE material
-5. Kund betalar: (workCost + materialCost) × 1.25 - rotDeduction
-
-**EXEMPEL ROT (${numberOfRecipients} mottagare, ${deductionRate * 100}%):**
-• Arbetskostnad: 40,000 kr (exkl moms)
-• Arbetskostnad inkl moms: 40,000 × 1.25 = 50,000 kr
-• ROT-avdrag (${deductionRate * 100}%): 50,000 × ${deductionRate} = ${Math.round(50000 * deductionRate)} kr
-• Max-gräns: ${totalMaxRot} kr
-• Faktiskt avdrag: ${Math.min(Math.round(50000 * deductionRate), totalMaxRot)} kr
-• Material: 10,000 kr (× 1.25 = 12,500 kr inkl moms)
-• Total inkl moms: 50,000 + 12,500 = 62,500 kr
-• Kund betalar: 62,500 - ${Math.min(Math.round(50000 * deductionRate), totalMaxRot)} = ${62500 - Math.min(Math.round(50000 * deductionRate), totalMaxRot)} kr
-
-**RUT-AVDRAG (Rengöring, Underhåll, Tvätt, Trädgård):**
-1. Beräkna arbetskostnad INKL moms: workCost × 1.25
-2. RUT-avdrag = (workCost × 1.25) × ${deductionRate}
-3. Max ${totalMaxRut} kr (${numberOfRecipients} ${numberOfRecipients === 1 ? 'person' : 'personer'} × ${maxRutPerPerson} kr/person)
-4. Gäller: Städning, trädgård, snöskottning, fönsterputsning
-5. Kund betalar: (workCost + materialCost) × 1.25 - rutDeduction
-
-**EXEMPEL RUT (${numberOfRecipients} mottagare, ${deductionRate * 100}%):**
-• Arbetskostnad: 4,000 kr (exkl moms)
-• Arbetskostnad inkl moms: 4,000 × 1.25 = 5,000 kr
-• RUT-avdrag (${deductionRate * 100}%): 5,000 × ${deductionRate} = ${Math.round(5000 * deductionRate)} kr
-
-**═══════════════════════════════════════════════════════════════**
-**DITT UPPDRAG: SKAPA OFFERTEN NU**
-**═══════════════════════════════════════════════════════════════**
-
-Du har all information du behöver. Ditt jobb är att:
-
-1. **ANALYSERA:** Förstå vad kunden vill ha gjort
+Skapa offert med rätt struktur och summor. Avdragstyp: ${finalDeductionType}
 2. **BERÄKNA:** Använd baseTotals som grund för alla siffror
 3. **PRESENTERA:** Skapa en professionell, tydlig offert
 4. **ANROPA:** create_quote med komplett data
@@ -3580,6 +3349,54 @@ Viktig information:
         ]
       }),
     });
+      
+      clearTimeout(aiTimeoutId);
+      const aiGenerationDuration = Date.now() - aiGenerationStartTime;
+      console.log(`⏱️ Main AI generation completed in ${aiGenerationDuration}ms`);
+      
+    } catch (aiError: any) {
+      clearTimeout(aiTimeoutId);
+      
+      // Handle timeout or fetch failure - use fallback
+      if (aiError.name === 'AbortError') {
+        console.log(`⏱️ Main AI generation timed out after ${TIMEOUT_MAIN_GENERATION}ms - using fallback`);
+      } else {
+        console.error('⚠️ AI Gateway error:', aiError.message);
+      }
+      
+      console.log('🔧 Building fallback quote due to AI timeout/error...');
+      const fallbackQuote = buildFallbackQuote({
+        description: completeDescription,
+        baseTotals: baseTotals as any,
+        detailLevel,
+        hourlyRatesByType: baseTotals.hourlyRatesByType,
+        finalDeductionType,
+        deductionRate,
+        totalMaxRot,
+        totalMaxRut
+      } as any);
+      
+      console.log('Generated quote successfully with detail level:', detailLevel);
+      
+      return new Response(
+        JSON.stringify({
+          type: 'complete_quote',
+          quote: fallbackQuote,
+          hasCustomRates,
+          hasEquipment,
+          detailLevel,
+          deductionType: finalDeductionType,
+          usedFallback: true,
+          generationDurationMs: Date.now() - aiGenerationStartTime,
+          warnings: ['ℹ️ Offerten skapades med standardmallar pga timeout'],
+          reasoning: 'Offert genererad med fallback (AI timeout/error)'
+        }),
+        { 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          status: 200 
+        }
+      );
+    }
 
     if (!response.ok) {
       const errorText = await response.text();

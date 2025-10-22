@@ -151,15 +151,6 @@ export const ChatInterface = ({ onQuoteGenerated, isGenerating }: ChatInterfaceP
         }
       }
 
-      // Spara användarmeddelande i databasen
-      await supabase.functions.invoke('manage-conversation', {
-        body: {
-          action: 'save_message',
-          sessionId,
-          message: { role: 'user', content }
-        }
-      });
-
       // Step 2: Save user message
       await supabase.functions.invoke('manage-conversation', {
         body: {
@@ -181,7 +172,7 @@ export const ChatInterface = ({ onQuoteGenerated, isGenerating }: ChatInterfaceP
       }));
 
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 60000);
+      const timeoutId = setTimeout(() => controller.abort(), 120000);
 
       try {
         const { data, error } = await supabase.functions.invoke('generate-quote', {
@@ -283,7 +274,7 @@ export const ChatInterface = ({ onQuoteGenerated, isGenerating }: ChatInterfaceP
         clearTimeout(timeoutId);
         
         if (invokeError.name === 'AbortError') {
-          throw new Error('Offertgenereringen tog för lång tid (>60s). Försök igen.');
+          throw new Error('Offertgenereringen tog för lång tid (>120s). Försök igen.');
         }
         throw invokeError;
       }
