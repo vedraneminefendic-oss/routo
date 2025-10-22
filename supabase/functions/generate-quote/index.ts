@@ -549,14 +549,15 @@ function validateQuoteOutput(quote: any, baseTotals: any, hourlyRatesByType?: { 
         break;
         
       case 'standard':
-        if (workItemCount < 4 || workItemCount > 6) {
-          errors.push(`Standard: Ska ha 4-6 arbetsposter, har ${workItemCount}`);
+        // FIX #1: Mer flexibel validering - acceptera 3-7 arbetsposter och 4-11 materialposter
+        if (workItemCount < 3 || workItemCount > 7) {
+          errors.push(`Standard: Ska ha 3-7 arbetsposter (helst 4-6), har ${workItemCount}`);
         }
-        if (materialCount < 5 || materialCount > 10) {
-          errors.push(`Standard: Ska ha 5-10 materialposter, har ${materialCount}`);
+        if (materialCount < 4 || materialCount > 11) {
+          errors.push(`Standard: Ska ha 4-11 materialposter (helst 5-10), har ${materialCount}`);
         }
-        if (notesLength < 200 || notesLength > 300) {
-          errors.push(`Standard: Notes ska vara 200-300 tecken, är ${notesLength}`);
+        if (notesLength < 150 || notesLength > 350) {
+          errors.push(`Standard: Notes ska vara 150-350 tecken (helst 200-300), är ${notesLength}`);
         }
         break;
         
@@ -1090,20 +1091,19 @@ async function calculateBaseTotals(
   apiKey: string,
   hourlyRates: any[] | null,
   equipmentRates: any[] | null,
-  conversationHistory?: any[], // NEW: För bättre kontext i extractMeasurements
-  suggestedMaterialRatio?: number // FAS 3.6: Optional override från proaktiv check
+  conversationHistory?: any[],
+  suggestedMaterialRatio?: number
 ): Promise<{
   workHours: any;
   materialCost: number;
   equipmentCost: number;
   hourlyRatesByType: { [workType: string]: number };
-  diameterEstimated?: string; // För trädfällning med uppskattat diameter
+  diameterEstimated?: string;
 }> {
   
-  // Extract structured measurements for better calculation accuracy
-  console.log('📊 Calculating base totals with description:', description);
+  console.log('📊 FIX #2: Calculating base totals with DETERMINISTIC logic');
   const measurements = await extractMeasurements(description, apiKey, conversationHistory);
-  console.log('📐 Structured measurements for calculation:', {
+  console.log('📐 Measurements:', {
     quantity: measurements.quantity || 'not specified',
     height: measurements.height || 'not specified',
     diameter: measurements.diameter || 'not specified',
@@ -1111,10 +1111,21 @@ async function calculateBaseTotals(
     appliesTo: measurements.appliesTo || 'not specified'
   });
 
-  // ============================================
-  // DETERMINISTISK BERÄKNING FÖR TRÄDFÄLLNING
-  // ============================================
   const descLower = description.toLowerCase();
+  
+  // Bygg hourlyRatesByType map
+  const hourlyRatesByType: { [key: string]: number } = {};
+  if (hourlyRates && hourlyRates.length > 0) {
+    hourlyRates.forEach(r => {
+      hourlyRatesByType[r.work_type] = r.rate;
+    });
+  }
+
+  // ============================================
+  // FIX #2: DETERMINISTISKA BERÄKNINGAR FÖR ALLA PROJEKTTYPER
+  // ============================================
+  
+  // 1. TRÄDFÄLLNING (redan deterministisk)
   const isTreeWork = descLower.includes('träd') || descLower.includes('fäll') || descLower.includes('arborist');
   
   if (isTreeWork && measurements.quantity) {
@@ -1167,14 +1178,7 @@ async function calculateBaseTotals(
     // Minimum 4 timmar totalt (säkerhetsmarginal)
     totalHours = Math.max(4, totalHours);
     
-    // Beräkna kostnad
-    const hourlyRatesByType: { [key: string]: number } = {};
-    if (hourlyRates && hourlyRates.length > 0) {
-      hourlyRates.forEach(r => {
-        hourlyRatesByType[r.work_type] = r.rate;
-      });
-    }
-    
+    // Använd redan definierad hourlyRatesByType
     const arboristRate = hourlyRatesByType['Arborist'] || 800;
     const workCost = totalHours * arboristRate;
     
@@ -1226,9 +1230,221 @@ async function calculateBaseTotals(
     };
   }
   
+  // 2. BADRUMSRENOVERING (hours = area * 12h/kvm)
+  const isBathroom = descLower.includes('badrum') || descLower.includes('våtrum');
+  if (isBathroom && measurements.area) {
+    console.log('🛁 Using deterministic bathroom renovation calculation');
+    
+    const area = parseFloat(measurements.area.toString());
+    const hoursPerSqm = 12; // Branschstandard för badrumsrenovering
+    const totalHours = Math.round(area * hoursPerSqm);
+    
+    // Arbetsfördelning: VVS 40%, Plattsättare 35%, El 15%, Snickare 10%
+    const vvsHours = Math.round(totalHours * 0.40);
+    const plattsattareHours = Math.round(totalHours * 0.35);
+    const elHours = Math.round(totalHours * 0.15);
+    const snickareHours = Math.round(totalHours * 0.10);
+    
+    const workHours = {
+      'VVS': vvsHours,
+      'Plattsättare': plattsattareHours,
+      'Elektriker': elHours,
+      'Snickare': snickareHours
+    };
+    
+    // Beräkna arbetskostnad
+    const vvsRate = hourlyRatesByType['VVS'] || 900;
+    const plattsattareRate = hourlyRatesByType['Plattsättare'] || 750;
+    const elRate = hourlyRatesByType['Elektriker'] || 850;
+    const snickareRate = hourlyRatesByType['Snickare'] || 700;
+    
+    const workCost = (vvsHours * vvsRate) + (plattsattareHours * plattsattareRate) + 
+                     (elHours * elRate) + (snickareHours * snickareRate);
+    
+    // Material: 65% av arbetskostnad (badrum har dyrt material - kakel, klinker, VVS)
+    const materialRatio = suggestedMaterialRatio || MATERIAL_RATIOS['badrum'] || 0.65;
+    const materialCost = Math.round(workCost * materialRatio);
+    
+    console.log('✅ Deterministic bathroom calculation:', {
+      area,
+      totalHours,
+      workDistribution: workHours,
+      workCost,
+      materialCost,
+      materialRatio: (materialRatio * 100).toFixed(0) + '%'
+    });
+    
+    return {
+      workHours,
+      materialCost,
+      equipmentCost: 0,
+      hourlyRatesByType
+    };
+  }
+  
+  // 3. KÖKSRENOVERING (hours = area * 10h/kvm)
+  const isKitchen = descLower.includes('kök');
+  if (isKitchen && measurements.area) {
+    console.log('🍳 Using deterministic kitchen renovation calculation');
+    
+    const area = parseFloat(measurements.area.toString());
+    const hoursPerSqm = 10;
+    const totalHours = Math.round(area * hoursPerSqm);
+    
+    // Arbetsfördelning: Snickare 45%, VVS 25%, El 20%, Plattsättare 10%
+    const snickareHours = Math.round(totalHours * 0.45);
+    const vvsHours = Math.round(totalHours * 0.25);
+    const elHours = Math.round(totalHours * 0.20);
+    const plattsattareHours = Math.round(totalHours * 0.10);
+    
+    const workHours = {
+      'Snickare': snickareHours,
+      'VVS': vvsHours,
+      'Elektriker': elHours,
+      'Plattsättare': plattsattareHours
+    };
+    
+    const snickareRate = hourlyRatesByType['Snickare'] || 700;
+    const vvsRate = hourlyRatesByType['VVS'] || 900;
+    const elRate = hourlyRatesByType['Elektriker'] || 850;
+    const plattsattareRate = hourlyRatesByType['Plattsättare'] || 750;
+    
+    const workCost = (snickareHours * snickareRate) + (vvsHours * vvsRate) + 
+                     (elHours * elRate) + (plattsattareHours * plattsattareRate);
+    
+    // Material: 70% av arbetskostnad (kök har mycket dyr material - vitvaror, skåp, bänkskivor)
+    const materialRatio = suggestedMaterialRatio || MATERIAL_RATIOS['kok'] || 0.70;
+    const materialCost = Math.round(workCost * materialRatio);
+    
+    console.log('✅ Deterministic kitchen calculation:', {
+      area,
+      totalHours,
+      workDistribution: workHours,
+      workCost,
+      materialCost,
+      materialRatio: (materialRatio * 100).toFixed(0) + '%'
+    });
+    
+    return {
+      workHours,
+      materialCost,
+      equipmentCost: 0,
+      hourlyRatesByType
+    };
+  }
+  
+  // 4. MÅLNING (hours = area * 0.5h/kvm)
+  const isPainting = descLower.includes('mål') || descLower.includes('färg');
+  if (isPainting && measurements.area) {
+    console.log('🎨 Using deterministic painting calculation');
+    
+    const area = parseFloat(measurements.area.toString());
+    const hoursPerSqm = 0.5;
+    const totalHours = Math.round(area * hoursPerSqm);
+    
+    const workHours = {
+      'Målare': totalHours
+    };
+    
+    const malareRate = hourlyRatesByType['Målare'] || 650;
+    const workCost = totalHours * malareRate;
+    
+    // Material: 20% av arbetskostnad (färg är relativt billigt)
+    const materialRatio = suggestedMaterialRatio || MATERIAL_RATIOS['malning'] || 0.20;
+    const materialCost = Math.round(workCost * materialRatio);
+    
+    console.log('✅ Deterministic painting calculation:', {
+      area,
+      totalHours,
+      workCost,
+      materialCost,
+      materialRatio: (materialRatio * 100).toFixed(0) + '%'
+    });
+    
+    return {
+      workHours,
+      materialCost,
+      equipmentCost: 0,
+      hourlyRatesByType
+    };
+  }
+  
+  // 5. ALTAN/DÄCK (hours = area * 4h/kvm)
+  const isDeck = descLower.includes('altan') || descLower.includes('däck') || descLower.includes('uteplats');
+  if (isDeck && measurements.area) {
+    console.log('🪵 Using deterministic deck calculation');
+    
+    const area = parseFloat(measurements.area.toString());
+    const hoursPerSqm = 4;
+    const totalHours = Math.round(area * hoursPerSqm);
+    
+    const workHours = {
+      'Snickare': totalHours
+    };
+    
+    const snickareRate = hourlyRatesByType['Snickare'] || 700;
+    const workCost = totalHours * snickareRate;
+    
+    // Material: 50% av arbetskostnad (virke, beslag)
+    const materialRatio = suggestedMaterialRatio || MATERIAL_RATIOS['altan'] || 0.50;
+    const materialCost = Math.round(workCost * materialRatio);
+    
+    console.log('✅ Deterministic deck calculation:', {
+      area,
+      totalHours,
+      workCost,
+      materialCost,
+      materialRatio: (materialRatio * 100).toFixed(0) + '%'
+    });
+    
+    return {
+      workHours,
+      materialCost,
+      equipmentCost: 0,
+      hourlyRatesByType
+    };
+  }
+  
+  // 6. FÖNSTERPUTSNING (hours = quantity * 0.5h/fönster)
+  const isWindowCleaning = descLower.includes('fönster');
+  if (isWindowCleaning && measurements.quantity) {
+    console.log('🪟 Using deterministic window cleaning calculation');
+    
+    const quantity = parseInt(measurements.quantity.toString());
+    const hoursPerWindow = 0.5;
+    const totalHours = Math.round(quantity * hoursPerWindow);
+    
+    const workHours = {
+      'Fönsterputsare': totalHours
+    };
+    
+    const fonsterputsareRate = hourlyRatesByType['Fönsterputsare'] || 450;
+    const workCost = totalHours * fonsterputsareRate;
+    
+    // Material: 5% av arbetskostnad (minimal material för fönsterputs)
+    const materialRatio = suggestedMaterialRatio || MATERIAL_RATIOS['Fönsterputsare'] || 0.05;
+    const materialCost = Math.round(workCost * materialRatio);
+    
+    console.log('✅ Deterministic window cleaning calculation:', {
+      quantity,
+      totalHours,
+      workCost,
+      materialCost,
+      materialRatio: (materialRatio * 100).toFixed(0) + '%'
+    });
+    
+    return {
+      workHours,
+      materialCost,
+      equipmentCost: 0,
+      hourlyRatesByType
+    };
+  }
+  
   // ============================================
-  // ORIGINAL AI-BASERAD BERÄKNING (för andra projekt)
+  // FALLBACK: AI-BASERAD BERÄKNING (för "exotiska" projekt)
   // ============================================
+  console.log('⚠️ Using AI-based calculation (no deterministic rule matched)');
   const ratesContext = hourlyRates && hourlyRates.length > 0
     ? `Timpriserna är: ${hourlyRates.map(r => `${r.work_type}: ${r.rate} kr/h`).join(', ')}`
     : 'Standardpris: 650 kr/h';
@@ -1647,13 +1863,7 @@ Input: "Bygga altan"
     };
   }
   
-  // Map hourly rates to dictionary for easier validation
-  const hourlyRatesByType: { [key: string]: number } = {};
-  if (hourlyRates && hourlyRates.length > 0) {
-    hourlyRates.forEach(r => {
-      hourlyRatesByType[r.work_type] = r.rate;
-    });
-  }
+  // Använd redan definierad hourlyRatesByType från funktionens början
 
   // Beräkna totaler
   let workCost = 0;
@@ -2159,11 +2369,32 @@ Lägg till dem i materials-array med dessa standardpriser:
 
     const personalContext = buildPersonalContext(userPatterns);
 
-    // Build deduction info based on type
-    const deductionInfo = finalDeductionType === 'rot' 
-      ? `ROT-avdrag: 50% av arbetskostnaden (max 50 000 kr per person/år). Gäller renovering, reparation, ombyggnad.`
+    // FIX #4: Placeholder values (will be calculated after baseTotals)
+    let preCalculatedWorkCost = 0;
+    let expectedDeductionAmount = 0;
+    let expectedCustomerPays = 0;
+
+    // Build deduction info based on type (will be updated after baseTotals)
+    let deductionInfo = finalDeductionType === 'rot' 
+      ? `ROT-avdrag: ${deductionRate * 100}% av arbetskostnaden inkl. moms (max ${totalMaxRot} kr för ${numberOfRecipients} person${numberOfRecipients > 1 ? 'er' : ''}). Gäller renovering, reparation, ombyggnad.
+
+**FIX #4: FÖRBERÄKNADE VÄRDEN FÖR DETTA PROJEKT:**
+• Arbetskostnad (exkl moms): ${preCalculatedWorkCost} kr
+• Arbetskostnad (inkl moms): ${Math.round(preCalculatedWorkCost * 1.25)} kr
+• ROT-avdrag (${deductionRate * 100}%): ${expectedDeductionAmount} kr
+• Kund betalar (efter ROT-avdrag): ${expectedCustomerPays} kr
+
+→ ANVÄND EXAKT dessa siffror när du beskriver ROT-avdraget i din offert!`
       : finalDeductionType === 'rut'
-      ? `RUT-avdrag: 50% av arbetskostnaden (max 75 000 kr per person/år). Gäller städning, underhåll, trädgård, hemservice.`
+      ? `RUT-avdrag: ${deductionRate * 100}% av arbetskostnaden inkl. moms (max ${totalMaxRut} kr för ${numberOfRecipients} person${numberOfRecipients > 1 ? 'er' : ''}). Gäller städning, underhåll, trädgård, hemservice.
+
+**FIX #4: FÖRBERÄKNADE VÄRDEN FÖR DETTA PROJEKT:**
+• Arbetskostnad (exkl moms): ${preCalculatedWorkCost} kr
+• Arbetskostnad (inkl moms): ${Math.round(preCalculatedWorkCost * 1.25)} kr
+• RUT-avdrag (${deductionRate * 100}%): ${expectedDeductionAmount} kr
+• Kund betalar (efter RUT-avdrag): ${expectedCustomerPays} kr
+
+→ ANVÄND EXAKT dessa siffror när du beskriver RUT-avdraget i din offert!`
       : `Inget skatteavdrag tillämpas på detta arbete.`;
 
     // NYTT: Unified question phase - EN enda frågefas
@@ -2290,6 +2521,54 @@ Lägg till dem i materials-array med dessa standardpriser:
       proactiveCheck.suggestedMaterialRatio // FAS 3.6: Använd justerad ratio från proaktiv check
     );
     console.log('Base totals calculated:', baseTotals);
+    
+    // ==========================================
+    // FIX #4: BERÄKNA ROT/RUT FÖRE AI-GENERERING
+    // ==========================================
+    console.log('🧮 FIX #4: Pre-calculating ROT/RUT deduction for AI prompt...');
+    
+    // Beräkna arbetskostnad från baseTotals
+    preCalculatedWorkCost = Object.entries(baseTotals.workHours).reduce((sum, [type, hours]) => {
+      const rate = baseTotals.hourlyRatesByType[type] || 650;
+      return sum + ((hours as number) * rate);
+    }, 0);
+    
+    if (finalDeductionType === 'rot' || finalDeductionType === 'rut') {
+      const workCostInclVAT = preCalculatedWorkCost * 1.25;
+      const maxDeduction = finalDeductionType === 'rot' ? totalMaxRot : totalMaxRut;
+      expectedDeductionAmount = Math.min(Math.round(workCostInclVAT * deductionRate), maxDeduction);
+      
+      const materialCost = baseTotals.materialCost + baseTotals.equipmentCost;
+      const totalBeforeVAT = preCalculatedWorkCost + materialCost;
+      const totalWithVAT = totalBeforeVAT + Math.round(totalBeforeVAT * 0.25);
+      expectedCustomerPays = totalWithVAT - expectedDeductionAmount;
+      
+      console.log(`✅ Pre-calculated ${finalDeductionType.toUpperCase()} deduction:`, {
+        workCost: preCalculatedWorkCost,
+        workCostInclVAT,
+        deductionAmount: expectedDeductionAmount,
+        customerPays: expectedCustomerPays
+      });
+      
+      // Update deductionInfo with calculated values
+      deductionInfo = finalDeductionType === 'rot' 
+        ? `ROT-avdrag: ${deductionRate * 100}% av arbetskostnaden inkl. moms (max ${totalMaxRot} kr). Gäller renovering, reparation, ombyggnad.
+
+**FIX #4: FÖRBERÄKNADE VÄRDEN:**
+• Arbetskostnad: ${preCalculatedWorkCost} kr (exkl moms), ${Math.round(preCalculatedWorkCost * 1.25)} kr (inkl moms)
+• ROT-avdrag: ${expectedDeductionAmount} kr
+• Kund betalar: ${expectedCustomerPays} kr
+
+→ ANVÄND EXAKT dessa siffror!`
+        : `RUT-avdrag: ${deductionRate * 100}% av arbetskostnaden inkl. moms (max ${totalMaxRut} kr). Gäller städning, underhåll, trädgård.
+
+**FIX #4: FÖRBERÄKNADE VÄRDEN:**
+• Arbetskostnad: ${preCalculatedWorkCost} kr (exkl moms), ${Math.round(preCalculatedWorkCost * 1.25)} kr (inkl moms)
+• RUT-avdrag: ${expectedDeductionAmount} kr
+• Kund betalar: ${expectedCustomerPays} kr
+
+→ ANVÄND EXAKT dessa siffror!`;
+    }
     
     // Om diameter uppskattades automatiskt, spara info för varning senare
     let diameterWarning: string | undefined;
@@ -2582,9 +2861,72 @@ Lägg till dem i materials-array med dessa standardpriser:
 
 5. **FÖLJ DETALJNIVÅ "${detailLevel}"**
    ${detailLevel === 'quick' ? '→ 2-3 arbetsposter, 3-5 material, notes <100 tecken' : ''}
-   ${detailLevel === 'standard' ? '→ 4-6 arbetsposter, 5-10 material, notes 200-300 tecken' : ''}
+   ${detailLevel === 'standard' ? '→ MINST 4 arbetsposter (helst 4-6), MINST 5 material (helst 5-10), notes 200-300 tecken' : ''}
    ${detailLevel === 'detailed' ? '→ 6-10 arbetsposter, 10-15 material, notes 500-800 tecken med fasindelning' : ''}
    ${detailLevel === 'construction' ? '→ 10-15 arbetsposter (inkl. projektledning), 15-25 material, notes 1200-2000 tecken med projektledning+tidsplan+garanti+besiktning' : ''}
+
+**═══════════════════════════════════════════════════════════════**
+**FIX #1 & #3: PRE-SUBMISSION CHECKLIST (KONTROLLERA INNAN DU SKICKAR!)**
+**═══════════════════════════════════════════════════════════════**
+
+INNAN du anropar create_quote, VERIFIERA ALLTID detta:
+
+${detailLevel === 'standard' ? `
+FÖR "STANDARD" DETALJNIVÅ:
+✓ workItems: Har jag 4-6 poster? (MINST 4, helst fler)
+   → Om du har färre än 4: DELA UPP arbetet i mer specifika poster
+   → Exempel: Istället för "Målning 10h", dela upp i "Förberedelse 3h", "Grundmålning 4h", "Slutmålning 3h"
+   
+✓ materials: Har jag 5-10 poster? (MINST 5, helst fler)
+   → Om du har färre än 5: SPECIFICERA mer detaljerat
+   → Exempel: Istället för "Material 5000kr", dela upp i "Färg 2000kr", "Spackel 800kr", "Förbrukning 1200kr", "Skyddsmaterial 600kr", "Verktyg 400kr"
+` : ''}
+
+${detailLevel === 'quick' ? `
+FÖR "QUICK" DETALJNIVÅ:
+✓ workItems: 2-3 poster är OK (kortfattade)
+✓ materials: 3-5 poster är OK (samlade kategorier)
+` : ''}
+
+${detailLevel === 'detailed' ? `
+FÖR "DETAILED" DETALJNIVÅ:
+✓ workItems: 6-10 poster (mycket specifika)
+✓ materials: 10-15 poster (mycket detaljerade)
+✓ notes: 500-800 tecken med fasindelning
+` : ''}
+
+✓ notes: Är längden 200-300 tecken för "standard"?
+   → Om för kort: Lägg till mer information om vad som ingår
+   → Om för lång: Korta ner men behåll viktig info
+
+✓ workHours: Matchar summan av alla workItems.hours mot baseTotals?
+   → Räkna: ${Object.entries(baseTotals.workHours).map(([type, h]) => `${type}: ${h}h`).join(' + ')} = ${baseTotals.totalHours}h
+   → workItems hours-summa MÅSTE vara EXAKT ${baseTotals.totalHours}h
+
+✓ materialCost: Matchar summan av materials.subtotal mot baseTotals.materialCost?
+   → materials.subtotal summa MÅSTE vara ${baseTotals.materialCost + baseTotals.equipmentCost} kr
+
+OM NÅGOT INTE STÄMMER → ÅTGÄRDA DET innan du anropar create_quote!
+
+**EXEMPEL PÅ KORREKT "STANDARD" OFFERT:**
+workItems (4-6 poster):
+- Förberedelse och planering: 2h × 700 kr/h = 1400 kr
+- Grundarbete: 5h × 700 kr/h = 3500 kr
+- Huvudarbete: 8h × 700 kr/h = 5600 kr
+- Finputsning och städning: 3h × 700 kr/h = 2100 kr
+
+materials (5-10 poster):
+- Huvudmaterial: 5000 kr
+- Förbrukningsmaterial: 2000 kr
+- Fästmaterial: 800 kr
+- Skyddsutrustning: 500 kr
+- Verktyg och redskap: 700 kr
+
+notes (200-300 tecken):
+"Offerten omfattar komplett [projekttyp] enligt beskrivning. Priset inkluderar material, arbete och utrustning. ROT/RUT-avdrag är redan avdraget. Arbetet beräknas ta X dagar. Vi ansvarar för alla moment från start till färdig och städad arbetsplats."
+
+**═══════════════════════════════════════════════════════════════**
+
 
 ${personalContext}
 
