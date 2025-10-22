@@ -599,32 +599,52 @@ function validateQuoteOutput(quote: any, baseTotals: any, hourlyRatesByType?: { 
   return { valid: errors.length === 0, errors };
 }
 
-// Auto-correct function to force mathematical consistency
+// IMPROVED: Auto-correct function with smart repair capabilities
+// Försöker reparera AI:ns offert istället för att bygga ny generisk
 function autoCorrectQuote(quote: any, baseTotals: any): any {
   const correctedQuote = JSON.parse(JSON.stringify(quote)); // Deep clone
   
-  // Force correct work hours distribution
+  console.log('🔧 Smart repair: Analyserar AI:ns offert...');
+  
+  // 1. Handle missing or incorrect work items
   Object.entries(baseTotals.workHours).forEach(([type, expectedHours]) => {
     const typeItems = correctedQuote.workItems.filter((item: any) => 
       item.name.startsWith(type + ' -') || item.name === type
     );
     
-    if (typeItems.length > 0) {
-      const totalActualHours = typeItems.reduce((sum: number, item: any) => sum + item.hours, 0);
-      const ratio = (expectedHours as number) / totalActualHours;
-      
-      typeItems.forEach((item: any) => {
-        item.hours = Math.round(item.hours * ratio * 10) / 10;
-        item.subtotal = item.hours * item.hourlyRate;
+    if (typeItems.length === 0) {
+      // Missing work type completely - ADD new generic work item
+      console.log(`  → Lägger till saknad arbetstyp: ${type} (${expectedHours}h)`);
+      const hourlyRate = baseTotals.hourlyRatesByType[type] || 750;
+      correctedQuote.workItems.push({
+        name: `${type} - Arbete`,
+        description: `${type}arbete enligt offert`,
+        hours: expectedHours,
+        hourlyRate: hourlyRate,
+        subtotal: Math.round((expectedHours as number) * hourlyRate)
       });
+    } else if (typeItems.length > 0) {
+      // Work type exists but wrong hours - ADJUST proportionally
+      const totalActualHours = typeItems.reduce((sum: number, item: any) => sum + item.hours, 0);
+      
+      if (Math.abs(totalActualHours - (expectedHours as number)) > 0.5) {
+        console.log(`  → Justerar ${type}: ${totalActualHours}h → ${expectedHours}h`);
+        const ratio = (expectedHours as number) / totalActualHours;
+        
+        typeItems.forEach((item: any) => {
+          item.hours = Math.round(item.hours * ratio * 10) / 10;
+          item.subtotal = Math.round(item.hours * item.hourlyRate);
+        });
+      }
     }
   });
   
-  // Force correct material cost
+  // 2. Force correct material cost (behåll befintlig logik)
   const expectedMaterialCost = baseTotals.materialCost + baseTotals.equipmentCost;
   const actualMaterialCost = correctedQuote.materials.reduce((sum: number, m: any) => sum + m.subtotal, 0);
   
-  if (actualMaterialCost > 0) {
+  if (actualMaterialCost > 0 && Math.abs(actualMaterialCost - expectedMaterialCost) > 100) {
+    console.log(`  → Justerar materialkostnad: ${actualMaterialCost} kr → ${expectedMaterialCost} kr`);
     const materialRatio = expectedMaterialCost / actualMaterialCost;
     correctedQuote.materials.forEach((item: any) => {
       item.subtotal = Math.round(item.subtotal * materialRatio);
@@ -632,12 +652,14 @@ function autoCorrectQuote(quote: any, baseTotals: any): any {
     });
   }
   
-  // Recalculate summary
+  // 3. Recalculate all summaries
   correctedQuote.summary.workCost = correctedQuote.workItems.reduce((sum: number, w: any) => sum + w.subtotal, 0);
   correctedQuote.summary.materialCost = correctedQuote.materials.reduce((sum: number, m: any) => sum + m.subtotal, 0);
   correctedQuote.summary.totalBeforeVAT = correctedQuote.summary.workCost + correctedQuote.summary.materialCost;
   correctedQuote.summary.vat = Math.round(correctedQuote.summary.totalBeforeVAT * 0.25);
   correctedQuote.summary.totalWithVAT = correctedQuote.summary.totalBeforeVAT + correctedQuote.summary.vat;
+  
+  console.log('✅ Smart repair klar - AI:ns beskrivningar bevarade');
   
   return correctedQuote;
 }
@@ -2888,7 +2910,7 @@ Viktig information:
       generatedQuote = repairedQuote;
     }
     
-    // VALIDATION: Only mathematical validation (no retry loop)
+    // IMPROVED VALIDATION: Try smart repair first, fallback only as last resort
     console.log('Validating quote output...');
     const validation = validateQuoteOutput(generatedQuote, baseTotals, baseTotals.hourlyRatesByType, detailLevel);
     
@@ -2897,46 +2919,36 @@ Viktig information:
     if (!validation.valid) {
       console.error('Quote validation failed:', validation.errors);
       
-      // Check if errors are minor and can be auto-corrected
-      const hasOnlyMinorErrors = validation.errors.every(err => 
-        err.includes('Material: Förväntade') || 
-        err.includes('Notes ska vara') ||
-        (err.includes('Ska ha') && err.includes('poster'))
-      );
+      // STEG 1: Försök smart reparera AI:ns offert
+      console.log('🔧 Försöker reparera AI:ns offert med autoCorrectQuote()...');
+      const smartRepairedQuote = autoCorrectQuote(generatedQuote, baseTotals);
       
-      if (hasOnlyMinorErrors) {
-        console.log('→ Applying auto-correction for minor errors...');
-        
-        // Fix material cost if needed
-        if (validation.errors.some(e => e.includes('Material: Förväntade'))) {
-          const expectedMaterialCost = baseTotals.materialCost + baseTotals.equipmentCost;
-          console.log(`→ Korrigerar materialkostnad till ${expectedMaterialCost} kr`);
-          finalQuote.summary.materialCost = expectedMaterialCost;
-          finalQuote.summary.totalBeforeVAT = finalQuote.summary.workCost + expectedMaterialCost;
-          finalQuote.summary.vat = Math.round(finalQuote.summary.totalBeforeVAT * 0.25);
-          finalQuote.summary.totalWithVAT = finalQuote.summary.totalBeforeVAT + finalQuote.summary.vat;
-        }
-        
-        console.log('✅ Auto-correction applied');
+      // Validera den reparerade offerten
+      const repairedValidation = validateQuoteOutput(smartRepairedQuote, baseTotals, baseTotals.hourlyRatesByType, detailLevel);
+      
+      if (repairedValidation.valid) {
+        console.log('✅ Smart repair lyckades - AI:ns beskrivningar bevarade!');
+        finalQuote = smartRepairedQuote;
+        allWarnings.push('ℹ️ Offerten justerades automatiskt för korrekt kalkyl');
       } else {
-        // ✅ FIX 3: Major errors → Använd FALLBACK istället för att fråga igen
-        console.error('❌ Major validation errors detected. Building fallback quote instead of asking again...');
+        // STEG 2: Smart repair misslyckades - använd fallback som sista utväg
+        console.error('❌ Smart repair failed, using fallback quote as last resort...');
+        console.error('Remaining errors:', repairedValidation.errors);
+        console.log('⚠️ Building fallback quote locally...');
         
         const fallbackQuote = buildFallbackQuote({
           description: completeDescription,
-          baseTotals,
+          baseTotals: baseTotals as any,
           detailLevel,
           hourlyRatesByType: baseTotals.hourlyRatesByType,
           finalDeductionType,
           deductionRate,
           totalMaxRot,
           totalMaxRut
-        });
+        } as any);
         
-        // Replace finalQuote with fallback and add warning
+        allWarnings.push('ℹ️ Offerten byggdes med standardmallar för att säkerställa korrekt kalkyl');
         finalQuote = fallbackQuote;
-        allWarnings.push('⚠️ Offerten skapades med automatisk korrigering på grund av valideringsfel i AI:ns ursprungliga utkast.');
-        console.log('✅ Fallback quote created successfully');
       }
     }
     
