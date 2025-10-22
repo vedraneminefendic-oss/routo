@@ -19,6 +19,7 @@ serve(async (req) => {
     const supabase = createClient(supabaseUrl, supabaseKey);
 
     console.log('🔄 Starting market data fetch...');
+    console.log('🤖 AI model (market-data):', 'openai/gpt-5-mini');
 
     // 1. Fetch SCB Construction Cost Index
     let inflationMultiplier = 1.0;
@@ -56,7 +57,7 @@ serve(async (req) => {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'google/gemini-2.5-flash',
+        model: 'openai/gpt-5-mini',
         messages: [
           {
             role: 'system',

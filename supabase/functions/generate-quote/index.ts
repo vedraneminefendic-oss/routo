@@ -8,6 +8,10 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+// AI Model Configuration
+const TEXT_MODEL = 'openai/gpt-5-mini'; // För bästa svenska språkstöd
+// const VISION_MODEL = 'google/gemini-2.5-flash'; // För framtida bildanalys
+
 // FAS 7: Industry-specific material to work cost ratios (FAS 3.6: REALISTISKA VÄRDEN)
 const MATERIAL_RATIOS: Record<string, number> = {
   'Snickare': 0.45,           // Virke, beslag, skruv
@@ -840,7 +844,7 @@ FULLSTÄNDIG KONTEXT: ${buildConversationSummary(conversationHistory, descriptio
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'google/gemini-2.5-flash',
+        model: TEXT_MODEL,
         messages: [{
           role: 'user',
           content: `Extrahera mått och kvantiteter från denna beskrivning: "${contextPrompt}"
@@ -1618,7 +1622,7 @@ Om du inte hittar exakt projekttyp i guiderna ovan:
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
-      model: 'google/gemini-2.5-flash',
+      model: TEXT_MODEL,
       messages: [
         {
           role: 'system',
@@ -1960,6 +1964,7 @@ serve(async (req) => {
     console.log('Description:', description);
     console.log('Deduction type requested:', deductionType);
     console.log('Conversation history length:', conversation_history?.length || 0);
+    console.log('🤖 AI model (text generation):', TEXT_MODEL);
 
     // Bestäm avdragssats baserat på datum (Fas 9B)
     const currentDate = new Date();
@@ -2799,7 +2804,7 @@ Lägg till dem i materials-array med dessa standardpriser:
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'google/gemini-2.5-flash',
+        model: TEXT_MODEL,
         tools: [{
           type: "function",
           function: {
@@ -3517,7 +3522,7 @@ async function detectDeductionType(description: string, apiKey: string): Promise
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'google/gemini-2.5-flash',
+        model: TEXT_MODEL,
         messages: [
           {
             role: 'system',
