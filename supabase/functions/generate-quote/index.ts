@@ -65,13 +65,62 @@ const INDUSTRY_BENCHMARKS: Record<string, {
   }
 };
 
-// Reality check validation against industry benchmarks
+// FAS 3 STEG 1: PRE-GENERATION VALIDATION
+// Validates BEFORE quote generation to catch issues early
+function validateBeforeGeneration(
+  measurements: any,
+  criticalFactors: string[],
+  conversationHistory: any[] | undefined,
+  description: string
+): { valid: boolean; missingInfo?: string[] } {
+  const missingInfo: string[] = [];
+  
+  // Build full conversation text for analysis
+  const fullConversationText = conversationHistory
+    ? conversationHistory.map(m => m.content).join(' ').toLowerCase()
+    : description.toLowerCase();
+  
+  // Check 1: Critical measurements present?
+  const needsMeasurements = fullConversationText.match(/(renovera|bygga|fälla|måla|lägga)/);
+  if (needsMeasurements) {
+    if (!measurements.area && !measurements.height && !measurements.quantity) {
+      missingInfo.push('Saknar kritiska mått (area, höjd eller antal)');
+    }
+  }
+  
+  // Check 2: Are critical factors answered?
+  if (criticalFactors.length > 0) {
+    const unansweredFactors = criticalFactors.filter(factor => {
+      const factorKeywords = factor.toLowerCase().match(/\w+/g) || [];
+      return !factorKeywords.some(kw => fullConversationText.includes(kw));
+    });
+    
+    if (unansweredFactors.length > 0 && conversationHistory && conversationHistory.length < 4) {
+      // Only flag if conversation is short and factors truly unanswered
+      missingInfo.push(`Obesvarade faktorer: ${unansweredFactors.slice(0, 2).join(', ')}`);
+    }
+  }
+  
+  // Check 3: Minimum description quality
+  if (description.length < 15) {
+    missingInfo.push('Beskrivningen är för kort för att generera en tillförlitlig offert');
+  }
+  
+  return {
+    valid: missingInfo.length === 0,
+    missingInfo: missingInfo.length > 0 ? missingInfo : undefined
+  };
+}
+
+// FAS 3 STEG 2: POST-GENERATION REALITY CHECK
+// Enhanced reality check with detailed warnings
 function performRealityCheck(
   quote: any,
   projectType: string,
   area?: number
-): { valid: boolean; reason?: string } {
+): { valid: boolean; reason?: string; warnings?: string[] } {
   const totalValue = quote.summary.totalBeforeVAT;
+  const warnings: string[] = [];
   
   // Map project description keywords to benchmark keys
   const projectLower = projectType.toLowerCase();
@@ -90,27 +139,49 @@ function performRealityCheck(
   }
   
   if (!benchmarkKey || !area) {
-    return { valid: true }; // Can't validate without benchmark or area
+    return { valid: true, warnings }; // Can't validate without benchmark or area
   }
   
   const benchmark = INDUSTRY_BENCHMARKS[benchmarkKey];
   const pricePerSqm = totalValue / area;
   
+  // Critical errors (invalid quote)
   if (pricePerSqm < benchmark.minPricePerSqm) {
     return {
       valid: false,
-      reason: `Priset ${Math.round(pricePerSqm)} kr/m² är orealistiskt lågt för ${projectType}. Branschnorm: ${benchmark.minPricePerSqm}-${benchmark.maxPricePerSqm} kr/m². Kontrollera material och arbetstid.`
+      reason: `Priset ${Math.round(pricePerSqm)} kr/m² är orealistiskt lågt för ${projectType}. Branschnorm: ${benchmark.minPricePerSqm}-${benchmark.maxPricePerSqm} kr/m². Kontrollera material och arbetstid.`,
+      warnings
     };
   }
   
   if (pricePerSqm > benchmark.maxPricePerSqm * 1.5) {
     return {
       valid: false,
-      reason: `Priset ${Math.round(pricePerSqm)} kr/m² är orealistiskt högt för ${projectType}. Branschnorm: ${benchmark.minPricePerSqm}-${benchmark.maxPricePerSqm} kr/m². Kontrollera om något dubbelräknats.`
+      reason: `Priset ${Math.round(pricePerSqm)} kr/m² är orealistiskt högt för ${projectType}. Branschnorm: ${benchmark.minPricePerSqm}-${benchmark.maxPricePerSqm} kr/m². Kontrollera om något dubbelräknats.`,
+      warnings
     };
   }
   
-  return { valid: true };
+  // Soft warnings (quote is valid but may need attention)
+  if (pricePerSqm < benchmark.minPricePerSqm * 1.2) {
+    warnings.push(`⚠️ Priset ligger i underkant (${Math.round(pricePerSqm)} kr/m²). Branschsnitt: ${benchmark.avgTotalPerSqm} kr/m²`);
+  }
+  
+  if (pricePerSqm > benchmark.maxPricePerSqm) {
+    warnings.push(`⚠️ Priset ligger över branschstandard (${Math.round(pricePerSqm)} kr/m² vs ${benchmark.maxPricePerSqm} kr/m²). Detta kan vara motiverat beroende på projektet.`);
+  }
+  
+  // Check material/work ratio
+  const materialRatio = quote.summary.materialCost / quote.summary.workCost;
+  if (materialRatio < 0.3 && benchmarkKey.includes('renovering')) {
+    warnings.push('⚠️ Material/arbete-ratio är låg. Kontrollera att alla materialkostnader är med.');
+  }
+  
+  if (materialRatio > 2) {
+    warnings.push('⚠️ Material/arbete-ratio är hög. Kontrollera att arbetskostnaden är korrekt.');
+  }
+  
+  return { valid: true, warnings: warnings.length > 0 ? warnings : undefined };
 }
 
 // Validation function to ensure AI output matches base totals
@@ -1912,6 +1983,50 @@ Lägg till dem i materials-array med dessa standardpriser:
     // Fall through to quote generation
     console.log('✅ Proceeding to quote generation...');
 
+    // FAS 3 STEG 1: PRE-GENERATION VALIDATION
+    console.log('🔍 Running pre-generation validation...');
+    
+    // Extract measurements and domain knowledge for validation
+    const preValidationMeasurements = await extractMeasurements(description, LOVABLE_API_KEY!);
+    const { criticalFactors } = getDomainKnowledge(description);
+    
+    const preValidation = validateBeforeGeneration(
+      preValidationMeasurements,
+      criticalFactors,
+      conversation_history,
+      description
+    );
+    
+    if (!preValidation.valid && preValidation.missingInfo) {
+      console.warn('⚠️ Pre-generation validation found issues:', preValidation.missingInfo);
+      
+      // Only block if critical information is truly missing and conversation is short
+      if (exchangeCount < 1 && preValidation.missingInfo.length > 0) {
+        console.log('→ Requesting additional clarification before generation');
+        
+        const clarificationQuestions = preValidation.missingInfo.map(info => {
+          if (info.includes('mått')) return 'Kan du ange ungefärliga mått eller storlek?';
+          if (info.includes('faktorer')) return 'Finns det några specifika detaljer om projektet jag bör veta?';
+          if (info.includes('kort')) return 'Kan du beskriva projektet lite mer detaljerat?';
+          return 'Kan du ge lite mer information?';
+        });
+        
+        return new Response(
+          JSON.stringify({
+            type: 'clarification',
+            message: 'För att skapa en tillförlitlig offert behöver jag lite mer information:',
+            questions: clarificationQuestions.slice(0, 2)
+          }),
+          { 
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+            status: 200 
+          }
+        );
+      }
+    }
+    
+    console.log('✅ Pre-generation validation passed');
+
     // Om vi kommer hit ska vi generera offert
     console.log('✅ Enough information gathered - generating quote...');
 
@@ -2640,6 +2755,38 @@ Viktig information:
       console.log('ℹ️ Sanity check skipped: Kunde inte identifiera specifik projekttyp');
     }
     
+    // FAS 3 STEG 2: POST-GENERATION REALITY CHECK
+    console.log('🔍 Performing post-generation reality check against benchmarks...');
+    
+    // Extract area from measurements if available
+    let realityCheckArea: number | undefined = undefined;
+    const realityCheckAreaMatch = completeDescription.match(/(\d+(?:[.,]\d+)?)\s*(kvm|m2|kvadratmeter|kvadrat)/i);
+    if (realityCheckAreaMatch) {
+      realityCheckArea = parseFloat(realityCheckAreaMatch[1].replace(',', '.'));
+    }
+    
+    const realityCheck = performRealityCheck(
+      generatedQuote,
+      completeDescription,
+      realityCheckArea
+    );
+    
+    const allWarnings: string[] = [];
+    
+    if (!realityCheck.valid) {
+      console.error('❌ Reality check failed:', realityCheck.reason);
+      allWarnings.push(`🚨 ${realityCheck.reason}`);
+    }
+    
+    if (realityCheck.warnings && realityCheck.warnings.length > 0) {
+      console.log('⚠️ Reality check warnings:', realityCheck.warnings);
+      allWarnings.push(...realityCheck.warnings);
+    }
+    
+    if (realityCheck.valid) {
+      console.log('✅ Reality check passed - quote is within industry standards');
+    }
+    
     // VALIDATION: Only mathematical validation (no retry loop)
     console.log('Validating quote output...');
     const validation = validateQuoteOutput(generatedQuote, baseTotals, baseTotals.hourlyRatesByType, detailLevel);
@@ -2727,18 +2874,6 @@ Viktig information:
 
     console.log('Generated quote successfully with detail level:', detailLevel);
     
-    // REALITY CHECK: Validate against industry benchmarks
-    const areaMatch = description.match(/(\d+(?:[.,]\d+)?)\s*(?:kvm|m2|kvadratmeter|kvadrat|m²)/i);
-    const extractedArea = areaMatch ? parseFloat(areaMatch[1].replace(',', '.')) : undefined;
-    
-    let realityCheckResult: { valid: boolean; reason?: string } = { valid: true };
-    if (extractedArea) {
-      realityCheckResult = performRealityCheck(finalQuote, description, extractedArea);
-      if (!realityCheckResult.valid) {
-        console.warn('⚠️ REALITY CHECK FAILED:', realityCheckResult.reason);
-      }
-    }
-    
     // Prepare response with quality indicators
     const responseData: any = {
       type: 'complete_quote',  // VIKTIGT: Lägg till type för frontend
@@ -2749,7 +2884,8 @@ Viktig information:
       deductionType: finalDeductionType,
       usedReference: referenceQuotes.length > 0,
       referenceTitle: referenceQuotes[0]?.title || undefined,
-      learningMetadata // Include learning metadata for frontend
+      learningMetadata, // Include learning metadata for frontend
+      warnings: allWarnings.length > 0 ? allWarnings : undefined // Add reality check warnings
     };
     
     // Quality metadata (simplified - no warnings in new flow)
