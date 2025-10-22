@@ -10,8 +10,8 @@ const corsHeaders = {
 
 // AI Model Configuration (OPTIMIZED FOR SPEED)
 const TEXT_MODEL = 'openai/gpt-5-mini'; // Main generation model - Best Swedish comprehension
-const EXTRACTION_MODEL = 'google/gemini-2.5-flash-lite'; // Fastest for simple extraction
-const MAX_AI_TIME = 12000; // 12 seconds max for AI steps
+const EXTRACTION_MODEL = 'openai/gpt-5-nano'; // Fast & reliable extraction with Swedish support
+const MAX_AI_TIME = 18000; // 18 seconds max for AI steps (increased for reliability)
 
 // FAS 7: Industry-specific material to work cost ratios (FAS 3.6: REALISTISKA VÄRDEN)
 const MATERIAL_RATIOS: Record<string, number> = {
@@ -2007,7 +2007,18 @@ Input: "Bygga altan"
   let result;
   try {
     const data = await response.json();
-    result = JSON.parse(data.choices[0].message.content);
+    let contentStr = data.choices[0].message.content;
+    
+    // Log for debugging
+    console.log('🔍 Raw AI response (first 200 chars):', contentStr.substring(0, 200));
+    
+    // Try to extract JSON if there's extra text
+    const jsonMatch = contentStr.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+      contentStr = jsonMatch[0];
+    }
+    
+    result = JSON.parse(contentStr);
   } catch (parseError) {
     console.error('⚠️ JSON parse error in calculateBaseTotals:', parseError);
     console.log('⚠️ Using degraded mode for base totals calculation');
@@ -3554,10 +3565,32 @@ Viktig information:
     try {
       if (data.choices[0].message.tool_calls && data.choices[0].message.tool_calls[0]) {
         // Tool calling response format
-        generatedQuote = JSON.parse(data.choices[0].message.tool_calls[0].function.arguments);
+        let argsStr = data.choices[0].message.tool_calls[0].function.arguments;
+        
+        // Log for debugging
+        console.log('🔍 Raw tool call arguments (first 200 chars):', argsStr.substring(0, 200));
+        
+        // Try to extract JSON if there's extra text
+        const jsonMatch = argsStr.match(/\{[\s\S]*\}/);
+        if (jsonMatch) {
+          argsStr = jsonMatch[0];
+        }
+        
+        generatedQuote = JSON.parse(argsStr);
       } else {
         // Fallback to old format if tool calling not used
-        generatedQuote = JSON.parse(data.choices[0].message.content);
+        let contentStr = data.choices[0].message.content;
+        
+        // Log for debugging
+        console.log('🔍 Raw content (first 200 chars):', contentStr.substring(0, 200));
+        
+        // Try to extract JSON if there's extra text
+        const jsonMatch = contentStr.match(/\{[\s\S]*\}/);
+        if (jsonMatch) {
+          contentStr = jsonMatch[0];
+        }
+        
+        generatedQuote = JSON.parse(contentStr);
       }
     } catch (parseError) {
       console.error('Failed to parse AI response:', parseError);
@@ -3885,7 +3918,25 @@ Returnera ENDAST ett JSON-objekt med detta format:
     }
 
     const data = await response.json();
-    const result = JSON.parse(data.choices[0].message.content);
+    
+    let result;
+    try {
+      let contentStr = data.choices[0].message.content;
+      
+      // Log for debugging
+      console.log('🔍 Raw deduction detection response (first 200 chars):', contentStr.substring(0, 200));
+      
+      // Try to extract JSON if there's extra text
+      const jsonMatch = contentStr.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        contentStr = jsonMatch[0];
+      }
+      
+      result = JSON.parse(contentStr);
+    } catch (parseError) {
+      console.warn('Failed to parse deduction type response:', parseError);
+      return 'rot'; // Default fallback
+    }
     
     if (result.type === 'rot' || result.type === 'rut' || result.type === 'none') {
       return result.type;

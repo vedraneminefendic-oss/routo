@@ -202,6 +202,14 @@ export const ChatInterface = ({ onQuoteGenerated, isGenerating }: ChatInterfaceP
         if (error) {
           console.error('Generate quote error:', error);
           
+          // Check for rate limit or payment errors (402/429)
+          if (error.message?.includes('429') || error.message?.toLowerCase().includes('rate limit')) {
+            throw new Error('För många förfrågningar. Vänta en stund och försök igen.');
+          }
+          if (error.message?.includes('402') || error.message?.toLowerCase().includes('payment')) {
+            throw new Error('AI-krediter är slut. Fyll på krediter i Settings → Workspace → Usage.');
+          }
+          
           // Check for specific error types
           if (error.message?.includes('Failed to fetch') || error.message?.includes('NetworkError')) {
             throw new Error('NETWORK_ERROR');
