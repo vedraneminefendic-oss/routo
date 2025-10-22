@@ -13,6 +13,11 @@ const TEXT_MODEL = 'openai/gpt-5-mini'; // Main generation model - Best Swedish 
 const EXTRACTION_MODEL = 'openai/gpt-5-nano'; // Fast & reliable extraction with Swedish support
 const MAX_AI_TIME = 18000; // 18 seconds max for AI steps (increased for reliability)
 
+// Per-call timeouts
+const TIMEOUT_EXTRACT_MEASUREMENTS = 4000; // 4s for measurements
+const TIMEOUT_DETECT_DEDUCTION = 4000; // 4s for deduction
+const TIMEOUT_MAIN_GENERATION = 10000; // 10s for main quote generation
+
 // FAS 7: Industry-specific material to work cost ratios (FAS 3.6: REALISTISKA VÄRDEN)
 const MATERIAL_RATIOS: Record<string, number> = {
   'Snickare': 0.45,           // Virke, beslag, skruv
@@ -196,6 +201,35 @@ async function fetchLearningContext(supabaseClient: any, userId: string, session
   }
   
   return context;
+}
+
+// Rule-based deduction detection for obvious cases
+function detectDeductionByRules(description: string): 'rot' | 'rut' | null {
+  const descLower = description.toLowerCase();
+  
+  // ROT keywords (renovation/construction/repair)
+  const rotKeywords = ['badrum', 'kök', 'renovera', 'renovering', 'ombyggnad', 'bygg', 
+    'måla', 'målning', 'golv', 'golvlägg', 'tak', 'fasad', 'altan', 'balkong', 
+    'fönster', 'dörr', 'kakel', 'klinker', 'tapet', 'spackel', 'puts'];
+  
+  // RUT keywords (cleaning/maintenance/garden)
+  const rutKeywords = ['städ', 'storstäd', 'flyttstäd', 'fönsterputsning', 'fönsterputs',
+    'trädgård', 'gräsklippning', 'häck', 'snöröjning', 'löv', 'ogräs', 'plantering'];
+  
+  const hasRot = rotKeywords.some(kw => descLower.includes(kw));
+  const hasRut = rutKeywords.some(kw => descLower.includes(kw));
+  
+  if (hasRot && !hasRut) {
+    console.log('🎯 Rule-based deduction: ROT (renovation detected)');
+    return 'rot';
+  }
+  if (hasRut && !hasRot) {
+    console.log('🎯 Rule-based deduction: RUT (cleaning/garden detected)');
+    return 'rut';
+  }
+  
+  // Ambiguous or unclear → return null to trigger AI
+  return null;
 }
 
 // FAS 5: Enhanced PROACTIVE REALITY CHECK with learning
@@ -809,7 +843,7 @@ function getDomainKnowledge(description: string): {
   return { workType: 'general', criticalFactors: [] };
 }
 
-// IMPROVED: Extract measurements with full conversation context
+// IMPROVED: Extract measurements with full conversation context (WITH TIMEOUT)
 async function extractMeasurements(
   description: string,
   apiKey: string,
@@ -823,6 +857,9 @@ async function extractMeasurements(
   ambiguous: boolean;
   clarificationNeeded?: string;
 }> {
+  const startTime = Date.now();
+  console.log('⏱️ Starting measurement extraction');
+  
   try {
     // Build context-aware prompt with full conversation
     let contextPrompt = description;
@@ -833,47 +870,36 @@ async function extractMeasurements(
         .map(m => m.content);
       
       if (userMessages.length > 1) {
-        contextPrompt = `KONVERSATION:
-Huvudförfrågan: "${userMessages[0]}"
-Förtydliganden: "${userMessages.slice(1).join('. ')}"
-
-FULLSTÄNDIG KONTEXT: ${buildConversationSummary(conversationHistory, description)}`;
+        contextPrompt = userMessages.join('. ');
       }
     }
     
+    // AbortController for timeout
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), TIMEOUT_EXTRACT_MEASUREMENTS);
+    
     const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+      signal: controller.signal,
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${apiKey}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: EXTRACTION_MODEL, // Fas 4: Snabbare modell för data-extraktion
+        model: EXTRACTION_MODEL,
+        max_completion_tokens: 200,
         messages: [{
           role: 'user',
-          content: `Extrahera mått och kvantiteter från denna beskrivning: "${contextPrompt}"
+          content: `Extrahera mått från: "${contextPrompt}"
 
-VIKTIGT REGLER:
-1. Sätter ENDAST ambiguous=true om mått verkligen saknas eller är otydliga
-2. Om tydliga mått finns → ambiguous=false
-3. Om flera objekt nämns med samma mått, anta att det gäller för alla
-4. ANVÄND HELA KONVERSATIONEN för att förstå vad mått avser
+Regler:
+- ambiguous=true endast om mått verkligen saknas
+- Om tydliga mått finns → ambiguous=false
 
-FÖR TRÄD/TRÄDFÄLLNING:
-- Om höjd finns men ej diameter → fråga: "Vilken diameter/tjocklek har stammen vid brösthöjd?"
-- Om diameter finns men ej höjd → fråga: "Hur höga är träden?"
-- Om varken höjd eller diameter finns → fråga: "Vilken höjd och diameter har träden?"
-
-EXEMPEL PÅ TYDLIGA MÅTT (ambiguous=false):
-✅ "renovera badrum 8 kvm" → { area: "8 kvm", ambiguous: false }
-✅ "två ekar 15 meter höga, 50cm diameter" → { quantity: 2, height: "15 meter", diameter: "50cm", ambiguous: false }
-✅ "fälla tre träd, 12m, 15m och 8m höga" → { quantity: 3, height: "12m, 15m, 8m", ambiguous: false }
-✅ Konversation: "Fälla träd" → "15 meter" → { height: "15 meter", ambiguous: false } (mått från andra meddelandet!)
-
-EXEMPEL PÅ TVETYDIGA MÅTT (ambiguous=true):
-❌ "renovera badrum" (ingen yta angiven)
-❌ "måla vardagsrum" (ingen yta angiven)
-❌ "fälla träd" (ingen höjd eller antal angivet)`
+Exempel:
+✅ "badrum 8 kvm" → {area:"8 kvm", ambiguous:false}
+✅ "tre träd, 15m höga" → {quantity:3, height:"15m", ambiguous:false}
+❌ "renovera badrum" → {ambiguous:true}`
         }],
         tools: [{
           type: 'function',
@@ -1130,6 +1156,7 @@ async function calculateBaseTotals(
   diameterEstimated?: string;
 }> {
   
+  const startTime = Date.now();
   console.log('📊 FIX #2: Calculating base totals with DETERMINISTIC logic');
   
   // FIX 1: Prioritize image analysis measurements, then pre-calculated, then extract
@@ -1143,8 +1170,11 @@ async function calculateBaseTotals(
         ambiguous: false
       };
     } else {
+      console.log('⏱️ Extracting measurements (not passed proactively)');
       measurements = await extractMeasurements(description, apiKey, conversationHistory);
     }
+  } else {
+    console.log('✅ Using pre-extracted measurements (skipping duplicate extraction)');
   }
   
   console.log('📐 Measurements:', {
@@ -2101,8 +2131,9 @@ Input: "Bygga altan"
   
   const totalHours = Object.values(result.workHours || {}).reduce((sum: number, h: any) => sum + h, 0);
   const totalCost = workCost + result.materialCost + result.equipmentCost;
-
-  console.log('✅ Base totals calculated:', { 
+  
+  const elapsed = Date.now() - startTime;
+  console.log(`✅ Base totals calculated in ${elapsed}ms:`, { 
     workHours: result.workHours, 
     materialCost: result.materialCost, 
     equipmentCost: result.equipmentCost,
@@ -2168,6 +2199,9 @@ serve(async (req) => {
     // Parse and validate request body
     const body = await req.json();
     const validatedData = requestSchema.parse(body);
+    
+    const requestStartTime = Date.now();
+    console.log('🚀 Quote generation request started');
 
     // Extract user_id from JWT token instead of trusting client
     const authHeader = req.headers.get('Authorization');
@@ -2247,18 +2281,56 @@ serve(async (req) => {
       SUPABASE_URL!,
       SUPABASE_SERVICE_ROLE_KEY!
     );
+    
+    // Build complete description EARLY for all subsequent use
+    const completeDescription = buildConversationSummary(conversation_history || [], description);
 
     // FAS 5: Fetch learning context (learned preferences, industry benchmarks, user patterns)
+    const contextStartTime = Date.now();
     console.log('📚 FAS 5: Fetching learning context...');
     const learningContext = await fetchLearningContext(
       supabaseClient, 
       user_id, 
       validatedData.sessionId
     );
-    logTiming('Learning context fetched');
+    console.log(`⏱️ Learning context fetched: ${Date.now() - contextStartTime}ms`);
+    console.log('👤 FAS 5: Loaded user patterns');
+    
+    // STEP 1: Try rule-based deduction first (FAST)
+    const deductionStartTime = Date.now();
+    let finalDeductionType = deductionType;
+    
+    if (finalDeductionType === 'auto') {
+      // Check cache first
+      const cachedDeduction = learningContext.learnedPreferences?.deductionType;
+      if (cachedDeduction) {
+        finalDeductionType = cachedDeduction;
+        console.log(`💾 Using cached deduction type: ${finalDeductionType}`);
+      } else {
+        // Try rules first
+        const ruleBasedDeduction = detectDeductionByRules(completeDescription);
+        if (ruleBasedDeduction) {
+          finalDeductionType = ruleBasedDeduction;
+        } else {
+          // Only use AI for unclear cases
+          console.log('⚠️ Unclear deduction, using AI...');
+          finalDeductionType = await detectDeductionType(completeDescription, LOVABLE_API_KEY);
+          console.log('Detected deduction type:', finalDeductionType);
+          
+          // Cache for future use
+          if (validatedData.sessionId) {
+            await supabaseClient
+              .from('conversation_sessions')
+              .update({ learned_preferences: { deductionType: finalDeductionType } })
+              .eq('id', validatedData.sessionId);
+            console.log('💾 Cached deduction type for future use');
+          }
+        }
+      }
+    }
+    console.log(`⏱️ Deduction detection completed: ${Date.now() - deductionStartTime}ms`);
 
     // FIX 1 + FIX 2: Use image analysis data FIRST, skip AI calls when possible
-    let finalDeductionType = deductionType;
     let skipMeasurementExtraction = false;
     
     // FIX 1: Prioritize image analysis for measurements
@@ -2760,9 +2832,6 @@ Lägg till dem i materials-array med dessa standardpriser:
 
     // Om vi kommer hit ska vi generera offert
     console.log('✅ Enough information gathered - generating quote...');
-
-    // Bygg complete description EN gång för alla (använd HELA konversationen)
-    const completeDescription = buildConversationSummary(conversation_history || [], description);
     console.log('Complete description built:', completeDescription.slice(0, 200));
 
     // FAS 3.6: PROAKTIV REALITY CHECK (FÖRE calculateBaseTotals!)
@@ -3847,8 +3916,15 @@ Viktig information:
 
 // AI function to detect deduction type based on job description
 async function detectDeductionType(description: string, apiKey: string): Promise<'rot' | 'rut' | 'none'> {
+  const startTime = Date.now();
+  
   try {
+    // AbortController for timeout
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), TIMEOUT_DETECT_DEDUCTION);
+    
     const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+      signal: controller.signal,
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${apiKey}`,
