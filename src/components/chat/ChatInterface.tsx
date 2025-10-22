@@ -65,7 +65,7 @@ export const ChatInterface = ({ onQuoteGenerated, isGenerating }: ChatInterfaceP
     createSession();
   }, [toast]);
 
-  const handleSendMessage = async (content: string) => {
+  const handleSendMessage = async (content: string, images?: string[]) => {
     if (!sessionId) {
       toast({
         title: "Fel",
@@ -86,6 +86,34 @@ export const ChatInterface = ({ onQuoteGenerated, isGenerating }: ChatInterfaceP
     setIsTyping(true);
 
     try {
+      // Om bilder finns, analysera dem först
+      let imageAnalysis = null;
+      if (images && images.length > 0) {
+        toast({
+          title: "Analyserar bilder...",
+          description: "Detta kan ta några sekunder"
+        });
+
+        const { data: analysisData, error: analysisError } = await supabase.functions.invoke('analyze-images', {
+          body: {
+            images,
+            description: content
+          }
+        });
+
+        if (analysisError) {
+          console.error('Image analysis error:', analysisError);
+          toast({
+            title: "Bildanalys misslyckades",
+            description: "Fortsätter utan bildanalys",
+            variant: "destructive"
+          });
+        } else {
+          imageAnalysis = analysisData;
+          console.log('Image analysis:', imageAnalysis);
+        }
+      }
+
       // Spara användarmeddelande i databasen
       await supabase.functions.invoke('manage-conversation', {
         body: {
@@ -95,23 +123,22 @@ export const ChatInterface = ({ onQuoteGenerated, isGenerating }: ChatInterfaceP
         }
       });
 
-      // Bygg conversation_history från messages (INTE inklusive det nya meddelandet)
-      // Backend kommer att läsa description som det nya meddelandet
+      // Bygg conversation_history från messages
       const conversationHistory = messages.map(m => ({
         role: m.role,
         content: m.content
       }));
-      // OBS: Vi lägger INTE till det nya meddelandet här eftersom backend läser description
 
-      // Anropa generate-quote med conversation_history OCH sessionId
+      // Anropa generate-quote med conversation_history, sessionId OCH imageAnalysis
       const { data, error } = await supabase.functions.invoke('generate-quote', {
         body: {
           description: content,
           conversation_history: conversationHistory,
-          sessionId: sessionId, // ✅ FIX 1: Skicka sessionId för lärande (FAS 5)
+          sessionId: sessionId,
           detailLevel: 'standard',
           deductionType: 'auto',
-          numberOfRecipients: 1 // Default to 1 recipient
+          numberOfRecipients: 1,
+          imageAnalysis: imageAnalysis // ✅ Bildanalys-data
         }
       });
 

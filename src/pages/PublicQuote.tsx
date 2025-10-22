@@ -11,9 +11,10 @@ import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { toast } from "sonner";
-import { FileText, Building2, Mail, Phone, MapPin, CheckCircle2, XCircle, Loader2, Download, AlertCircle } from "lucide-react";
+import { FileText, Building2, Mail, Phone, MapPin, CheckCircle2, XCircle, Loader2, Download, AlertCircle, Pen } from "lucide-react";
 import jsPDF from "jspdf";
 import { z } from "zod";
+import { SignatureCanvas } from "@/components/SignatureCanvas";
 
 interface WorkItem {
   name: string;
@@ -87,6 +88,8 @@ const PublicQuote = () => {
   const [message, setMessage] = useState("");
   const [acceptTerms, setAcceptTerms] = useState(false);
   const [response, setResponse] = useState<"accepted" | "rejected" | null>(null);
+  const [showSignature, setShowSignature] = useState(false);
+  const [signatureData, setSignatureData] = useState<string | null>(null);
 
   // Input validation schema
   const quoteResponseSchema = z.object({
@@ -208,6 +211,11 @@ const PublicQuote = () => {
       return;
     }
 
+    if (response === "accepted" && !signatureData) {
+      toast.error("Du måste signera offerten");
+      return;
+    }
+
     setSubmitting(true);
 
     try {
@@ -222,6 +230,7 @@ const PublicQuote = () => {
         ip_address: "unknown",
         user_agent: navigator.userAgent,
         message: message || null,
+        signature_data: signatureData || null,
       });
 
       if (signatureError) throw signatureError;
@@ -253,6 +262,8 @@ const PublicQuote = () => {
       setMessage("");
       setAcceptTerms(false);
       setResponse(null);
+      setSignatureData(null);
+      setShowSignature(false);
     } catch (error: any) {
       console.error("Error submitting signature:", error);
       toast.error("Kunde inte spara ditt svar. Försök igen.");
@@ -779,27 +790,78 @@ const PublicQuote = () => {
               </div>
             </div>
 
-            {/* Terms acceptance (only show when accepting) */}
+            {/* Terms acceptance and signature */}
             {response === "accepted" && (
-              <div className="flex items-start space-x-3 p-4 bg-muted/50 rounded-lg">
-                <Checkbox
-                  id="acceptTerms"
-                  checked={acceptTerms}
-                  onCheckedChange={(checked) => setAcceptTerms(checked as boolean)}
-                />
-                <div className="grid gap-1.5 leading-none">
-                  <label
-                    htmlFor="acceptTerms"
-                    className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
-                  >
-                    Jag accepterar villkoren
-                  </label>
-                  <p className="text-sm text-muted-foreground">
-                    Genom att acceptera bekräftar jag att jag har läst och förstått offerten
-                    och är överens om priset och villkoren.
-                  </p>
+              <>
+                <div className="flex items-start space-x-3 p-4 bg-muted/50 rounded-lg">
+                  <Checkbox
+                    id="acceptTerms"
+                    checked={acceptTerms}
+                    onCheckedChange={(checked) => setAcceptTerms(checked as boolean)}
+                  />
+                  <div className="grid gap-1.5 leading-none">
+                    <label
+                      htmlFor="acceptTerms"
+                      className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+                    >
+                      Jag accepterar villkoren
+                    </label>
+                    <p className="text-sm text-muted-foreground">
+                      Genom att acceptera bekräftar jag att jag har läst och förstått offerten
+                      och är överens om priset och villkoren.
+                    </p>
+                  </div>
                 </div>
-              </div>
+
+                {/* Digital Signature */}
+                <div className="space-y-2">
+                  <Label className="text-base">Digital signatur *</Label>
+                  {!showSignature && !signatureData && (
+                    <Button
+                      variant="outline"
+                      onClick={() => setShowSignature(true)}
+                      className="w-full"
+                    >
+                      <Pen className="h-4 w-4 mr-2" />
+                      Signera offerten
+                    </Button>
+                  )}
+                  
+                  {showSignature && !signatureData && (
+                    <SignatureCanvas
+                      onSave={(signature) => {
+                        setSignatureData(signature);
+                        setShowSignature(false);
+                        toast.success("Signatur sparad");
+                      }}
+                      onCancel={() => setShowSignature(false)}
+                    />
+                  )}
+
+                  {signatureData && !showSignature && (
+                    <div className="space-y-2">
+                      <div className="border-2 border-border rounded-md p-2 bg-background">
+                        <img 
+                          src={signatureData} 
+                          alt="Din signatur" 
+                          className="h-24 mx-auto"
+                        />
+                      </div>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          setSignatureData(null);
+                          setShowSignature(true);
+                        }}
+                        className="w-full"
+                      >
+                        Signera om
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              </>
             )}
 
             <Button

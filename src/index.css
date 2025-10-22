@@ -172,4 +172,16 @@ All colors MUST be HSL.
   .shadow-modern-lg {
     box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.05), 0 4px 6px -4px rgb(0 0 0 / 0.05);
   }
+  
+  /* Mobile-first optimizations */
+  @media (max-width: 768px) {
+    button, a, [role="button"] {
+      @apply min-h-[44px] min-w-[44px];
+      touch-action: manipulation;
+    }
+    
+    input, textarea, select {
+      @apply text-base; /* Prevent zoom on iOS */
+    }
+  }
 }

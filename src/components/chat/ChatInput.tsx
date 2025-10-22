@@ -1,12 +1,12 @@
 import { useState, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { Mic, MicOff, Send } from "lucide-react";
+import { Mic, MicOff, Send, Camera, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 
 interface ChatInputProps {
-  onSendMessage: (message: string) => void;
+  onSendMessage: (message: string, images?: string[]) => void;
   disabled?: boolean;
 }
 
@@ -14,8 +14,10 @@ export const ChatInput = ({ onSendMessage, disabled }: ChatInputProps) => {
   const [message, setMessage] = useState("");
   const [isListening, setIsListening] = useState(false);
   const [interimTranscript, setInterimTranscript] = useState("");
+  const [images, setImages] = useState<string[]>([]);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const recognitionRef = useRef<any>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     // Initiera Web Speech API om tillgängligt
@@ -80,15 +82,52 @@ export const ChatInput = ({ onSendMessage, disabled }: ChatInputProps) => {
   }, []);
 
   const handleSend = () => {
-    if (!message.trim() || disabled) return;
+    if ((!message.trim() && images.length === 0) || disabled) return;
     
-    onSendMessage(message.trim());
+    onSendMessage(message.trim() || "Analysera dessa bilder", images);
     setMessage("");
+    setImages([]);
     
     // Återställ textarea höjd
     if (textareaRef.current) {
       textareaRef.current.style.height = 'auto';
     }
+  };
+
+  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+
+    const maxImages = 5;
+    const maxSize = 10 * 1024 * 1024; // 10MB per bild
+
+    Array.from(files).slice(0, maxImages).forEach(file => {
+      if (file.size > maxSize) {
+        toast.error(`${file.name} är för stor. Max 10MB per bild.`);
+        return;
+      }
+
+      if (!file.type.startsWith('image/')) {
+        toast.error(`${file.name} är inte en giltig bild.`);
+        return;
+      }
+
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const base64 = e.target?.result as string;
+        setImages(prev => [...prev, base64]);
+      };
+      reader.readAsDataURL(file);
+    });
+
+    // Reset input
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  };
+
+  const removeImage = (index: number) => {
+    setImages(prev => prev.filter((_, i) => i !== index));
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -131,6 +170,29 @@ export const ChatInput = ({ onSendMessage, disabled }: ChatInputProps) => {
 
   return (
     <div className="flex flex-col gap-2">
+      {/* Image previews */}
+      {images.length > 0 && (
+        <div className="flex gap-2 flex-wrap p-2 bg-muted/30 rounded-md">
+          {images.map((img, idx) => (
+            <div key={idx} className="relative group">
+              <img 
+                src={img} 
+                alt={`Upload ${idx + 1}`}
+                className="h-20 w-20 object-cover rounded-md border-2 border-primary/20"
+              />
+              <Button
+                size="icon"
+                variant="destructive"
+                className="absolute -top-2 -right-2 h-6 w-6 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
+                onClick={() => removeImage(idx)}
+              >
+                <X className="h-3 w-3" />
+              </Button>
+            </div>
+          ))}
+        </div>
+      )}
+
       {/* Real-time transcript preview */}
       {interimTranscript && (
         <div className="px-3 py-2 bg-primary/10 rounded-md border border-primary/20 animate-in fade-in slide-in-from-bottom-2">
@@ -142,37 +204,58 @@ export const ChatInput = ({ onSendMessage, disabled }: ChatInputProps) => {
       )}
 
       <div className="flex gap-2 items-end">
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/*"
+          multiple
+          onChange={handleImageUpload}
+          className="hidden"
+        />
         <div className="flex-1 relative">
           <Textarea
             ref={textareaRef}
             value={message}
             onChange={handleInput}
             onKeyDown={handleKeyDown}
-            placeholder={isListening ? "Talar... (Klicka på mikrofonen för att stoppa)" : "Skriv din projektbeskrivning här, eller använd mikrofonen 🎤"}
+            placeholder={isListening ? "Talar..." : images.length > 0 ? "Beskriv bilderna (valfritt)..." : "Skriv din projektbeskrivning här 📝"}
             disabled={disabled}
-            className="min-h-[52px] max-h-[200px] resize-none pr-12"
+            className="min-h-[52px] max-h-[200px] resize-none pr-20"
             rows={1}
           />
-          <Button
-            type="button"
-            size="icon"
-            variant={isListening ? "default" : "ghost"}
-            className={cn(
-              "absolute right-2 bottom-2 h-8 w-8 transition-all",
-              isListening && "bg-destructive hover:bg-destructive/90 text-destructive-foreground animate-pulse shadow-lg"
-            )}
-            onClick={toggleListening}
-            disabled={disabled}
-            title={isListening ? "Stoppa inspelning" : "Starta röstinspelning"}
-          >
-            {isListening ? <MicOff className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
-          </Button>
+          <div className="absolute right-2 bottom-2 flex gap-1">
+            <Button
+              type="button"
+              size="icon"
+              variant="ghost"
+              className="h-8 w-8"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={disabled || images.length >= 5}
+              title="Ladda upp bilder"
+            >
+              <Camera className="h-4 w-4" />
+            </Button>
+            <Button
+              type="button"
+              size="icon"
+              variant={isListening ? "default" : "ghost"}
+              className={cn(
+                "h-8 w-8 transition-all",
+                isListening && "bg-destructive hover:bg-destructive/90 text-destructive-foreground animate-pulse shadow-lg"
+              )}
+              onClick={toggleListening}
+              disabled={disabled}
+              title={isListening ? "Stoppa inspelning" : "Starta röstinspelning"}
+            >
+              {isListening ? <MicOff className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
+            </Button>
+          </div>
         </div>
         <Button
           onClick={handleSend}
-          disabled={!message.trim() || disabled}
+          disabled={(!message.trim() && images.length === 0) || disabled}
           size="icon"
-          className="h-[52px] w-[52px] flex-shrink-0"
+          className="h-[52px] w-[52px] flex-shrink-0 touch-manipulation"
         >
           <Send className="h-5 w-5" />
         </Button>
