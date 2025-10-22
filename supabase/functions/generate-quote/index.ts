@@ -809,10 +809,15 @@ VIKTIGT REGLER:
 2. Om tydliga mått finns → ambiguous=false
 3. Om flera objekt nämns med samma mått, anta att det gäller för alla
 
+FÖR TRÄD/TRÄDFÄLLNING:
+- Om höjd finns men ej diameter → fråga: "Vilken diameter/tjocklek har stammen vid brösthöjd?"
+- Om diameter finns men ej höjd → fråga: "Hur höga är träden?"
+- Om varken höjd eller diameter finns → fråga: "Vilken höjd och diameter har träden?"
+
 EXEMPEL PÅ TYDLIGA MÅTT (ambiguous=false):
 ✅ "renovera badrum 8 kvm" → { area: "8 kvm", ambiguous: false }
-✅ "två ekar 15 meter höga" → { quantity: 2, height: "15 meter", ambiguous: false, appliesTo: "all" }
-✅ "fälla tre träd, 12m, 15m och 8m" → { quantity: 3, height: "12m, 15m, 8m", ambiguous: false }
+✅ "två ekar 15 meter höga, 50cm diameter" → { quantity: 2, height: "15 meter", diameter: "50cm", ambiguous: false }
+✅ "fälla tre träd, 12m, 15m och 8m höga" → { quantity: 3, height: "12m, 15m, 8m", ambiguous: false }
 ✅ "installera nytt kök 12 kvm" → { area: "12 kvm", ambiguous: false }
 
 EXEMPEL PÅ TVETYDIGA MÅTT (ambiguous=true):
@@ -948,6 +953,20 @@ EXEMPEL PÅ TVETYDIGA MÅTT (ambiguous=true):
         }
       }
       
+      // INTELLIGENT FALLBACK: Om träd har höjd men saknar diameter
+      if (parsed.height && !parsed.diameter && /träd|gran|tall|ek|björk|lönn|ask|alm|arborist|fäll/i.test(description)) {
+        const estimatedDiameter = estimateDiameterFromHeight(parsed.height);
+        if (estimatedDiameter) {
+          console.log(`🌲 Auto-estimating diameter from height ${parsed.height}: ${estimatedDiameter}`);
+          parsed.diameter = estimatedDiameter;
+          parsed.ambiguous = false; // Vi har nu tillräcklig info
+          delete parsed.clarificationNeeded; // Ta bort frågan
+          
+          // Markera att detta är en uppskattning (hanteras i huvudfunktionen)
+          (parsed as any).diameterEstimated = true;
+        }
+      }
+      
       console.log('📏 Extracted measurements:', parsed);
       return parsed;
     }
@@ -957,6 +976,34 @@ EXEMPEL PÅ TVETYDIGA MÅTT (ambiguous=true):
     console.warn('Measurement extraction error:', error);
     return { ambiguous: false };
   }
+}
+
+// Intelligent fallback för träddiameter baserat på höjd
+function estimateDiameterFromHeight(heightStr: string): string | null {
+  const heightMatch = heightStr.match(/(\d+(?:[.,]\d+)?)/);
+  if (!heightMatch) return null;
+  
+  const heightMeters = parseFloat(heightMatch[1].replace(',', '.'));
+  
+  // Tumregel för nordiska barrträd (gran, tall):
+  // - 10m träd ≈ 30cm diameter
+  // - 15m träd ≈ 40-50cm diameter
+  // - 20m träd ≈ 50-70cm diameter
+  // - 25m+ träd ≈ 70-100cm diameter
+  
+  let estimatedDiameter: number;
+  
+  if (heightMeters < 12) {
+    estimatedDiameter = 30; // Mindre träd
+  } else if (heightMeters < 18) {
+    estimatedDiameter = 45; // Medelstora träd
+  } else if (heightMeters < 25) {
+    estimatedDiameter = 60; // Stora träd
+  } else {
+    estimatedDiameter = 80; // Mycket stora träd
+  }
+  
+  return `${estimatedDiameter}cm`;
 }
 
 // FAS 17: Single AI Decision Point - handleConversation
@@ -1431,6 +1478,7 @@ async function calculateBaseTotals(
   materialCost: number;
   equipmentCost: number;
   hourlyRatesByType: { [workType: string]: number };
+  diameterEstimated?: string; // För trädfällning med uppskattat diameter
 }> {
   
   // Extract structured measurements for better calculation accuracy
@@ -1856,7 +1904,8 @@ Input: "Bygga altan"
       workHours, 
       materialCost, 
       equipmentCost,
-      hourlyRatesByType
+      hourlyRatesByType,
+      diameterEstimated: undefined // Degraded mode har ingen diameter-uppskattning
     };
   }
   
@@ -1879,7 +1928,8 @@ Input: "Bygga altan"
     workHours: result.workHours, 
     materialCost: result.materialCost, 
     equipmentCost: result.equipmentCost,
-    hourlyRatesByType
+    hourlyRatesByType,
+    diameterEstimated: (measurements as any).diameterEstimated ? measurements.diameter : undefined
   };
 }
 
@@ -2549,6 +2599,13 @@ Lägg till dem i materials-array med dessa standardpriser:
       proactiveCheck.suggestedMaterialRatio // FAS 3.6: Använd justerad ratio från proaktiv check
     );
     console.log('Base totals calculated:', baseTotals);
+    
+    // Om diameter uppskattades automatiskt, spara info för varning senare
+    let diameterWarning: string | undefined;
+    if (baseTotals.diameterEstimated) {
+      diameterWarning = `ℹ️ Diameter uppskattat till ${baseTotals.diameterEstimated} baserat på trädens höjd. Justera vid behov.`;
+      console.log(`🌲 ${diameterWarning}`);
+    }
 
     // KRITISK VALIDERING: Säkerställ att materialCost INTE är 0 för renoveringsprojekt
     const descLower = completeDescription.toLowerCase();
@@ -3264,6 +3321,11 @@ Viktig information:
     console.log('🔍 Performing post-generation reality check against benchmarks...');
     
     const allWarnings: string[] = [];
+    
+    // Lägg till diameter-varning om diameter uppskattades automatiskt
+    if (diameterWarning) {
+      allWarnings.push(diameterWarning);
+    }
     
     try {
       // Extract area from measurements if available
