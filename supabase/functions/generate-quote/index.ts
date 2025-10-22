@@ -1110,6 +1110,125 @@ async function calculateBaseTotals(
     area: measurements.area || 'not specified',
     appliesTo: measurements.appliesTo || 'not specified'
   });
+
+  // ============================================
+  // DETERMINISTISK BERÄKNING FÖR TRÄDFÄLLNING
+  // ============================================
+  const descLower = description.toLowerCase();
+  const isTreeWork = descLower.includes('träd') || descLower.includes('fäll') || descLower.includes('arborist');
+  
+  if (isTreeWork && measurements.quantity) {
+    console.log('🌲 Using deterministic tree felling calculation');
+    
+    // Parse height (extract average if multiple heights given)
+    let avgHeightMeters = 12; // Default om inget anges
+    if (measurements.height && measurements.height !== 'not specified') {
+      const heightStr = measurements.height.toString();
+      const heights = heightStr.match(/\d+/g);
+      if (heights && heights.length > 0) {
+        const sum = heights.reduce((acc, h) => acc + parseInt(h), 0);
+        avgHeightMeters = sum / heights.length;
+      }
+    }
+    
+    // Parse diameter (extract average if multiple diameters given)
+    let avgDiameterCm = 40; // Default om inget anges
+    if (measurements.diameter && measurements.diameter !== 'not specified') {
+      const diamStr = measurements.diameter.toString();
+      const diameters = diamStr.match(/\d+/g);
+      if (diameters && diameters.length > 0) {
+        const sum = diameters.reduce((acc, d) => acc + parseInt(d), 0);
+        avgDiameterCm = sum / diameters.length;
+      }
+    }
+    
+    // DETERMINISTISK FORMEL baserad på branschstandard:
+    // Bastid per träd = 2 + (höjd_meter * 0.4) + (diameter_cm * 0.05)
+    // Svårighetsgrad: +2h om nära byggnader, +1.5h om stora/höga träd
+    
+    const baseHoursPerTree = 2 + (avgHeightMeters * 0.4) + (avgDiameterCm * 0.05);
+    
+    let difficultyMultiplier = 1.0;
+    if (descLower.includes('stor') || descLower.includes('hög') || avgHeightMeters > 15) {
+      difficultyMultiplier += 0.3; // +30% för stora/höga träd
+    }
+    if (descLower.includes('hus') || descLower.includes('byggnad') || descLower.includes('nära')) {
+      difficultyMultiplier += 0.4; // +40% för komplexitet
+    }
+    
+    const hoursPerTree = baseHoursPerTree * difficultyMultiplier;
+    let totalHours = Math.round(hoursPerTree * measurements.quantity);
+    
+    // Stubbfräsning: +1.5h per träd
+    if (descLower.includes('stubb') || descLower.includes('fräs')) {
+      totalHours += Math.round(1.5 * measurements.quantity);
+    }
+    
+    // Minimum 4 timmar totalt (säkerhetsmarginal)
+    totalHours = Math.max(4, totalHours);
+    
+    // Beräkna kostnad
+    const hourlyRatesByType: { [key: string]: number } = {};
+    if (hourlyRates && hourlyRates.length > 0) {
+      hourlyRates.forEach(r => {
+        hourlyRatesByType[r.work_type] = r.rate;
+      });
+    }
+    
+    const arboristRate = hourlyRatesByType['Arborist'] || 800;
+    const workCost = totalHours * arboristRate;
+    
+    // Utrustning: Motorsåg är standard
+    let equipmentCost = 0;
+    if (equipmentRates && equipmentRates.length > 0) {
+      const chainsaw = equipmentRates.find(e => 
+        e.equipment_type?.toLowerCase().includes('motorsåg') ||
+        e.name?.toLowerCase().includes('motorsåg')
+      );
+      if (chainsaw) {
+        if (chainsaw.price_per_hour) {
+          equipmentCost = chainsaw.price_per_hour * totalHours;
+        } else if (chainsaw.price_per_day) {
+          const days = Math.ceil(totalHours / 8);
+          equipmentCost = chainsaw.price_per_day * days;
+        }
+      } else {
+        // Default motorsåg pris om inte finns i settings
+        equipmentCost = totalHours * 200; // 200 kr/h standardpris
+      }
+    } else {
+      equipmentCost = totalHours * 200;
+    }
+    
+    // Flishugg om borttransport nämns
+    if (descLower.includes('forsla') || descLower.includes('borttransport') || descLower.includes('flishugg')) {
+      equipmentCost += 2000; // Fast pris för flishugg per dag
+    }
+    
+    console.log('✅ Deterministic calculation:', {
+      quantity: measurements.quantity,
+      avgHeight: avgHeightMeters,
+      avgDiameter: avgDiameterCm,
+      baseHoursPerTree: baseHoursPerTree.toFixed(1),
+      difficultyMultiplier: difficultyMultiplier.toFixed(2),
+      hoursPerTree: hoursPerTree.toFixed(1),
+      totalHours,
+      workCost,
+      equipmentCost
+    });
+    
+    return {
+      workHours: { 'Arborist': totalHours },
+      materialCost: 0, // Trädfällning har inget material
+      equipmentCost,
+      hourlyRatesByType,
+      diameterEstimated: avgDiameterCm.toString() + ' cm'
+    };
+  }
+  
+  // ============================================
+  // ORIGINAL AI-BASERAD BERÄKNING (för andra projekt)
+  // ============================================
   const ratesContext = hourlyRates && hourlyRates.length > 0
     ? `Timpriserna är: ${hourlyRates.map(r => `${r.work_type}: ${r.rate} kr/h`).join(', ')}`
     : 'Standardpris: 650 kr/h';
