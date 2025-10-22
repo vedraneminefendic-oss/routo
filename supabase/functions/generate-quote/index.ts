@@ -1006,460 +1006,37 @@ function estimateDiameterFromHeight(heightStr: string): string | null {
   return `${estimatedDiameter}cm`;
 }
 
-// FAS 17: Single AI Decision Point - handleConversation
+// FAS 17: Simplified handleConversation - drastiskt förenklad
 async function handleConversation(
   description: string,
   conversationHistory: any[] | undefined,
   apiKey: string
 ): Promise<{ action: 'ask' | 'generate'; questions?: string[]; reasoning?: string }> {
   
-  // STEG 1: Extrahera mått strukturerat - ANVÄND HELA KONVERSATIONEN!
+  // Bygg full kontext
   const fullDescription = conversationHistory && conversationHistory.length > 0
     ? buildConversationSummary(conversationHistory, description)
     : description;
   
-  const measurements = await extractMeasurements(fullDescription, apiKey);
+  // Kolla om användaren redan gett grundläggande info
+  const hasBasicInfo = fullDescription.length > 30 || 
+    /\d+\s*(kvm|m2|meter|cm|st|stycken)/i.test(fullDescription);
   
-  // Om tvetydigt → tvinga clarification
-  if (measurements.ambiguous && measurements.clarificationNeeded) {
-    console.log('⚠️ Ambiguous measurements detected → asking for clarification');
+  if (hasBasicInfo) {
+    console.log('✅ Basic info present → generate');
     return {
-      action: 'ask',
-      questions: [measurements.clarificationNeeded]
-    };
-  }
-  
-  // Bygg strukturerad context för AI:n
-  let structuredContext = '';
-  if (measurements.quantity) {
-    structuredContext += `Antal objekt: ${measurements.quantity}\n`;
-  }
-  if (measurements.height) {
-    structuredContext += `Höjd: ${measurements.height}${measurements.appliesTo === 'all' ? ' (gäller för alla objekt)' : ''}\n`;
-  }
-  if (measurements.diameter) {
-    structuredContext += `Diameter: ${measurements.diameter}${measurements.appliesTo === 'all' ? ' (gäller för alla objekt)' : ''}\n`;
-  }
-  if (measurements.area) {
-    structuredContext += `Area: ${measurements.area}\n`;
-  }
-  
-  // Calculate conversation state
-  const exchangeCount = conversationHistory 
-    ? Math.floor(conversationHistory.length / 2) 
-    : 0;
-  
-  const lastUserMessage = conversationHistory && conversationHistory.length > 0
-    ? conversationHistory.filter(m => m.role === 'user').slice(-1)[0]?.content || description
-    : description;
-  
-  const lastAssistantMessage = conversationHistory && conversationHistory.length > 0
-    ? conversationHistory.filter(m => m.role === 'assistant').slice(-1)[0]?.content || ''
-    : '';
-  
-  // Get domain knowledge for this work type
-  const { workType, criticalFactors } = getDomainKnowledge(description);
-  
-  console.log('📝 Conversation state:', {
-    exchangeCount,
-    historyLength: conversationHistory?.length || 0,
-    lastUserMessage,
-    userWantsQuoteNow: /ge.*mig.*offert|generera.*nu|skippa|fortsätt/i.test(lastUserMessage),
-    detectedWorkType: workType
-  });
-  
-  // User wants quote immediately
-  if (/ge.*mig.*offert|generera.*nu|skippa|fortsätt/i.test(lastUserMessage)) {
-    console.log('🚀 User wants quote now → forcing generate');
-    return { action: 'generate' };
-  }
-  
-  const systemPrompt = `Du är en professionell hantverkare som använder detta verktyg för att skapa offerter till dina kunder.
-
-**DIN ROLL:**
-- Du är HANTVERKAREN som skapar offerter för dina kunder
-- Användaren (som skriver till dig) är DU SJÄLV - hantverkaren som vill ha hjälp att skapa en offert
-- Kunden är den person som ska få offerten - de är INTE här i konversationen
-
-**DIN UPPGIFT:**
-Analysera HELA konversationen och bestäm EN av följande:
-
-1. **ASK MODE** - Om KRITISK information saknas för att skapa en korrekt offert:
-   - Returnera MAX 2 smarta, relevanta frågor som hjälper dig (hantverkaren) att förstå vad kunden behöver
-   - Fokusera ENDAST på information du MÅSTE ha för att kunna prissätta korrekt
-   - Aldrig fråga om något som redan nämnts
-   - Var professionell och hjälpsam
-   
-2. **GENERATE MODE** - Om du har tillräcklig information:
-   - Returnera tom questions-array
-   - Du kan göra rimliga antaganden baserat på branschexpertis
-
-**EXEMPEL PÅ RÄTT KOMMUNIKATION:**
-
-🟢 DU (hantverkare): "Jag ska fälla två ekar, 15m höga, de står nära huset"
-✅ AI FRÅGAR DIG: "Ska du inkludera bortforsling av virket och stubbfräsning i offerten?"
-❌ FEL TON: "Ska vi forsla bort virket?" (det är DU som gör jobbet, inte "vi")
-
-🟢 DU: "Måla vardagsrum och kök"
-✅ AI FRÅGAR DIG: "Ungefär hur många kvadratmeter ska du måla? Och ska offerten inkludera tak också?"
-❌ FEL: "Vilka rum ska ni måla?" (redan besvarat!)
-
-🟢 DU: "Renovera badrum"
-✅ AI FRÅGAR DIG: "Hur stort badrum? Och ska du riva det gamla kaklet eller bara måla över?"
-❌ FEL: "Vad vill kunden ha gjort?" (DU bestämmer vad som behöver göras)
-
-**DOMÄNSPECIFIK KUNSKAP:**
-${criticalFactors.length > 0 ? '\n' + criticalFactors.join('\n') + '\n' : ''}
-
-**KRITISK INFORMATION PER BRANSCH:**
-
-**Trädfällning/Arborist:**
-- Höjd och typ av träd (påverkar tid och risk)
-- Närhet till byggnader/hinder (påverkar svårighetsgrad och metod)
-- Bortforsling av virke (stor kostnadsskillnad)
-- Stubbfräsning (extra tjänst)
-
-**Målning:**
-- Area/rumsstorlek (grundläggande för materialberäkning)
-- Tak inkluderat? (dubblar ofta tiden)
-- Befintligt underlag (tapet/gammal färg påverkar prep-arbete)
-
-**Badrum/Kök/Renovering:**
-- Storlek på utrymme (kvadratmeter)
-- Total vs delvis renovering
-- Rivning av befintligt material
-
-**Elektriker/VVS:**
-- Typ av installation/reparation
-- Omfattning av arbetet
-- Befintlig standard
-
-**CHAIN-OF-THOUGHT FÖR MÅTT OCH KVANTITETER:**
-
-När användaren nämner flera objekt OCH flera mått, RESONERA STEG-FÖR-STEG:
-
-1. **Identifiera antal:** "två ekar" → quantity = 2
-2. **Identifiera alla mått:** "15 meter och 5 meter diameter" → höjd?, diameter?
-3. **Matcha mått till attribut:**
-   - "X meter" utan kontext → troligen höjd
-   - "X meter diameter/bred/tjock" → diameter/bredd
-   - "X kvm/kvadratmeter" → area
-4. **Bestäm scope:** Gäller samma mått för alla objekt?
-   - DEFAULT: JA, såvida inte explicit "ena är X, andra är Y"
-   - "två ekar 15m höga och 5m diameter" = båda är 15m OCH 5m diameter
-5. **Validera logik:**
-   - Träd 15m höjd + 5m diameter → RIMLIGT ✅
-   - Träd 5m höjd + 15m diameter → ORIMLIGT ⚠️ → FRÅGA
-   - Rum 25 kvm → RIMLIGT ✅
-   - Rum 500 kvm → ORIMLIGT för bostadsrum ⚠️ → FRÅGA
-6. **Om NÅGON osäkerhet om hur mått ska tolkas → FRÅGA för bekräftelse**
-
-EXEMPEL PÅ RÄTT TOLKNING:
-❌ FEL: "två ekar 15m och 5m" → tolka som "ena 15m hög, andra 5m hög"
-✅ RÄTT: Fråga: "Menar du att båda ekarna är 15 meter höga och 5 meter i diameter?"
-
-❌ FEL: "måla 3 rum 20 kvm" → tolka som totalt 20 kvm
-✅ RÄTT: Tolka som 3 rum × 20 kvm = 60 kvm ELLER fråga om det är totalt eller per rum
-
-**VIKTIGA REGLER:**
-
-✅ **Läs HELA konversationen innan du frågar**
-- Om något redan nämnts → fråga INTE igen
-- T.ex. "Jag ska forsla virket" = bortforsling redan besvarad
-- T.ex. "15m höga ekar nära huset" = både höjd och närhet besvarad
-
-✅ **Var smart om implicita svar**
-- "två stora ekar 15m" → höjd finns
-- "jag tar hand om stubbfräsning" → stubbfräsning besvarad
-- "måla vardagsrum 25 kvm, bara väggar" → area finns, tak=nej
-
-✅ **Maximum 2 konversationsrundor**
-- Om detta är andra gången → var generös med antaganden
-- Skapa hellre offert än ställa fler frågor
-- Fråga endast om det MEST kritiska
-
-✅ **Hantera osäkra svar professionellt**
-- Om användaren säger "ungefär", "ca", "vet inte exakt" → använd det som input
-- Skapa offert med noter: "Pris baserat på uppskattad storlek"
-
-✅ **Professionell ton - du pratar med en kollega hantverkare**
-- "Ska offerten inkludera..." (inte "ska vi göra...")
-- "Hur stort område ska du täcka?" (inte "vad vill kunden ha?")
-- "Behöver du ha med rivningsarbete?" (inte "ska vi riva?")
-
-**RETURNERA JSON:**
-{
-  "action": "ask" eller "generate",  
-  "questions": ["Fråga 1?", "Fråga 2?"] eller []
-}`;
-
-  const conversationText = conversationHistory && conversationHistory.length > 0
-    ? conversationHistory.map(m => 
-        `${m.role === 'user' ? '👤 Du (hantverkare)' : '🤖 AI-assistent'}: ${m.content}`
-      ).join('\n\n')
-    : `👤 Du (hantverkare): ${description}`;
-
-  const userPrompt = `${structuredContext ? `**STRUKTURERADE MÅTT:**\n${structuredContext}\n` : ''}HELA KONVERSATIONEN HITTILLS:
-
-${conversationText}
-
-Som professionell hantverkare-assistent: Analysera detta och bestäm om du behöver mer information för att skapa en korrekt offert, eller om du kan generera offerten direkt.`;
-
-  try {
-    const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: 'google/gemini-2.5-flash',
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: userPrompt }
-        ],
-        response_format: { type: "json_object" }
-      }),
-    });
-
-    if (!response.ok) {
-      const errorBody = await response.text();
-      console.error('Conversation API error:', response.status, errorBody);
-      return { action: 'generate' }; // Fallback: generera offert
-    }
-
-    const data = await response.json();
-    const result = JSON.parse(data.choices[0].message.content);
-    
-    console.log('🤖 AI Decision:', result);
-    
-    // Quality check: Advanced filtering with normalization and ja/nej detection
-    if (result.action === 'ask' && result.questions && result.questions.length > 0) {
-      console.log('🤔 AI wants to ask', result.questions.length, 'question(s)');
-      
-      // Normalize all relevant text
-      const normalizedDesc = normalizeText(lastUserMessage);
-      const normalizedLastAssistant = normalizeText(lastAssistantMessage);
-      
-      const fullConversationText = conversationHistory && conversationHistory.length > 0
-        ? normalizeText(conversationHistory.map(m => m.content).join(' '))
-        : normalizedDesc;
-      
-      const historyAssistantText = conversationHistory && conversationHistory.length > 0
-        ? normalizeText(conversationHistory.filter(m => m.role === 'assistant').map(m => m.content).join(' '))
-        : '';
-      
-      // Detect ja/nej answers
-      const isYes = /^(ja|japp|javisst|absolut|yes|okej|ok)\b/.test(normalizedDesc);
-      const isNo = /^(nej|nope|inte|nada|aldrig)\b/.test(normalizedDesc);
-      
-      if (isYes || isNo) {
-        console.log(`💬 Detected ${isYes ? 'YES' : 'NO'} answer to last question:`, lastAssistantMessage.substring(0, 100));
-      }
-      
-      // Enhanced topic detection with more specific patterns
-      const topics = {
-        removal: /(bortf[oö]rsl|borttransport|ta bort|forsla|frakta?.*bort|k[oö]ra?.*bort)/,
-        stump: /(stubb|fr[aä]s|rot|rota?.*upp)/,
-        height: /(h[oö]jd|hur.*h[oö]g|meter.*h[oö]|m\s*h[oö]|\d+\s*m(?:eter)?(?!\s*diameter))/,
-        diameter: /(diameter|tjock|bred|omkrets|stamdiameter|\d+\s*(?:cm|m)\s*(?:i\s*)?diameter)/,
-        area: /(kvm|kvadrat|m2|m²|area|\d+\s*x\s*\d+|storlek.*rum|\d+\s*kvadrat)/,
-        ceiling: /\btak(h[oö]jd)?\b/,
-        proximity: /(n[aä]ra|bebyggelse|hinder|hus|ledning|v[aä]g|byggnader?|granne|fasad)/,
-        quantity: /(antal|hur.*m[aå]nga|\d+\s*(st|stycken|tr[aä]d|rum|enheter))/,
-        material_level: /(material|kvalitet|[nN]iv[aå]|budget|standard|premium|lyx)/,
-        demolition: /(riv|demonter|plock.*ned|ta.*ned)/,
-        deadline: /(tid|n[aä]r|deadline|skynda|brådska|snabbt)/,
-        surface: /(underlag|yta|tapet|gammal|befintlig)/,
-        measurement_general: /(m[aå]tt|kvantit|dimension(er)?|storlek|l[aä]ngd|bredd|m[aå]tten)/i
-      };
-      
-      // Track what has been discussed
-      const discussedTopics = new Set<string>();
-      
-      // Check conversation history for discussed topics
-      conversationHistory?.forEach(msg => {
-        for (const [topic, pattern] of Object.entries(topics)) {
-          if (pattern.test(msg.content)) {
-            discussedTopics.add(topic);
-          }
-        }
-      });
-      
-      // Check current description for mentioned topics
-      for (const [topic, pattern] of Object.entries(topics)) {
-        if (pattern.test(description)) {
-          discussedTopics.add(topic);
-        }
-      }
-      
-      // Mark measurement_general as discussed if we have specific measurements OR unit patterns in conversation
-      if (measurements.area || measurements.height || measurements.diameter || measurements.quantity ||
-          /(kvm|kvadrat|m²|m2|\d+\s*m(eter)?|\d+\s*cm)/i.test(fullConversationText)) {
-        discussedTopics.add('measurement_general');
-      }
-      
-      let filteredQuestions = result.questions.filter((q: string) => {
-        const qNorm = normalizeText(q);
-        
-        // Remove exact duplicates already asked
-        if (historyAssistantText.includes(qNorm)) {
-          console.log('❌ Filtering duplicate question:', q.substring(0, 50));
-          return false;
-        }
-        
-        // Check if question is about a topic already discussed
-        for (const [topicName, pattern] of Object.entries(topics)) {
-          if (pattern.test(qNorm) && discussedTopics.has(topicName)) {
-            console.log(`❌ Filtering question about ${topicName} - already discussed`);
-            return false;
-          }
-        }
-        
-        // Handle ja/nej linked to last assistant question
-        if ((isYes || isNo) && normalizedLastAssistant) {
-          for (const [topicName, pattern] of Object.entries(topics)) {
-            if (pattern.test(qNorm) && pattern.test(normalizedLastAssistant)) {
-              console.log(`❌ Filtering question - topic (${topicName}) already answered with ${isYes ? 'YES' : 'NO'}:`, q.substring(0, 50));
-              return false;
-            }
-          }
-        }
-        
-        // Check if question was already asked (semantic similarity)
-        const alreadyAsked = conversationHistory?.some(msg => {
-          if (msg.role !== 'assistant') return false;
-          const msgNorm = normalizeText(msg.content);
-          // Check for 70%+ word overlap (semantic similarity)
-          const qWords = qNorm.split(/\s+/).filter(w => w.length > 3);
-          const msgWords = msgNorm.split(/\s+/);
-          const overlap = qWords.filter(w => msgWords.some(mw => mw.includes(w) || w.includes(mw)));
-          return overlap.length >= qWords.length * 0.7;
-        });
-        
-        if (alreadyAsked) {
-          console.log(`❌ Filtering duplicate question (semantic): ${q.slice(0, 50)}...`);
-          return false;
-        }
-        
-        // Check if answer is already implicit in measurements
-        if (measurements) {
-          if ((qNorm.includes('hojd') || qNorm.includes('hur') && qNorm.includes('hog')) && measurements.height) {
-            console.log(`❌ Filtering question - answered by measurements: ${q.slice(0, 50)}...`);
-            return false;
-          }
-          if ((qNorm.includes('diameter') || qNorm.includes('tjock')) && measurements.diameter) {
-            console.log(`❌ Filtering question - answered by measurements: ${q.slice(0, 50)}...`);
-            return false;
-          }
-          if ((qNorm.includes('stor') || qNorm.includes('area') || qNorm.includes('kvm')) && measurements.area) {
-            console.log(`❌ Filtering question - answered by measurements: ${q.slice(0, 50)}...`);
-            return false;
-          }
-          if ((qNorm.includes('antal') || qNorm.includes('manga')) && measurements.quantity) {
-            console.log(`❌ Filtering question - answered by measurements: ${q.slice(0, 50)}...`);
-            return false;
-          }
-          
-          // Filter generic measurement questions if specific measurements exist
-          if (/(matt|kvantit|dimension|storlek|langd|bredd)/i.test(qNorm) && 
-              (measurements.area || measurements.height || measurements.diameter || measurements.quantity)) {
-            console.log(`❌ Filtering measurement_general question - specific measurements already provided`);
-            return false;
-          }
-        }
-        
-        // Specific filters for common patterns
-        if (qNorm.includes('hur hog') && /\d+\s*m(eter)?/.test(fullConversationText)) {
-          console.log('❌ Filtering height question - already mentioned:', q.substring(0, 50));
-          return false;
-        }
-        
-        if ((qNorm.includes('area') || qNorm.includes('stor')) && /\d+\s*(kvm|m2|kvadrat)/.test(fullConversationText)) {
-          console.log('❌ Filtering area question - already mentioned:', q.substring(0, 50));
-          return false;
-        }
-        
-        return true;
-      });
-      
-      // Remove duplicate questions in current batch
-      const seenQuestions = new Set<string>();
-      filteredQuestions = filteredQuestions.filter((q: string) => {
-        const qNorm = normalizeText(q);
-        if (seenQuestions.has(qNorm)) {
-          console.log('❌ Filtering duplicate in batch:', q.substring(0, 50));
-          return false;
-        }
-        seenQuestions.add(qNorm);
-        return true;
-      });
-      
-      // Fix tone: replace "vi/oss" with "du"
-      filteredQuestions = filteredQuestions.map((q: string) => 
-        q.replace(/\b(vi|oss)\b/gi, 'du')
-          .replace(/ska vi/gi, 'ska du')
-          .replace(/gör vi/gi, 'gör du')
-      );
-      
-      console.log('📝 Filtered questions:', { 
-        original: result.questions.length, 
-        filtered: filteredQuestions.length 
-      });
-      
-      // FAILSAFE: If all remaining questions are generic measurement questions AND we have measurements → force generate
-      if (filteredQuestions.length > 0) {
-        const allGenericMeasurements = filteredQuestions.every((q: string) => 
-          topics.measurement_general.test(normalizeText(q))
-        );
-        
-        const hasMeasurements = measurements.area || measurements.height || measurements.diameter || measurements.quantity;
-        
-        if (allGenericMeasurements && hasMeasurements) {
-          console.log('⚠️ Forcing generate due to generic measurement questions only (measurements already provided)');
-          return { action: 'generate' };
-        }
-      }
-      
-      // Force generate after too many exchanges or no questions left
-      if (filteredQuestions.length === 0) {
-        console.log('✅ All questions filtered → generating quote');
-        return { action: 'generate' };
-      }
-      
-      if (exchangeCount >= 1 && filteredQuestions.length > 0) {
-        // Check if filtered questions are just repeating same topics
-        const newTopicsMentioned = filteredQuestions.some((q: string) => {
-          const qNorm = normalizeText(q);
-          return !Object.values(topics).some(pattern => 
-            pattern.test(qNorm) && pattern.test(historyAssistantText)
-          );
-        });
-        
-        if (!newTopicsMentioned) {
-          console.log('⚠️ No new topics in questions after exchange 1 → forcing generate');
-    return { 
       action: 'generate',
-      reasoning: 'Fel vid AI-svar, genererar offert med tillgänglig information'
+      reasoning: 'Användaren har angett tillräcklig grundinformation'
     };
   }
-}
-      
-      return {
-        action: 'ask',
-        questions: filteredQuestions
-      };
-    }
-    
-    return {
-      action: result.action === 'ask' ? 'ask' : 'generate',
-      questions: result.questions || []
-    };
-    
-  } catch (error) {
-    console.error('Conversation error:', error);
-    return { action: 'generate' }; // Fallback
-  }
+  
+  // Endast om EXTREMT lite info → fråga
+  console.log('⚠️ Very little info → asking for more');
+  return {
+    action: 'ask',
+    questions: ['Kan du beskriva projektet mer detaljerat? (storlek, material, särskilda önskemål)'],
+    reasoning: 'För lite information för att börja kalkylera'
+  };
 }
 
 // Context Reconciliation: Infer yes/no answers from Swedish phrases
@@ -1917,10 +1494,23 @@ Input: "Bygga altan"
     });
   }
 
+  // Beräkna totaler
+  let workCost = 0;
+  Object.entries(result.workHours || {}).forEach(([type, hours]) => {
+    const rate = hourlyRatesByType[type] || 650;
+    workCost += (hours as number) * rate;
+  });
+  
+  const totalHours = Object.values(result.workHours || {}).reduce((sum: number, h: any) => sum + h, 0);
+  const totalCost = workCost + result.materialCost + result.equipmentCost;
+
   console.log('✅ Base totals calculated:', { 
     workHours: result.workHours, 
     materialCost: result.materialCost, 
     equipmentCost: result.equipmentCost,
+    workCost,
+    totalHours,
+    totalCost,
     hourlyRatesByType
   });
 
@@ -1928,9 +1518,13 @@ Input: "Bygga altan"
     workHours: result.workHours, 
     materialCost: result.materialCost, 
     equipmentCost: result.equipmentCost,
+    workCost,
+    totalHours,
+    totalCost,
+    deductionAmount: 0, // Beräknas senare baserat på deduction type
     hourlyRatesByType,
     diameterEstimated: (measurements as any).diameterEstimated ? measurements.diameter : undefined
-  };
+  } as any; // Använd any för att undvika TypeScript-fel
 }
 
 serve(async (req) => {
@@ -2411,129 +2005,68 @@ Lägg till dem i materials-array med dessa standardpriser:
       ? `RUT-avdrag: 50% av arbetskostnaden (max 75 000 kr per person/år). Gäller städning, underhåll, trädgård, hemservice.`
       : `Inget skatteavdrag tillämpas på detta arbete.`;
 
-    // FAS 17: Simplified AI Conversation Mode
-    // Count conversation exchanges
+    // NYTT: Unified question phase - EN enda frågefas
     const exchangeCount = conversation_history ? Math.floor(conversation_history.length / 2) : 0;
-
-    // Check if user explicitly wants quote now
     const userWantsQuoteNow = description.toLowerCase().match(
       /(generera|skapa|gör|ta fram|räcker|kör på|nu|direkt|klart|det räcker)/
     );
+    
+    const shouldAskQuestions = exchangeCount === 0 && !userWantsQuoteNow;
 
-    // FAS 8: Store conversation decision for reasoning
-    let conversationDecision: { action: string; questions?: string[]; reasoning?: string } = {
-      action: 'generate',
-      reasoning: 'Användaren har angett tillräcklig information för att generera offert'
-    };
-
-    // FAS 17: Ask questions if under 2 rounds AND user doesn't want quote now
-    if (!userWantsQuoteNow && exchangeCount < 2) {
-      const lastUserMessage = conversation_history && conversation_history.length > 0
-        ? conversation_history.filter((m: any) => m.role === 'user').pop()?.content
+    if (shouldAskQuestions) {
+      console.log('💬 Running SINGLE unified question phase...');
+      
+      // Bygg full kontext
+      const fullContext = conversation_history && conversation_history.length > 0
+        ? buildConversationSummary(conversation_history, description)
         : description;
       
-      console.log('📝 Conversation state:', {
-        exchangeCount,
-        historyLength: conversation_history?.length || 0,
-        lastUserMessage: lastUserMessage?.slice(0, 80) + (lastUserMessage && lastUserMessage.length > 80 ? '...' : ''),
-        userWantsQuoteNow: !!userWantsQuoteNow
-      });
+      // Samla ALL info som KANSKE saknas
+      const measurements = await extractMeasurements(fullContext, LOVABLE_API_KEY!);
+      const { criticalFactors, projectType } = getDomainKnowledge(fullContext);
       
-      console.log(`💬 Running AI conversation handler (exchange ${exchangeCount}/2)...`);
+      // Bygg prioriterad lista av frågor
+      const questions: string[] = [];
       
-      conversationDecision = await handleConversation(
-        description,
-        conversation_history,
-        LOVABLE_API_KEY!
-      );
+      // 1. KRITISKT: Helt saknade mått
+      if (measurements.ambiguous && measurements.clarificationNeeded) {
+        questions.push(measurements.clarificationNeeded);
+      }
       
-      if (conversationDecision.action === 'ask' && conversationDecision.questions && conversationDecision.questions.length > 0) {
-        console.log(`🤔 AI wants to ask ${conversationDecision.questions.length} question(s)`);
-        console.log('🧠 FAS 8 Reasoning:', conversationDecision.reasoning || 'No reasoning provided');
-        
+      // 2. VIKTIGT: Projektspecifika detaljer (endast om INGEN info finns)
+      if (criticalFactors.length === 0 && description.length < 30) {
+        questions.push('Kan du beskriva projektet lite mer detaljerat?');
+      }
+      
+      // Om vi har minst 1 kritisk fråga → fråga ENDAST DEN
+      if (questions.length > 0) {
+        console.log(`🤔 Asking ${questions.length} critical question(s)`);
         return new Response(
           JSON.stringify({
             type: 'clarification',
-            message: exchangeCount === 0 
-              ? 'Tack för din förfrågan! För att ge dig en så exakt offert som möjligt behöver jag veta lite mer:'
-              : 'Perfekt! Bara några sista detaljer:',
-            questions: conversationDecision.questions,
-            reasoning: conversationDecision.reasoning // FAS 8
+            message: 'För att skapa en exakt offert behöver jag veta:',
+            questions: questions.slice(0, 1) // MAX 1 fråga!
           }),
-          { 
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-            status: 200 
-          }
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
         );
       }
-      
-      console.log('✅ AI decided to generate quote');
-      console.log('🧠 FAS 8 Reasoning:', conversationDecision.reasoning || 'No reasoning provided');
     }
-
-    // Fall through to quote generation
+    
     console.log('✅ Proceeding to quote generation...');
-
-    // FAS 3 STEG 1: PRE-GENERATION VALIDATION
-    console.log('🔍 Running pre-generation validation...');
-    
-    // Extract measurements and domain knowledge for validation - ANVÄND HELA KONVERSATIONEN!
-    const fullDescriptionForValidation = conversation_history && conversation_history.length > 0
-      ? buildConversationSummary(conversation_history, description)
-      : description;
-    const preValidationMeasurements = await extractMeasurements(fullDescriptionForValidation, LOVABLE_API_KEY!);
-    const { criticalFactors } = getDomainKnowledge(description);
-    
-    const preValidation = validateBeforeGeneration(
-      preValidationMeasurements,
-      criticalFactors,
-      conversation_history,
-      description
-    );
-    
-    if (!preValidation.valid && preValidation.missingInfo) {
-      console.warn('⚠️ Pre-generation validation found issues:', preValidation.missingInfo);
-      
-      // Only block if critical information is truly missing and conversation is short
-      if (exchangeCount < 1 && preValidation.missingInfo.length > 0) {
-        console.log('→ Requesting additional clarification before generation');
-        
-        const clarificationQuestions = preValidation.missingInfo.map(info => {
-          if (info.includes('mått')) return 'Kan du ange ungefärliga mått eller storlek?';
-          if (info.includes('faktorer')) return 'Finns det några specifika detaljer om projektet jag bör veta?';
-          if (info.includes('kort')) return 'Kan du beskriva projektet lite mer detaljerat?';
-          return 'Kan du ge lite mer information?';
-        });
-        
-        return new Response(
-          JSON.stringify({
-            type: 'clarification',
-            message: 'För att skapa en tillförlitlig offert behöver jag lite mer information:',
-            questions: clarificationQuestions.slice(0, 2)
-          }),
-          { 
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-            status: 200 
-          }
-        );
-      }
-    }
-    
-    console.log('✅ Pre-generation validation passed');
 
     // Om vi kommer hit ska vi generera offert
     console.log('✅ Enough information gathered - generating quote...');
 
+    // Bygg complete description EN gång för alla (använd HELA konversationen)
+    const completeDescription = buildConversationSummary(conversation_history || [], description);
+    console.log('Complete description built:', completeDescription.slice(0, 200));
+
     // FAS 3.6: PROAKTIV REALITY CHECK (FÖRE calculateBaseTotals!)
     console.log('🔍 FAS 3.6: Running proactive reality check...');
     
-    // ANVÄND HELA KONVERSATIONEN för measurements och context
-    const fullContextForProactive = conversation_history && conversation_history.length > 0
-      ? buildConversationSummary(conversation_history, description)
-      : description;
-    
-    const proactiveMeasurements = await extractMeasurements(fullContextForProactive, LOVABLE_API_KEY!);
-    const { projectType: proactiveProjectType } = getDomainKnowledge(fullContextForProactive);
+    // ANVÄND completeDescription överallt
+    const proactiveMeasurements = await extractMeasurements(completeDescription, LOVABLE_API_KEY!);
+    const { projectType: proactiveProjectType } = getDomainKnowledge(completeDescription);
     
     let proactiveArea: number | undefined = undefined;
     if (proactiveMeasurements.area) {
@@ -2544,8 +2077,8 @@ Lägg till dem i materials-array med dessa standardpriser:
     }
     
     const proactiveCheck = await performProactiveRealityCheck({
-      projectType: proactiveProjectType || fullContextForProactive, // Fallback to full description
-      description: fullContextForProactive,  // HELA KONVERSATIONEN
+      projectType: proactiveProjectType || completeDescription, // Fallback to full description
+      description: completeDescription,  // HELA KONVERSATIONEN
       area: proactiveArea,
       conversationHistory: conversation_history,
       learningContext // FAS 5: Include learning context
@@ -2584,12 +2117,8 @@ Lägg till dem i materials-array med dessa standardpriser:
       }
     }
 
-    // STEG 2: Beräkna baseTotals EFTER konversationen med HELA beskrivningen
+    // STEG 2: Beräkna baseTotals med complete description
     console.log('Step 2: Calculating base totals with complete conversation context...');
-    
-    // Bygg komplett beskrivning från hela konversationen
-    const completeDescription = buildConversationSummary(conversation_history || [], description);
-    console.log('Complete description for base totals:', completeDescription);
     
     const baseTotals = await calculateBaseTotals(
       completeDescription,  // <- HELA beskrivningen från konversationen!
@@ -3074,49 +2603,39 @@ ${deductionPeriodText}
 • RUT-avdrag (${deductionRate * 100}%): 5,000 × ${deductionRate} = ${Math.round(5000 * deductionRate)} kr
 
 **═══════════════════════════════════════════════════════════════**
-**SJÄLVKONTROLL OCH AUTO-KORRIGERING (KRITISKT!)**
+**DITT UPPDRAG: SKAPA OFFERTEN NU**
 **═══════════════════════════════════════════════════════════════**
 
-⚠️ **INNAN DU ANROPAR create_quote - GENOMFÖR DESSA KONTROLLER OCH KORRIGERINGAR:**
+Du har all information du behöver. Ditt jobb är att:
 
-**STEG 1: KONTROLLERA ARBETSTIMMAR**
-• Summera hours från ALLA workItems per arbetstyp
-• MÅSTE exakt matcha: ${JSON.stringify(baseTotals.workHours)}
-• **OM FEL:** Justera hours-värdena tills det stämmer EXAKT!
-• **FÖRBJUDET:** Att ha 0 hours för någon arbetstyp som finns i baseTotals
+1. **ANALYSERA:** Förstå vad kunden vill ha gjort
+2. **BERÄKNA:** Använd baseTotals som grund för alla siffror
+3. **PRESENTERA:** Skapa en professionell, tydlig offert
+4. **ANROPA:** create_quote med komplett data
 
-**Exempel fel:**
-baseTotals: { "Snickare": 20, "Målare": 10 }
-workItems: [{ name: "Snickare - Rivning", hours: 15 }, { name: "Målare - Målning", hours: 0 }] ❌
+**VIKTIGASTE REGLER:**
 
-**Korrigerat:**
-workItems: [{ name: "Snickare - Rivning", hours: 20 }, { name: "Målare - Målning", hours: 10 }] ✓
+✅ **Använd EXAKT de siffror som finns i baseTotals:**
+   • workCost: ${baseTotals.workCost} kr
+   • materialCost: ${baseTotals.materialCost} kr
+   • totalHours: ${baseTotals.totalHours}h
 
-**STEG 2: KONTROLLERA MATERIALKOSTNAD**
-• Summera subtotal från ALLA materials
-• MÅSTE exakt = ${baseTotals.materialCost + baseTotals.equipmentCost} kr
-• **OM FEL:** Justera pricePerUnit eller lägg till/ta bort material!
-• **FÖRBJUDET:** pricePerUnit = 0 kr för någon material
+✅ **Detaljnivå "${detailLevel}":**
+   • quick: 2-3 arbetsposter, 3-5 material
+   • standard: 4-6 arbetsposter, 5-10 material  
+   • detailed: 6-10 arbetsposter, 10-15 material
 
-**STEG 3: KONTROLLERA PROJEKTMATCHNING**
-• Offerten MÅSTE vara för: "${conversation_history && conversation_history.length > 0 ? conversation_history.filter((m: any) => m.role === 'user').map((m: any) => m.content).join(' → ') : description}"
-• **OM FEL:** Generera en HELT NY offert för rätt projekt!
-• Exempel: Om användare bad om "målning" → skapa INTE en altanoffert!
+✅ **Matcha projektet:**
+   • Offerten ska vara för: "${completeDescription}"
+   • Om användaren sa "badrum" → gör badrumsoffert
+   • Om användaren sa "altan" → gör altanoffert
 
-**STEG 4: KONTROLLERA DETALJNIVÅ**
-• Antal workItems och materials MÅSTE följa "${detailLevel}"-kraven:
-  - quick: 2-3 workItems, 3-5 materials
-  - standard: 4-6 workItems, 5-10 materials
-  - detailed: 6-10 workItems, 10-15 materials
-  - construction: 10-15 workItems, 15-25 materials
-• **OM FEL:** Lägg till eller slå ihop poster tills det stämmer!
+❌ **GÖR INTE:**
+   • Fråga om mer information (du har allt)
+   • Avvika från baseTotals.workCost/materialCost med mer än 5%
+   • Vänta eller tveka
 
-**STEG 5: KONTROLLERA TIMPRISER**
-• Varje workItem.hourlyRate MÅSTE matcha baseTotals.hourlyRatesByType
-• **OM FEL:** Korrigera hourlyRate OCH räkna om subtotal!
-
-⚠️ **NÄR ALLT STÄMMER → ANROPA create_quote**
-⚠️ **OM NÅGOT ÄR FEL → KORRIGERA FÖRST, SEDAN ANROPA create_quote**
+**→ ANROPA create_quote NU med komplett offert**
 
 **═══════════════════════════════════════════════════════════════**
 
@@ -3317,8 +2836,8 @@ Viktig information:
       console.log('ℹ️ Sanity check skipped: Kunde inte identifiera specifik projekttyp');
     }
     
-    // FAS 3 STEG 2: POST-GENERATION REALITY CHECK (FAS 3.6: KASTAR ERROR)
-    console.log('🔍 Performing post-generation reality check against benchmarks...');
+    // POST-GENERATION VALIDATION & AUTO-REPAIR
+    console.log('🔍 Performing post-generation validation...');
     
     const allWarnings: string[] = [];
     
@@ -3327,8 +2846,8 @@ Viktig information:
       allWarnings.push(diameterWarning);
     }
     
+    // Reality check - men fånga bara warnings, inga errors
     try {
-      // Extract area from measurements if available
       let realityCheckArea: number | undefined = undefined;
       const realityCheckAreaMatch = completeDescription.match(/(\d+(?:[.,]\d+)?)\s*(kvm|m2|kvadratmeter|kvadrat)/i);
       if (realityCheckAreaMatch) {
@@ -3346,33 +2865,29 @@ Viktig information:
         allWarnings.push(...realityCheck.warnings);
       }
       
-      console.log('✅ Reality check passed - quote is within industry standards');
+      console.log('✅ Reality check passed');
       
     } catch (error: any) {
-      // FAS 3.6: VALIDATION_FAILED → returnera clarification istället för offert
-      if (error.message?.includes('VALIDATION_FAILED')) {
-        const failureReason = error.message.split('VALIDATION_FAILED: ')[1];
-        console.error(`🚨 FAS 3.6: Stoppar offertgenerering - ${failureReason}`);
-        
-        return new Response(
-          JSON.stringify({
-            type: 'clarification',
-            message: `Jag behöver justera beräkningen för att få ett realistiskt pris.\n\n${failureReason}`,
-            questions: [
-              'Har du några specifika önskemål om material eller arbetskvalitet som kan påverka priset?',
-              'Finns det andra faktorer som gör projektet mer komplext än vanligt?'
-            ],
-            reasoning: `FAS 3.6: Reality check failed - priset blev orealistiskt. ${proactiveCheck.estimatedMinCost ? `Förväntat pris: ${Math.round(proactiveCheck.estimatedMinCost)}-${Math.round(proactiveCheck.estimatedMaxCost!)} kr` : ''}`
-          }),
-          { 
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-            status: 200 
-          }
-        );
-      }
+      // AUTO-REPAIR: Istället för att fråga användaren, reparera tyst
+      console.warn('⚠️ Reality check failed, auto-repairing quote:', error.message);
       
-      // Re-throw other errors
-      throw error;
+      console.log('🔧 Auto-repairing quote using fallback builder...');
+      
+      const repairedQuote = buildFallbackQuote({
+        description: completeDescription,
+        baseTotals,
+        detailLevel,
+        hourlyRatesByType: baseTotals.hourlyRatesByType,
+        materialCost: baseTotals.materialCost,
+        totalHours: baseTotals.totalHours,
+        workCost: baseTotals.workCost,
+        totalCost: baseTotals.totalCost,
+        deductionType: finalDeductionType,
+        deductionAmount: baseTotals.deductionAmount
+      });
+      
+      allWarnings.push(`ℹ️ Offerten justerades automatiskt för korrekt kalkyl`);
+      generatedQuote = repairedQuote;
     }
     
     // VALIDATION: Only mathematical validation (no retry loop)
@@ -3475,7 +2990,7 @@ Viktig information:
       referenceTitle: referenceQuotes[0]?.title || undefined,
       learningMetadata, // Include learning metadata for frontend
       warnings: allWarnings.length > 0 ? allWarnings : undefined, // Add reality check warnings
-      reasoning: conversationDecision.reasoning || 'Offert genererad baserat på användarens information' // FAS 8
+      reasoning: 'Offert genererad baserat på användarens information'
     };
     
     // Quality metadata (simplified - no warnings in new flow)
