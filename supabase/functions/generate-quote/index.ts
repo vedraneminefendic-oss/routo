@@ -13,10 +13,10 @@ const TEXT_MODEL = 'openai/gpt-5-mini'; // Main generation model - Best Swedish 
 const EXTRACTION_MODEL = 'openai/gpt-5-nano'; // Fast & reliable extraction with Swedish support
 const MAX_AI_TIME = 18000; // 18 seconds max for AI steps (increased for reliability)
 
-// Per-call timeouts
-const TIMEOUT_EXTRACT_MEASUREMENTS = 4000; // 4s for measurements
+// Per-call timeouts (FAS 4: Increased for reliability)
+const TIMEOUT_EXTRACT_MEASUREMENTS = 8000; // 8s for measurements (increased from 4s)
 const TIMEOUT_DETECT_DEDUCTION = 4000; // 4s for deduction
-const TIMEOUT_MAIN_GENERATION = 10000; // 10s for main quote generation
+const TIMEOUT_MAIN_GENERATION = 15000; // 15s for main quote generation (increased from 10s)
 
 // FAS 7: Industry-specific material to work cost ratios (FAS 3.6: REALISTISKA VÄRDEN)
 const MATERIAL_RATIOS: Record<string, number> = {
@@ -2120,9 +2120,78 @@ Input: "Bygga altan"
     };
   }
   
+  // FAS 3: Validera mot INDUSTRY_BENCHMARKS och justera om AI underskattat timmar
+  console.log('🔍 FAS 3: Validating AI workHours against industry benchmarks...');
+  
+  // Identifiera projekttyp
+  const projectDescLower = description.toLowerCase();
+  let benchmarkKey: string | null = null;
+  
+  if (projectDescLower.includes('badrum') || projectDescLower.includes('våtrum')) {
+    benchmarkKey = 'badrum_renovering';
+  } else if (projectDescLower.includes('kök')) {
+    benchmarkKey = 'kok_renovering';
+  } else if (projectDescLower.includes('altan') || projectDescLower.includes('däck')) {
+    benchmarkKey = 'altan';
+  } else if (projectDescLower.includes('mål') || projectDescLower.includes('färg')) {
+    benchmarkKey = 'malning';
+  } else if (projectDescLower.includes('golv')) {
+    benchmarkKey = 'golvlaggning';
+  }
+  
+  // Om vi har benchmark och area, validera timmar
+  if (benchmarkKey && measurements.area) {
+    const benchmark = INDUSTRY_BENCHMARKS[benchmarkKey];
+    if (benchmark) {
+      // Extrahera area som nummer
+      let areaNumber = 0;
+      const areaMatch = measurements.area.toString().match(/(\d+(?:[.,]\d+)?)/);
+      if (areaMatch) {
+        areaNumber = parseFloat(areaMatch[1].replace(',', '.'));
+      }
+      
+      if (areaNumber > 0) {
+        const expectedMinHours = areaNumber * benchmark.avgWorkHoursPerSqm * 0.6; // 60% av benchmark som minimum
+        const totalActualHours = Object.values(result.workHours || {}).reduce((sum: number, h: any) => sum + h, 0);
+        
+        if (totalActualHours < expectedMinHours) {
+          console.warn(`⚠️ FAS 3: AI underskattade timmar! Actual: ${totalActualHours}h vs Expected min: ${expectedMinHours}h (benchmark: ${benchmark.avgWorkHoursPerSqm}h/kvm)`);
+          
+          // Justera upp alla workHours proportionellt
+          const adjustmentFactor = expectedMinHours / totalActualHours;
+          const adjustedWorkHours: any = {};
+          
+          for (const [type, hours] of Object.entries(result.workHours || {})) {
+            adjustedWorkHours[type] = Math.round((hours as number) * adjustmentFactor * 2) / 2; // Avrunda till närmaste 0.5h
+          }
+          
+          console.log(`✅ FAS 3: Adjusted workHours by factor ${adjustmentFactor.toFixed(2)}:`, adjustedWorkHours);
+          result.workHours = adjustedWorkHours;
+          
+          // Räkna om workCost med justerade timmar
+          let adjustedWorkCost = 0;
+          Object.entries(adjustedWorkHours).forEach(([type, hours]) => {
+            const rate = hourlyRatesByType[type] || 650;
+            adjustedWorkCost += (hours as number) * rate;
+          });
+          
+          // Justera även materialCost om den var baserad på workCost
+          if (result.materialCost < adjustedWorkCost * 0.3) {
+            // Om materialCost är för låg (< 30% av workCost för renovering), justera upp
+            const suggestedMaterialCost = Math.round(adjustedWorkCost * (suggestedMaterialRatio || 0.5));
+            console.log(`✅ FAS 3: Adjusted materialCost from ${result.materialCost} to ${suggestedMaterialCost} kr`);
+            result.materialCost = suggestedMaterialCost;
+          }
+        } else {
+          console.log(`✅ FAS 3: WorkHours validation OK: ${totalActualHours}h >= ${expectedMinHours}h minimum`);
+        }
+      }
+    }
+  }
+  
   // Använd redan definierad hourlyRatesByType från funktionens början
 
-  // Beräkna totaler
+  // Beräkna totaler (med eventuellt justerade värden)
   let workCost = 0;
   Object.entries(result.workHours || {}).forEach(([type, hours]) => {
     const rate = hourlyRatesByType[type] || 650;
@@ -2781,16 +2850,19 @@ Lägg till dem i materials-array med dessa standardpriser:
 → ANVÄND EXAKT dessa siffror när du beskriver RUT-avdraget i din offert!`
       : `Inget skatteavdrag tillämpas på detta arbete.`;
 
-    // NYTT: Unified question phase - EN enda frågefas
+    // FAS 1: Återaktiverad motfråge-fas med förbättrad logik
     const exchangeCount = conversation_history ? Math.floor(conversation_history.length / 2) : 0;
-    const userWantsQuoteNow = description.toLowerCase().match(
-      /(generera|skapa|gör|ta fram|räcker|kör på|nu|direkt|klart|det räcker)/
+    
+    // Tillåt offertgenerering direkt om användaren EXPLICIT ber om det
+    const userExplicitlyWantsQuote = description.toLowerCase().match(
+      /(generera|skapa offert|gör en offert|ta fram offert|räcker|kör på|det räcker|generera nu)/
     );
     
-    const shouldAskQuestions = exchangeCount === 0 && !userWantsQuoteNow;
+    // Fråga om vi har FÖR LITE info och användaren inte explicit bett om offert
+    const shouldAskQuestions = exchangeCount === 0 && !userExplicitlyWantsQuote;
 
     if (shouldAskQuestions) {
-      console.log('💬 Running SINGLE unified question phase...');
+      console.log('💬 FAS 1: Checking if clarification needed...');
       
       // Bygg full kontext
       const fullContext = conversation_history && conversation_history.length > 0
@@ -2804,28 +2876,38 @@ Lägg till dem i materials-array med dessa standardpriser:
       // Bygg prioriterad lista av frågor
       const questions: string[] = [];
       
-      // 1. KRITISKT: Helt saknade mått
-      if (measurements.ambiguous && measurements.clarificationNeeded) {
-        questions.push(measurements.clarificationNeeded);
+      // 1. KRITISKT: Helt saknade mått för projekt som KRÄVER mått
+      const needsMeasurements = /renover|bygg|fäll|mål|lägg|install|byt/i.test(fullContext);
+      if (needsMeasurements && measurements.ambiguous) {
+        if (measurements.clarificationNeeded) {
+          questions.push(measurements.clarificationNeeded);
+        } else {
+          // Generisk fråga om mått saknas
+          questions.push('Vad är storleken på området (i kvm) eller antal (för ex. träd/dörrar)?');
+        }
       }
       
-      // 2. VIKTIGT: Projektspecifika detaljer (endast om INGEN info finns)
-      if (criticalFactors.length === 0 && description.length < 30) {
-        questions.push('Kan du beskriva projektet lite mer detaljerat?');
+      // 2. VIKTIGT: För kort beskrivning (<15 tecken) eller väldigt vag
+      if (description.length < 15) {
+        questions.push('Kan du beskriva projektet lite mer detaljerat? Vad ska göras och var?');
       }
       
       // Om vi har minst 1 kritisk fråga → fråga ENDAST DEN
       if (questions.length > 0) {
-        console.log(`🤔 Asking ${questions.length} critical question(s)`);
+        console.log(`🤔 FAS 1: Asking ${questions.length} critical question(s)`);
         return new Response(
           JSON.stringify({
             type: 'clarification',
             message: 'För att skapa en exakt offert behöver jag veta:',
-            questions: questions.slice(0, 1) // MAX 1 fråga!
+            questions: questions.slice(0, 1) // MAX 1 fråga åt gången!
           }),
           { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
         );
       }
+      
+      console.log('✅ FAS 1: Enough information - proceeding to quote generation');
+    } else {
+      console.log('ℹ️ FAS 1: Skipping clarification (user explicitly requested quote or followup message)');
     }
     
     console.log('✅ Proceeding to quote generation...');
@@ -3028,14 +3110,39 @@ Lägg till dem i materials-array med dessa standardpriser:
       
       const { description, baseTotals, detailLevel, hourlyRatesByType, finalDeductionType, deductionRate, totalMaxRot, totalMaxRut } = params;
       
+      // FAS 2: Förbättrade beskrivningar istället för generiska
       // Generate work items from baseTotals.workHours
       const workItems: any[] = [];
+      
+      // FAS 2: Beskrivningsmall per arbetstyp
+      const workDescriptionTemplates: Record<string, string> = {
+        'Plattsättare': 'Läggning av kakel och klinker inkl. fog och preparering',
+        'VVS': 'Installation och anslutning av VVS-komponenter enligt standard',
+        'Elektriker': 'Elinstallation enligt gällande normer och standarder',
+        'Snickare': 'Snickeriarbete inkl. kapning, montering och justering',
+        'Målare': 'Målning och spackling enligt specifikation',
+        'Arborist': 'Fällning och hantering enligt säkerhetsföreskrifter',
+        'Städare': 'Städning enligt överenskommet omfattning',
+        'Fönsterputsare': 'Fönsterputs ut- och insida',
+        'Takläggare': 'Takläggning inkl. underlag och beslag',
+        'Murare': 'Murnings- och putsarbete enligt ritning',
+        'Trädgårdsskötare': 'Trädgårdsarbete enligt överenskommelse'
+      };
+      
       for (const [workType, hours] of Object.entries(baseTotals.workHours)) {
         const hourlyRate = hourlyRatesByType[workType] || 650;
         const subtotal = (hours as number) * hourlyRate;
+        
+        // FAS 2: Använd konkret beskrivning eller fallback till användarens description
+        let itemDescription = workDescriptionTemplates[workType];
+        if (!itemDescription) {
+          // Om ingen mall finns, använd en mer informativ generisk beskrivning
+          itemDescription = `${workType}arbete enligt projektkrav: ${description.substring(0, 60)}${description.length > 60 ? '...' : ''}`;
+        }
+        
         workItems.push({
           name: `${workType} - Arbete`,
-          description: `Utförande av ${workType.toLowerCase()}-arbete enligt beskrivning`,
+          description: itemDescription,
           hours: hours,
           hourlyRate: hourlyRate,
           subtotal: subtotal
