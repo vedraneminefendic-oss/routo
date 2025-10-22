@@ -9,7 +9,7 @@ const corsHeaders = {
 };
 
 // AI Model Configuration (OPTIMIZED FOR SPEED)
-const TEXT_MODEL = 'google/gemini-2.5-flash'; // Fast + reliable
+const TEXT_MODEL = 'openai/gpt-5-mini'; // Main generation model - Best Swedish comprehension
 const EXTRACTION_MODEL = 'google/gemini-2.5-flash-lite'; // Fastest for simple extraction
 const MAX_AI_TIME = 12000; // 12 seconds max for AI steps
 
