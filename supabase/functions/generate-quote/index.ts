@@ -589,21 +589,37 @@ EXEMPEL PÅ TVETYDIGA MÅTT (ambiguous=true):
       if (parsed.ambiguous) {
         const regexFindings: any = {};
         
-        // Extrahera antal (ord eller siffror)
-        const quantityMatch = description.match(/\b(två|tre|fyra|fem|sex|sju|åtta|nio|tio|\d+)\s+(träd|rum|ekar|badrummen|kök|fönster|dörrar)/i);
+        // Extrahera antal (ord eller siffror) - utökad lista
+        const quantityMatch = description.match(/\b(två|tre|fyra|fem|sex|sju|åtta|nio|tio|elva|tolv|\d+)\s+(tr[aä]d|ek(ar)?|rum|badrum(men)?|k[oö]k|f[öo]nster|d[öo]rr(ar)?|v[aä]gg(ar)?|tak|radiator(er)?|uttag|sk[aå]p|plattor|lister|stolpar)/i);
         if (quantityMatch) {
           const quantityWord = quantityMatch[1].toLowerCase();
           const quantityMap: Record<string, number> = { 
             'två': 2, 'tre': 3, 'fyra': 4, 'fem': 5, 'sex': 6, 
-            'sju': 7, 'åtta': 8, 'nio': 9, 'tio': 10 
+            'sju': 7, 'åtta': 8, 'nio': 9, 'tio': 10, 'elva': 11, 'tolv': 12
           };
           regexFindings.quantity = quantityMap[quantityWord] || parseInt(quantityWord);
         }
         
-        // Extrahera area (kvm, kvadratmeter, m²)
-        const areaMatch = description.match(/(\d+(?:[.,]\d+)?)\s*(kvm|kvadratmeter|m²|m2)/i);
+        // Extrahera area med sifferord-stöd (t.ex. "åtta kvm")
+        const wordToNumber: Record<string, number> = {
+          'en': 1, 'ett': 1, 'två': 2, 'tre': 3, 'fyra': 4, 'fem': 5,
+          'sex': 6, 'sju': 7, 'åtta': 8, 'nio': 9, 'tio': 10,
+          'elva': 11, 'tolv': 12, 'femton': 15, 'tjugo': 20
+        };
+        
+        // Försök digit-baserad area först
+        let areaMatch = description.match(/(\d+(?:[.,]\d+)?)\s*(kvm|kvadratmeter|m²|m2)/i);
         if (areaMatch) {
           regexFindings.area = `${areaMatch[1]} ${areaMatch[2]}`;
+        } else {
+          // Försök sifferord-baserad area
+          const wordAreaMatch = description.match(/\b(en|ett|två|tre|fyra|fem|sex|sju|åtta|nio|tio|elva|tolv|femton|tjugo)\s*(kvm|kvadrat|m²|m2)\b/i);
+          if (wordAreaMatch) {
+            const num = wordToNumber[wordAreaMatch[1].toLowerCase()];
+            if (num) {
+              regexFindings.area = `${num} kvm`;
+            }
+          }
         }
         
         // Extrahera höjd (meter, m)
@@ -908,7 +924,8 @@ Som professionell hantverkare-assistent: Analysera detta och bestäm om du behö
         material_level: /(material|kvalitet|[nN]iv[aå]|budget|standard|premium|lyx)/,
         demolition: /(riv|demonter|plock.*ned|ta.*ned)/,
         deadline: /(tid|n[aä]r|deadline|skynda|brådska|snabbt)/,
-        surface: /(underlag|yta|tapet|gammal|befintlig)/
+        surface: /(underlag|yta|tapet|gammal|befintlig)/,
+        measurement_general: /(m[aå]tt|kvantit|dimension(er)?|storlek|l[aä]ngd|bredd|m[aå]tten)/i
       };
       
       // Track what has been discussed
@@ -928,6 +945,12 @@ Som professionell hantverkare-assistent: Analysera detta och bestäm om du behö
         if (pattern.test(description)) {
           discussedTopics.add(topic);
         }
+      }
+      
+      // Mark measurement_general as discussed if we have specific measurements OR unit patterns in conversation
+      if (measurements.area || measurements.height || measurements.diameter || measurements.quantity ||
+          /(kvm|kvadrat|m²|m2|\d+\s*m(eter)?|\d+\s*cm)/i.test(fullConversationText)) {
+        discussedTopics.add('measurement_general');
       }
       
       let filteredQuestions = result.questions.filter((q: string) => {
@@ -991,6 +1014,13 @@ Som professionell hantverkare-assistent: Analysera detta och bestäm om du behö
             console.log(`❌ Filtering question - answered by measurements: ${q.slice(0, 50)}...`);
             return false;
           }
+          
+          // Filter generic measurement questions if specific measurements exist
+          if (/(matt|kvantit|dimension|storlek|langd|bredd)/i.test(qNorm) && 
+              (measurements.area || measurements.height || measurements.diameter || measurements.quantity)) {
+            console.log(`❌ Filtering measurement_general question - specific measurements already provided`);
+            return false;
+          }
         }
         
         // Specific filters for common patterns
@@ -1030,6 +1060,20 @@ Som professionell hantverkare-assistent: Analysera detta och bestäm om du behö
         original: result.questions.length, 
         filtered: filteredQuestions.length 
       });
+      
+      // FAILSAFE: If all remaining questions are generic measurement questions AND we have measurements → force generate
+      if (filteredQuestions.length > 0) {
+        const allGenericMeasurements = filteredQuestions.every((q: string) => 
+          topics.measurement_general.test(normalizeText(q))
+        );
+        
+        const hasMeasurements = measurements.area || measurements.height || measurements.diameter || measurements.quantity;
+        
+        if (allGenericMeasurements && hasMeasurements) {
+          console.log('⚠️ Forcing generate due to generic measurement questions only (measurements already provided)');
+          return { action: 'generate' };
+        }
+      }
       
       // Force generate after too many exchanges or no questions left
       if (filteredQuestions.length === 0) {
