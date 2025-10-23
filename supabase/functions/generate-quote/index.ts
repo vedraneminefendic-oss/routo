@@ -844,6 +844,129 @@ function getDomainKnowledge(description: string): {
   return { workType: 'general', criticalFactors: [] };
 }
 
+// ============================================
+// HANDOFF AI IMPROVEMENT: Already Known Facts Analysis
+// ============================================
+function analyzeConversationHistory(conversationHistory?: any[]): {
+  area: string | null;
+  quantity: string | null;
+  materialLevel: string | null;
+  deadline: string | null;
+  hasPhotos: boolean;
+} {
+  const facts = {
+    area: null as string | null,
+    quantity: null as string | null,
+    materialLevel: null as string | null,
+    deadline: null as string | null,
+    hasPhotos: false
+  };
+
+  if (!conversationHistory || conversationHistory.length === 0) {
+    return facts;
+  }
+
+  // Analysera HELA konversationen
+  const fullConversation = conversationHistory
+    .map(m => m.content)
+    .join(' ')
+    .toLowerCase();
+
+  // Detektera area
+  const areaMatch = fullConversation.match(/(\d+(?:[.,]\d+)?)\s*(?:kvm|kvadratmeter|m2|m²)/i);
+  if (areaMatch) {
+    facts.area = areaMatch[1].replace(',', '.') + ' kvm';
+  }
+
+  // Detektera quantity
+  const quantityMatch = fullConversation.match(/(\d+)\s*(?:fönster|träd|dörrar|rum|st|stycken)/i);
+  if (quantityMatch) {
+    facts.quantity = quantityMatch[1];
+  }
+
+  // Detektera material level
+  if (fullConversation.includes('budget') || fullConversation.includes('billig')) {
+    facts.materialLevel = 'budget';
+  } else if (fullConversation.includes('premium') || fullConversation.includes('lyx')) {
+    facts.materialLevel = 'premium';
+  } else if (fullConversation.includes('mellan') || fullConversation.includes('standard')) {
+    facts.materialLevel = 'standard';
+  }
+
+  // Detektera deadline
+  const deadlineMatch = fullConversation.match(/(?:deadline|klart|färdigt|leverans).*?(\d+\s*(?:dagar|veckor|månader))/i);
+  if (deadlineMatch) {
+    facts.deadline = deadlineMatch[1];
+  }
+
+  return facts;
+}
+
+// ============================================
+// HANDOFF AI IMPROVEMENT: Information Quality Score
+// ============================================
+function calculateInformationQuality(
+  facts: ReturnType<typeof analyzeConversationHistory>,
+  projectType: string,
+  descriptionLength: number
+): {
+  score: number;
+  missingCritical: string[];
+  reason: string;
+} {
+  let score = 0;
+  const missingCritical: string[] = [];
+
+  // Projekttyp identifierad? +30 poäng
+  if (projectType && projectType !== 'not specified' && projectType !== 'general') {
+    score += 30;
+  } else {
+    missingCritical.push('projekttyp');
+  }
+
+  // Mått finns? +40 poäng (KRITISKT för renoveringsprojekt)
+  const needsMeasurements = /renover|bygg|mål|lägg|install|fäll/i.test(projectType);
+  if (needsMeasurements) {
+    if (facts.area || facts.quantity) {
+      score += 40;
+    } else {
+      missingCritical.push('storlek/antal');
+    }
+  } else {
+    // Projekt som inte behöver mått (ex. konsultation)
+    score += 40;
+  }
+
+  // Beskrivning tillräckligt lång? +20 poäng
+  if (descriptionLength > 30) {
+    score += 20;
+  }
+
+  // Material level? +10 poäng
+  if (facts.materialLevel) {
+    score += 10;
+  }
+
+  // Betyg:
+  // 90-100: Excellent - Generera offert direkt
+  // 70-89: Good - Generera offert med anteckningar om antaganden
+  // 50-69: Fair - Fråga 1 kritisk fråga
+  // 0-49: Poor - Fråga 2 kritiska frågor
+
+  let reason = '';
+  if (score >= 90) {
+    reason = 'Excellent info - generating quote';
+  } else if (score >= 70) {
+    reason = 'Good info - will add assumptions in notes';
+  } else if (score >= 50) {
+    reason = 'Fair info - asking 1 critical question';
+  } else {
+    reason = 'Poor info - need more details';
+  }
+
+  return { score, missingCritical, reason };
+}
+
 // IMPROVED: Extract measurements with full conversation context (WITH TIMEOUT)
 async function extractMeasurements(
   description: string,
@@ -862,18 +985,10 @@ async function extractMeasurements(
   console.log('⏱️ Starting measurement extraction');
   
   try {
-    // Build context-aware prompt with full conversation
-    let contextPrompt = description;
-    
-    if (conversationHistory && conversationHistory.length > 0) {
-      const userMessages = conversationHistory
-        .filter(m => m.role === 'user')
-        .map(m => m.content);
-      
-      if (userMessages.length > 1) {
-        contextPrompt = userMessages.join('. ');
-      }
-    }
+    // HANDOFF AI FIX: Use buildConversationSummary for complete context
+    const contextPrompt = conversationHistory && conversationHistory.length > 0
+      ? buildConversationSummary(conversationHistory, description)
+      : description;
     
     // AbortController for timeout
     const controller = new AbortController();
@@ -1172,7 +1287,11 @@ async function calculateBaseTotals(
       };
     } else {
       console.log('⏱️ Extracting measurements (not passed proactively)');
-      measurements = await extractMeasurements(description, apiKey, conversationHistory);
+      // HANDOFF AI FIX: Pass full context instead of just description
+      const fullContext = conversationHistory && conversationHistory.length > 0
+        ? buildConversationSummary(conversationHistory, description)
+        : description;
+      measurements = await extractMeasurements(fullContext, apiKey, conversationHistory);
     }
   } else {
     console.log('✅ Using pre-extracted measurements (skipping duplicate extraction)');
@@ -2355,6 +2474,29 @@ serve(async (req) => {
     // Build complete description EARLY for all subsequent use
     const completeDescription = buildConversationSummary(conversation_history || [], description);
 
+    // ============================================
+    // HANDOFF AI IMPROVEMENT: Post-Quote Modification Detection
+    // ============================================
+    const isModificationRequest = conversation_history && 
+      conversation_history.length > 2 && 
+      description.toLowerCase().match(/(lägg till|ändra|justera|ta bort|uppdatera|modifiera|lägg in|inkludera|ta med)/);
+
+    if (isModificationRequest) {
+      console.log('🔄 Modification request detected - will update existing quote');
+      
+      // Hitta senaste genererade offerten i conversation history
+      const lastAssistantMessage = conversation_history
+        .slice()
+        .reverse()
+        .find(m => m.role === 'assistant' && m.content.includes('workItems'));
+      
+      if (lastAssistantMessage) {
+        console.log('📝 Found previous quote - preparing for modification');
+        // Note: The modification will be handled by the AI with the full conversation context
+        // The AI will see the previous quote and the modification request together
+      }
+    }
+
     // FAS 5: Fetch learning context (learned preferences, industry benchmarks, user patterns)
     const contextStartTime = Date.now();
     console.log('📚 FAS 5: Fetching learning context...');
@@ -2851,7 +2993,14 @@ Lägg till dem i materials-array med dessa standardpriser:
 → ANVÄND EXAKT dessa siffror när du beskriver RUT-avdraget i din offert!`
       : `Inget skatteavdrag tillämpas på detta arbete.`;
 
-    // FAS 1: Återaktiverad motfråge-fas med förbättrad logik
+    // ============================================
+    // HANDOFF AI IMPROVEMENT: Smart Clarification with Context-Awareness
+    // ============================================
+    
+    // STEP 1: Analyze what we already know from conversation history
+    const alreadyKnownFacts = analyzeConversationHistory(conversation_history);
+    console.log('📝 Already known facts from conversation:', alreadyKnownFacts);
+    
     const exchangeCount = conversation_history ? Math.floor(conversation_history.length / 2) : 0;
     
     // Tillåt offertgenerering direkt om användaren EXPLICIT ber om det
@@ -2859,43 +3008,53 @@ Lägg till dem i materials-array med dessa standardpriser:
       /(generera|skapa offert|gör en offert|ta fram offert|räcker|kör på|det räcker|generera nu)/
     );
     
-    // FAS 1.1: Strängare clarification - fråga även om användaren ber om offert men kritisk info saknas
-    const shouldAskQuestions = exchangeCount === 0 && !userExplicitlyWantsQuote;
+    // STEP 2: Calculate information quality score
+    const fullContext = conversation_history && conversation_history.length > 0
+      ? buildConversationSummary(conversation_history, description)
+      : description;
+    
+    const { projectType } = getDomainKnowledge(fullContext);
+    const infoQuality = calculateInformationQuality(
+      alreadyKnownFacts,
+      projectType,
+      fullContext.length
+    );
+    
+    console.log(`📊 Information Quality Score: ${infoQuality.score}/100 - ${infoQuality.reason}`);
+    
+    // STEP 3: Decide based on quality score and context
+    const shouldAskQuestions = infoQuality.score < 70 && exchangeCount === 0 && !userExplicitlyWantsQuote && !isModificationRequest;
 
     if (shouldAskQuestions) {
       console.log('💬 FAS 1: Checking if clarification needed...');
       
-      // Bygg full kontext
-      const fullContext = conversation_history && conversation_history.length > 0
-        ? buildConversationSummary(conversation_history, description)
-        : description;
+      // Extract measurements only if we don't already know them
+      let measurements = { ambiguous: false, clarificationNeeded: undefined as string | undefined };
       
-      // Samla ALL info som KANSKE saknas
-      const measurements = await extractMeasurements(fullContext, LOVABLE_API_KEY!, conversation_history);
-      const { criticalFactors, projectType } = getDomainKnowledge(fullContext);
+      if (!alreadyKnownFacts.area && !alreadyKnownFacts.quantity) {
+        measurements = await extractMeasurements(fullContext, LOVABLE_API_KEY!, conversation_history);
+      }
       
-      // Bygg prioriterad lista av frågor
+      // Bygg prioriterad lista av frågor baserat på vad som VERKLIGEN saknas
       const questions: string[] = [];
       
-      // 1. KRITISKT: Helt saknade mått för projekt som KRÄVER mått
-      const needsMeasurements = /renover|bygg|fäll|mål|lägg|install|byt/i.test(fullContext);
-      if (needsMeasurements && measurements.ambiguous) {
+      // Only ask about measurements if we don't already have them
+      if (infoQuality.missingCritical.includes('storlek/antal') && !alreadyKnownFacts.area && !alreadyKnownFacts.quantity) {
         if (measurements.clarificationNeeded) {
           questions.push(measurements.clarificationNeeded);
         } else {
-          // Generisk fråga om mått saknas
-          questions.push('Vad är storleken på området (i kvm) eller antal (för ex. träd/dörrar)?');
+          questions.push('Hur stor är ytan (i kvm) eller hur många (ex. fönster/träd)?');
         }
       }
       
-      // 2. VIKTIGT: För kort beskrivning (<15 tecken) eller väldigt vag
-      if (description.length < 15) {
-        questions.push('Kan du beskriva projektet lite mer detaljerat? Vad ska göras och var?');
+      // Only ask about project type if unclear
+      if (infoQuality.missingCritical.includes('projekttyp')) {
+        questions.push('Kan du beskriva projektet lite mer detaljerat?');
       }
       
       // Om vi har minst 1 kritisk fråga → fråga ENDAST DEN
       if (questions.length > 0) {
-        console.log(`🤔 FAS 1: Asking ${questions.length} critical question(s)`);
+        console.log(`🤔 HANDOFF AI: Asking ${questions.length} NEW question(s) (skipping already known facts)`);
         return new Response(
           JSON.stringify({
             type: 'clarification',
@@ -2907,8 +3066,13 @@ Lägg till dem i materials-array med dessa standardpriser:
       }
       
       console.log('✅ FAS 1: Enough information - proceeding to quote generation');
+    } else if (infoQuality.score >= 70) {
+      console.log(`✅ HANDOFF AI: Information quality sufficient (${infoQuality.score}/100) - proceeding to quote generation`);
+      if (infoQuality.score < 90) {
+        console.log('   → Will add assumptions in notes');
+      }
     } else {
-      console.log('ℹ️ FAS 1: Skipping clarification (user explicitly requested quote or followup message)');
+      console.log('ℹ️ FAS 1: Skipping clarification (user explicitly requested quote or followup/modification)');
     }
     
     console.log('✅ Proceeding to quote generation...');
