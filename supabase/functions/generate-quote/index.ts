@@ -13,10 +13,10 @@ const TEXT_MODEL = 'google/gemini-2.5-flash'; // Main generation - Fast & excell
 const EXTRACTION_MODEL = 'google/gemini-2.5-flash-lite'; // Fastest extraction with good Swedish
 const MAX_AI_TIME = 18000; // 18 seconds max for AI steps (increased for reliability)
 
-// Per-call timeouts (Gemini Flash is faster than GPT-5-mini)
-const TIMEOUT_EXTRACT_MEASUREMENTS = 6000; // 6s for measurements (Gemini-lite is fast)
-const TIMEOUT_DETECT_DEDUCTION = 3000; // 3s for deduction (simple classification)
-const TIMEOUT_MAIN_GENERATION = 12000; // 12s for main quote generation (Gemini Flash is faster)
+// Per-call timeouts (FAS 1.2: Realistic timeouts for reliability)
+const TIMEOUT_EXTRACT_MEASUREMENTS = 8000; // 8s for measurements (increased for reliability)
+const TIMEOUT_DETECT_DEDUCTION = 4000; // 4s for deduction detection
+const TIMEOUT_MAIN_GENERATION = 25000; // 25s for main quote generation (give AI time to think)
 
 // FAS 7: Industry-specific material to work cost ratios (FAS 3.6: REALISTISKA VÄRDEN)
 const MATERIAL_RATIOS: Record<string, number> = {
@@ -203,29 +203,30 @@ async function fetchLearningContext(supabaseClient: any, userId: string, session
   return context;
 }
 
-// Rule-based deduction detection for obvious cases
+// FAS 2: Rule-based deduction detection - RUT checks FIRST (before ROT)
 function detectDeductionByRules(description: string): 'rot' | 'rut' | null {
   const descLower = description.toLowerCase();
   
-  // ROT keywords (renovation/construction/repair)
+  // RUT keywords (cleaning/maintenance/garden) - CHECK FIRST!
+  const rutKeywords = ['städ', 'storstäd', 'flyttstäd', 'fönsterputsning', 'fönsterputs',
+    'trädgård', 'gräsklippning', 'häck', 'snöröjning', 'löv', 'ogräs', 'plantering'];
+  
+  // ROT keywords (renovation/construction/repair) - CHECK AFTER
   const rotKeywords = ['badrum', 'kök', 'renovera', 'renovering', 'ombyggnad', 'bygg', 
     'måla', 'målning', 'golv', 'golvlägg', 'tak', 'fasad', 'altan', 'balkong', 
     'fönster', 'dörr', 'kakel', 'klinker', 'tapet', 'spackel', 'puts'];
   
-  // RUT keywords (cleaning/maintenance/garden)
-  const rutKeywords = ['städ', 'storstäd', 'flyttstäd', 'fönsterputsning', 'fönsterputs',
-    'trädgård', 'gräsklippning', 'häck', 'snöröjning', 'löv', 'ogräs', 'plantering'];
-  
-  const hasRot = rotKeywords.some(kw => descLower.includes(kw));
   const hasRut = rutKeywords.some(kw => descLower.includes(kw));
+  const hasRot = rotKeywords.some(kw => descLower.includes(kw));
   
-  if (hasRot && !hasRut) {
-    console.log('🎯 Rule-based deduction: ROT (renovation detected)');
-    return 'rot';
-  }
+  // FAS 2: Check RUT FIRST (higher priority for correct classification)
   if (hasRut && !hasRot) {
     console.log('🎯 Rule-based deduction: RUT (cleaning/garden detected)');
     return 'rut';
+  }
+  if (hasRot && !hasRut) {
+    console.log('🎯 Rule-based deduction: ROT (renovation detected)');
+    return 'rot';
   }
   
   // Ambiguous or unclear → return null to trigger AI
@@ -2858,7 +2859,7 @@ Lägg till dem i materials-array med dessa standardpriser:
       /(generera|skapa offert|gör en offert|ta fram offert|räcker|kör på|det räcker|generera nu)/
     );
     
-    // Fråga om vi har FÖR LITE info och användaren inte explicit bett om offert
+    // FAS 1.1: Strängare clarification - fråga även om användaren ber om offert men kritisk info saknas
     const shouldAskQuestions = exchangeCount === 0 && !userExplicitlyWantsQuote;
 
     if (shouldAskQuestions) {
@@ -3114,28 +3115,51 @@ Lägg till dem i materials-array med dessa standardpriser:
       // Generate work items from baseTotals.workHours
       const workItems: any[] = [];
       
-      // FAS 2: Beskrivningsmall per arbetstyp
-      const workDescriptionTemplates: Record<string, string> = {
-        'Plattsättare': 'Läggning av kakel och klinker inkl. fog och preparering',
-        'VVS': 'Installation och anslutning av VVS-komponenter enligt standard',
-        'Elektriker': 'Elinstallation enligt gällande normer och standarder',
-        'Snickare': 'Snickeriarbete inkl. kapning, montering och justering',
-        'Målare': 'Målning och spackling enligt specifikation',
-        'Arborist': 'Fällning och hantering enligt säkerhetsföreskrifter',
-        'Städare': 'Städning enligt överenskommet omfattning',
-        'Fönsterputsare': 'Fönsterputs ut- och insida',
-        'Takläggare': 'Takläggning inkl. underlag och beslag',
-        'Murare': 'Murnings- och putsarbete enligt ritning',
-        'Trädgårdsskötare': 'Trädgårdsarbete enligt överenskommelse'
+      // FAS 4: Dynamiska beskrivningsmallar per arbetstyp
+      const projectType = description.toLowerCase().includes('badrum') ? 'badrum' : 
+                          description.toLowerCase().includes('kök') ? 'kok' : 
+                          description.toLowerCase().includes('altan') ? 'altan' : 'general';
+      
+      // Extract simple defaults from description if possible
+      const areaMatch = description.match(/(\d+)\s*(kvm|m2|kvadratmeter)/i);
+      const quantityMatch = description.match(/(\d+)\s*(st|stycken|träd|fönster)/i);
+      const area = areaMatch ? `${areaMatch[1]} kvm` : '5 kvm';
+      const quantity = quantityMatch ? quantityMatch[1] : '1';
+      
+      const workDescriptionTemplates: Record<string, (ctx: any) => string> = {
+        'Plattsättare': (ctx) => `Läggning av kakel och klinker ${ctx.area} inkl. fog, preparering och nivellering`,
+        'VVS': (ctx) => ctx.projectType === 'badrum' 
+          ? 'Byte av kranblandare, duschset, avtappningskran och spillvattenrör'
+          : 'Installation och anslutning av VVS-komponenter enligt standard',
+        'Elektriker': (ctx) => ctx.projectType === 'badrum'
+          ? 'Ny elinstallation för belysning, uttag och golvvärme'
+          : 'Elinstallation enligt gällande normer och standarder',
+        'Snickare': (ctx) => 'Snickeriarbete inkl. kapning, montering och justering',
+        'Målare': (ctx) => `Målning och spackling ${ctx.area} enligt specifikation`,
+        'Arborist': (ctx) => `Fällning av ${ctx.quantity} träd inkl. kapning, stubbfräsning och bortforsling`,
+        'Städare': (ctx) => 'Städning enligt överenskommet omfattning',
+        'Fönsterputsare': (ctx) => `Putsning av ${ctx.quantity} fönster in- och utvändigt`,
+        'Takläggare': (ctx) => `Takläggning ${ctx.area} inkl. underlag och beslag`,
+        'Murare': (ctx) => 'Murnings- och putsarbete enligt ritning',
+        'Trädgårdsskötare': (ctx) => 'Trädgårdsarbete enligt överenskommelse'
       };
       
       for (const [workType, hours] of Object.entries(baseTotals.workHours)) {
         const hourlyRate = hourlyRatesByType[workType] || 650;
         const subtotal = (hours as number) * hourlyRate;
         
-        // FAS 2: Använd konkret beskrivning eller fallback till användarens description
-        let itemDescription = workDescriptionTemplates[workType];
-        if (!itemDescription) {
+        // FAS 4: Använd dynamisk beskrivning med kontext
+        const templateFn = workDescriptionTemplates[workType];
+        let itemDescription;
+        
+        if (templateFn) {
+          itemDescription = templateFn({ 
+            area, 
+            quantity, 
+            projectType,
+            description: description.substring(0, 60)
+          });
+        } else {
           // Om ingen mall finns, använd en mer informativ generisk beskrivning
           itemDescription = `${workType}arbete enligt projektkrav: ${description.substring(0, 60)}${description.length > 60 ? '...' : ''}`;
         }
@@ -3356,98 +3380,32 @@ Lägg till dem i materials-array med dessa standardpriser:
         messages: [
           {
             role: 'system',
-            content: `Du är en erfaren svensk hantverkare som skapar offerter.
+            content: `Du skapar professionella offerter på svenska. ANVÄND EXAKT dessa förberäknade värden:
 
-**KRITISKA REGLER:**
+**LÅSTA BERÄKNINGAR:**
+- Arbetstimmar: ${JSON.stringify(baseTotals.workHours)} (totalt ${baseTotals.totalHours}h)
+- Arbetskostnad: ${baseTotals.workCost} kr (exkl moms)
+- Material: ${baseTotals.materialCost} kr (exkl moms)
+- Timpris: ${JSON.stringify(baseTotals.hourlyRatesByType)}
 
-1. ANVÄND dessa förberäknade värden EXAKT:
-   - Arbetstimmar: ${JSON.stringify(baseTotals.workHours)}
-   - Material: ${baseTotals.materialCost} kr
-   - Timpris: ${JSON.stringify(baseTotals.hourlyRatesByType)}
-   - Summa workItems.hours MÅSTE = ${baseTotals.totalHours}h
-   - Summa materials.subtotal MÅSTE = ${baseTotals.materialCost + baseTotals.equipmentCost} kr
+**PROJEKT:** "${completeDescription}"
 
-2. Projekt: "${description}"
+**DETALJNIVÅ "${detailLevel}":**
+${detailLevel === 'standard' ? '• 3-7 arbetsposter (helst 4-6)\n• 5-10 material' : '• 2-3 arbetsposter\n• 3-5 material'}
 
-3. Detaljnivå "${detailLevel}": ${detailLevel === 'standard' ? '4-6 arbetsposter, 5-10 material' : '2-3 arbetsposter, 3-5 material'}
-
-${ratesText}
-${equipmentText}
-Skapa offert med rätt struktur och summor. Avdragstyp: ${finalDeductionType}
-2. **BERÄKNA:** Använd baseTotals som grund för alla siffror
-3. **PRESENTERA:** Skapa en professionell, tydlig offert
-4. **ANROPA:** create_quote med komplett data
-
-**VIKTIGASTE REGLER:**
-
-✅ **Använd EXAKT de siffror som finns i baseTotals:**
-   • workCost: ${baseTotals.workCost} kr
-   • materialCost: ${baseTotals.materialCost} kr
-   • totalHours: ${baseTotals.totalHours}h
-
-✅ **Detaljnivå "${detailLevel}":**
-   • quick: 2-3 arbetsposter, 3-5 material
-   • standard: 4-6 arbetsposter, 5-10 material  
-   • detailed: 6-10 arbetsposter, 10-15 material
-
-✅ **Matcha projektet:**
-   • Offerten ska vara för: "${completeDescription}"
-   • Om användaren sa "badrum" → gör badrumsoffert
-   • Om användaren sa "altan" → gör altanoffert
-
-❌ **GÖR INTE:**
-   • Fråga om mer information (du har allt)
-   • Avvika från baseTotals.workCost/materialCost med mer än 5%
-   • Vänta eller tveka
-
-**→ ANROPA create_quote NU med komplett offert**
-
-**═══════════════════════════════════════════════════════════════**
-
-• Max-gräns: ${totalMaxRut} kr
-• Faktiskt avdrag: ${Math.min(Math.round(5000 * deductionRate), totalMaxRut)} kr
-• Material: 500 kr (× 1.25 = 625 kr inkl moms)
-• Total inkl moms: 5,000 + 625 = 5,625 kr
-• Kund betalar: 5,625 - ${Math.min(Math.round(5000 * deductionRate), totalMaxRut)} = ${5625 - Math.min(Math.round(5000 * deductionRate), totalMaxRut)} kr
-
-**KORREKT BERÄKNING I SUMMARY:**
-{
-  "workCost": 40000,           // Exkl moms
-  "materialCost": 10000,       // Exkl moms
-  "totalBeforeVAT": 50000,     // workCost + materialCost
-  "vat": 12500,                // totalBeforeVAT × 0.25
-  "totalWithVAT": 62500,       // totalBeforeVAT + vat
-  "deductionAmount": ${Math.min(Math.round(50000 * deductionRate), totalMaxRot)},    // (workCost × 1.25) × ${deductionRate}
-  "deductionType": "rot",
-  "rotDeduction": ${Math.min(Math.round(50000 * deductionRate), totalMaxRot)},       // Samma som deductionAmount
-  "customerPays": ${62500 - Math.min(Math.round(50000 * deductionRate), totalMaxRot)}        // totalWithVAT - rotDeduction
-}
-
-**FEL BERÄKNING (gör INTE så här!):**
-{
-  "deductionAmount": 12000,    // ❌ FEL: Använder workCost direkt (40000 × 0.30)
-  "customerPays": 50500        // ❌ FEL: Blir fel totalt
-}
-
-**═══════════════════════════════════════════════════════════════**
-
-**SKATTEAVDRAG:**
-${deductionInfo}
-
-${finalDeductionType !== 'none' ? `
-VIKTIGT för ${finalDeductionType.toUpperCase()}-arbeten:
-1. Var tydlig med vad som är arbetskostnad (avdragsgillt)
-2. Material och utrustning är INTE avdragsgilla
-3. Kunden får avdraget preliminärt direkt på fakturan
-4. Visa tydligt i sammanfattningen: "Kund betalar efter ${finalDeductionType.toUpperCase()}-avdrag"
+${personalContext ? `**ANVÄNDARENS STIL:**
+${personalContext.substring(0, 300)}...
 ` : ''}
 
-Viktig information:
-- Använd realistiska svenska priser (2025)
-- Använd de angivna timpriserna ovan för varje arbetsmoment
-- Inkludera moms (25%)
-- Specificera material och kvantiteter
-- Var tydlig med vad som ingår och inte ingår`
+**SKATTEAVDRAG:** ${deductionInfo}
+
+**DIN UPPGIFT:**
+1. Dela upp timmar i konkreta arbetsposter (ex: "Läggning av kakel 8 kvm" istället för "Plattsättning")
+2. Lista material med kvantitet (ex: "Kakel 8 kvm @ 450 kr/kvm" istället för "Material")
+3. Matcha ${detailLevel}-nivå (inte för många/få poster)
+4. Använd EXAKT de timmar/kostnader som angetts ovan
+
+ANROPA create_quote NU.`
           },
           {
             role: 'user',
