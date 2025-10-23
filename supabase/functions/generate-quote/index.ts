@@ -647,29 +647,19 @@ function autoCorrectQuote(quote: any, baseTotals: any): any {
   
   console.log('🔧 Smart repair: Analyserar AI:ns offert...');
   
-  // 1. Handle missing or incorrect work items
+  // ÅTGÄRD 2: ENDAST validera totaler - AI skapar alla arbetsposter själv
+  // Vi litar på AI:ns beskrivningar och justerar bara timpriset om fel
   Object.entries(baseTotals.workHours).forEach(([type, expectedHours]) => {
     const typeItems = correctedQuote.workItems.filter((item: any) => 
       item.name.startsWith(type + ' -') || item.name === type
     );
     
-    if (typeItems.length === 0) {
-      // Missing work type completely - ADD new generic work item
-      console.log(`  → Lägger till saknad arbetstyp: ${type} (${expectedHours}h)`);
-      const hourlyRate = baseTotals.hourlyRatesByType[type] || 750;
-      correctedQuote.workItems.push({
-        name: `${type} - Arbete`,
-        description: `${type}arbete enligt offert`,
-        hours: expectedHours,
-        hourlyRate: hourlyRate,
-        subtotal: Math.round((expectedHours as number) * hourlyRate)
-      });
-    } else if (typeItems.length > 0) {
-      // Work type exists but wrong hours - ADJUST proportionally
+    if (typeItems.length > 0) {
+      // Work type exists - only adjust hours proportionally if needed
       const totalActualHours = typeItems.reduce((sum: number, item: any) => sum + item.hours, 0);
       
       if (Math.abs(totalActualHours - (expectedHours as number)) > 0.5) {
-        console.log(`  → Justerar ${type}: ${totalActualHours}h → ${expectedHours}h`);
+        console.log(`  → Justerar ${type}: ${totalActualHours}h → ${expectedHours}h (bevarar AI:ns beskrivningar)`);
         const ratio = (expectedHours as number) / totalActualHours;
         
         typeItems.forEach((item: any) => {
@@ -678,6 +668,7 @@ function autoCorrectQuote(quote: any, baseTotals: any): any {
         });
       }
     }
+    // NOTE: Vi lägger INTE till saknade arbetstyper - AI måste generera alla
   });
   
   // 2. Force correct material cost with RELAXED tolerance (1000 kr or 3%)
@@ -924,6 +915,13 @@ function calculateInformationQuality(
     missingCritical.push('projekttyp');
   }
 
+  // ÅTGÄRD 4: Bonus för konkret omfattning (+30 poäng för "5 uttag", "3 träd", etc.)
+  const hasConcreteScope = /\d+\s*(uttag|träd|fönster|dörr|meter|rutor|lampor|element)/i.test(facts.area?.toString() || facts.quantity?.toString() || '');
+  if (hasConcreteScope) {
+    score += 30;
+    console.log('📊 Bonus: Konkret omfattning specificerad (+30p)');
+  }
+
   // Mått finns? +40 poäng (KRITISKT för renoveringsprojekt)
   const needsMeasurements = /renover|bygg|mål|lägg|install|fäll/i.test(projectType);
   if (needsMeasurements) {
@@ -942,8 +940,13 @@ function calculateInformationQuality(
     score += 20;
   }
 
-  // Material level? +10 poäng
-  if (facts.materialLevel) {
+  // ÅTGÄRD 3: Material level KRÄVS för renoveringsprojekt (-30 poäng om saknas)
+  const needsMaterialLevel = /renover|badrum|kök|bygg|lägg|el-install/i.test(projectType);
+  if (needsMaterialLevel && !facts.materialLevel) {
+    score -= 30;
+    missingCritical.push('materialkvalitet');
+    console.log('⚠️ Materialkvalitet saknas - kritiskt för renoveringsprojekt (-30p)');
+  } else if (facts.materialLevel) {
     score += 10;
   }
 
@@ -3054,10 +3057,11 @@ Lägg till dem i materials-array med dessa standardpriser:
         }
       }
       
-      // ÅTGÄRD 2: Ask about material level for renovation projects
-      const needsMaterialLevel = /renover|badrum|kök|bygg|lägg/i.test(projectType || '');
+      // ÅTGÄRD 3: ALLTID fråga om materialkvalitet för renoveringsprojekt
+      const needsMaterialLevel = /renover|badrum|kök|bygg|lägg|el-install/i.test(projectType || '');
       if (needsMaterialLevel && !alreadyKnownFacts.materialLevel) {
-        questions.push('Vilken kvalitetsnivå önskar du? (Budget, Standard eller Premium)');
+        questions.push('Vilken kvalitetsnivå önskar du på material? (Budget/Standard/Premium)');
+        console.log('❓ Materialkvalitet KRÄVS för detta projekt - frågar användaren');
       }
       
       // Only ask about project type if unclear
@@ -3557,146 +3561,57 @@ Lägg till dem i materials-array med dessa standardpriser:
         messages: [
           {
             role: 'system',
-            content: `Du skapar professionella offerter på svenska. ANVÄND EXAKT dessa förberäknade värden:
+            content: `PROFESSIONELL OFFERT - SVENSKA HANTVERKSARBETEN
 
-**LÅSTA BERÄKNINGAR:**
-- Arbetstimmar: ${JSON.stringify(baseTotals.workHours)} (totalt ${baseTotals.totalHours}h)
-- Arbetskostnad: ${baseTotals.workCost} kr (exkl moms)
-- Material: ${baseTotals.materialCost} kr (exkl moms)
-- Timpris: ${JSON.stringify(baseTotals.hourlyRatesByType)}
+**LÅSTA BERÄKNINGAR (ANVÄND EXAKT):**
+Arbetstimmar: ${JSON.stringify(baseTotals.workHours)} (totalt ${baseTotals.totalHours}h)
+Arbetskostnad: ${baseTotals.workCost} kr | Material: ${baseTotals.materialCost} kr
+Timpris: ${JSON.stringify(baseTotals.hourlyRatesByType)}
 
 **PROJEKT:** "${completeDescription}"
-${alreadyKnownFacts.materialLevel ? `**MATERIALKVALITET:** ${alreadyKnownFacts.materialLevel}` : ''}
+${alreadyKnownFacts.materialLevel ? `Materialkvalitet: ${alreadyKnownFacts.materialLevel}` : ''}
+Detaljnivå: ${detailLevel === 'standard' ? '4-6 arbetsposter, 5-10 material' : '2-3 arbetsposter, 3-5 material'}
+${personalContext ? `\nAnvändarens stil: ${personalContext.substring(0, 150)}` : ''}
 
-**DETALJNIVÅ "${detailLevel}":**
-${detailLevel === 'standard' ? '• 3-7 arbetsposter (helst 4-6)\n• 5-10 material' : '• 2-3 arbetsposter\n• 3-5 material'}
+**ARBETSPOSTER - VAR KONKRET:**
+✅ BRA exempel:
+• "Läggning av väggkakel 16 kvm inkl. fogning och tätning" (Plattsättare, 34h)
+• "Installation av duschblandare, toalett och tvättställ inkl. anslutning" (VVS, 38h)
+• "Dragning av 5 eluttag, takspot och badrumsfläkt" (Elektriker, 14h)
 
-${personalContext ? `**ANVÄNDARENS STIL:**
-${personalContext.substring(0, 300)}...
-` : ''}
+❌ FEL exempel (för vaga):
+• "Plattsättning" - saknar omfattning
+• "VVS-arbete" - saknar detaljer
+• "Elarbete" - saknar specificering
+
+Format: "[Åtgärd] [Omfattning] [Detaljer]" ([Yrkesroll], [Timmar])
+
+**MATERIAL - SPECIFICERA ALLT:**
+✅ BRA exempel:
+• "Kakel vägg Arredo Ceramiche 30x60cm vit matt 16 kvm @ 450 kr/kvm"
+• "Duschblandare Oras Safira termostat krom"
+• "Toalettstol Gustavsberg Nautic 5500 P-lås vit"
+
+❌ FEL exempel (för generiska):
+• "Kakel" - saknar märke, mått, finish
+• "Blandare" - saknar märke, modell
+• "Sanitetsgods" - oklar produkt
+
+Format: "[Produkt] [Märke/Serie] [Storlek] [Färg/Finish] [Mängd] @ [Pris]"
+
+**KVALITETSNIVÅER (priser 2025):**
+Budget: Kakel 250-400 kr/kvm, Kranar 800-1500 kr
+Standard: Kakel 400-650 kr/kvm, Kranar 1500-2500 kr (default)
+Premium: Kakel 650-1200+ kr/kvm, Kranar 2500-5000+ kr
+
+**MÄRKEN (använd svenska):**
+Kakel: Arredo, Cerafloor, Konradssons, Mutina
+Kranar: Oras, Gustavsberg, Blanco, FM Mattsson
+Sanitet: Gustavsberg, IDO, Ifö
 
 **SKATTEAVDRAG:** ${deductionInfo}
 
-**KRITISKA INSTRUKTIONER FÖR ARBETSPOSTER:**
-
-1. **Var KONKRET och SPECIFIK i arbetsbeskrivningar:**
-   ❌ FEL: "Plattsättning" 
-   ✅ RÄTT: "Läggning av väggkakel 16 kvm inkl. fogning och tätning"
-   
-   ❌ FEL: "Rivning"
-   ✅ RÄTT: "Rivning av befintligt kakel, golvmatta och sanitetsgods"
-   
-   ❌ FEL: "VVS-arbete"
-   ✅ RÄTT: "Installation av ny duschblandare, toalettstol och tvättställ inkl. anslutning"
-
-2. **Inkludera alltid ÅTGÄRD + OMFATTNING + DETALJER:**
-   - Åtgärd: Vad ska göras? (läggning, installation, målning, etc.)
-   - Omfattning: Hur mycket? (16 kvm, 3 fönster, 45 meter, etc.)
-   - Detaljer: Vad ingår? (inkl. fogning, grundmålning, 2 lager, etc.)
-
-3. **Använd RÄTT YRKESROLL för varje arbetspost:**
-   - VVS: Rörarbete, kranar, toaletter, golvvärme
-   - Plattsättare: Kakel, klinker, mosaik på golv/vägg
-   - Elektriker: Eluttag, armaturer, belysning, spis
-   - Snickare: Stomarbete, rivning, trossbotten, inredning
-   - Målare: Målning, spackling, tapetsering
-   - Takläggare: Takpannor, takläkt, plåtarbeten
-
-**KRITISKA INSTRUKTIONER FÖR MATERIAL:**
-
-1. **Var DETALJERAD och SPECIFIK i materialspecifikationer:**
-   ❌ FEL: "Kakel"
-   ✅ RÄTT: "Kakel vägg Arredo Ceramiche 30x60cm vit matt 16 kvm @ 450 kr/kvm"
-   
-   ❌ FEL: "Material till golv"
-   ✅ RÄTT: "Klinkerkakel golv Cerafloor 30x30cm grå struktur 8 kvm @ 380 kr/kvm"
-   
-   ❌ FEL: "Badrumsinredning"
-   ✅ RÄTT: "Toalettstol Gustavsberg Nautic 5500 P-lås vit porslin"
-
-2. **Inkludera alltid: PRODUKT + MÄRKE/SERIE + MÅTT/MODELL + FINISH + MÄNGD + PRIS:**
-   Format: "[Produkttyp] [Märke/Serie] [Storlek/Modell] [Färg/Finish] [Mängd med enhet] @ [Pris/enhet]"
-
-3. **Materialkvalitet baserat på nivå:**
-   
-   **BUDGET-nivå:**
-   - Kakel: 250-400 kr/kvm (inhemska märken, grundserier)
-   - Kramar: 800-1500 kr/st (Basic-serier)
-   - Sanitetsgods: 2000-4000 kr/st (standardmodeller)
-   - Exempel: "Kakel vägg Konradssons Basic 20x50cm vit blank 16 kvm @ 295 kr/kvm"
-   
-   **STANDARD-nivå (default om inget anges):**
-   - Kakel: 400-650 kr/kvm (välkända märken, mellansegment)
-   - Kramar: 1500-2500 kr/st (populära serier)
-   - Sanitetsgods: 4000-7000 kr/st (kvalitetsmärken)
-   - Exempel: "Kakel vägg Arredo Ceramiche 30x60cm vit matt 16 kvm @ 450 kr/kvm"
-   
-   **PREMIUM-nivå:**
-   - Kakel: 650-1200+ kr/kvm (designermärken, exklusiva)
-   - Kramar: 2500-5000+ kr/st (premium-serier)
-   - Sanitetsgods: 7000-15000+ kr/st (design-lösningar)
-   - Exempel: "Kakel vägg Mutina Dechirer 30x90cm grå struktur 16 kvm @ 895 kr/kvm"
-
-4. **Beräkna material per kategori:**
-   - Kakel/Klinker: Yta i kvm × pris/kvm (+ 10% spill inräknat)
-   - Sanitetsgods: Antal × styckpris (toalett, tvättställ, dusch)
-   - Kranar: Antal × styckpris (dusch, handfat, kök)
-   - VVS-komponenter: Summa för rör, kopplingar, tätningar
-   - El-material: Antal uttag/armaturer × pris
-   - Målning: Färg beräknas per kvm täckarea
-
-**EXEMPEL PÅ BRA MATERIAL-POSTER:**
-
-Badrumsrenovering (8 kvm):
-- "Kakel vägg Arredo Ceramiche 30x60cm vit matt 16 kvm @ 450 kr/kvm = 7200 kr"
-- "Klinkerkakel golv Cerafloor 30x30cm grå struktur 8 kvm @ 380 kr/kvm = 3040 kr"
-- "Duschblandare Oras Safira termostat krom = 2800 kr"
-- "Toalettstol Gustavsberg Nautic 5500 P-lås vit = 4500 kr"
-- "Tvättställ Gustavsberg 5560 inkl. blandare = 3200 kr"
-- "Duschset Oras 850 takdusch 200mm + handdusch = 1800 kr"
-- "VVS-material (rör, kopplingar, tätningar, golvavlopp) = 2500 kr"
-- "Golvvärme El-kit 8 kvm Thermopads = 3200 kr"
-- "Avfuktare iDry-pro 800W = 1500 kr"
-- "Underlagsskiva 13mm Norgips GF 16 kvm = 960 kr"
-
-Kök (12 kvm):
-- "Köksluckor IKEA Askersund mörkbrun ask 25 st @ 280 kr/st = 7000 kr"
-- "Bänkskiva Laminat Pronorm 2.2m svart marmormönster 3 st @ 1200 kr/st = 3600 kr"
-- "Köksblandare Oras Optima svart gummi = 2400 kr"
-- "Diskho Blanco Median 60 cm rostfritt = 2800 kr"
-
-**EXEMPEL PÅ BRA ARBETS-POSTER:**
-
-Badrumsrenovering:
-- "Rivning av befintligt kakel, golvmatta och sanitetsgods (Snickare, 10h)"
-- "Installation av ny duschblandare, toalettstol och tvättställ inkl. anslutning (VVS, 38h)"
-- "Läggning av väggkakel 16 kvm inkl. spackling, grundning och fogning (Plattsättare, 34h)"
-- "Installation av 5 eluttag, takspot och badrumsfläkt (Elektriker, 14h)"
-
-Kök:
-- "Montering av köksluckor, bänkskivor och vitvaror (Snickare, 24h)"
-- "Installation av diskho, köksblandare och diskmaskin (VVS, 16h)"
-- "Dragning av el till spis, ugn och belysning (Elektriker, 12h)"
-
-Målning:
-- "Grundmålning och spackling av innerväggar 120 kvm (Målare, 18h)"
-- "Slutmålning med 2 lager täckfärg 120 kvm (Målare, 22h)"
-
-**KVALITETSKONTROLL:**
-- Varje arbetspost MÅSTE innehålla: Vad + Hur mycket + Detaljer + Yrkesroll + Timmar
-- Varje material MÅSTE innehålla: Produkttyp + Märke + Mått + Finish + Mängd + Pris
-- Material MÅSTE vara rimliga för angiven kvalitetsnivå
-- Totala materialkostnaden ska matcha: ${baseTotals.materialCost} kr
-- Totala arbetstimmar ska matcha: ${baseTotals.totalHours}h fördelat enligt given fördelning
-
-**VIKTIGT:**
-- Använd SVENSKA produktnamn och märken (Gustavsberg, Oras, Blanco, IKEA, Konradssons, etc.)
-- Specificera ALLTID mått i cm eller kvm
-- Färg/finish ska alltid anges (vit matt, grå struktur, krom, rostfritt, etc.)
-- Priset ska vara realistiskt för svensk marknad 2025
-- Varje post ska vara tillräckligt detaljerad för att kunden förstår exakt vad som ingår
-
-ANROPA create_quote NU med dessa detaljerade specifikationer.`
+SKAPA OFFERT NU - inkludera märke, storlek och finish på ALLA material!`
           },
           {
             role: 'user',
@@ -3889,8 +3804,18 @@ ANROPA create_quote NU med dessa detaljerade specifikationer.`
       }
     }
     
+    // ÅTGÄRD 5: Blockera offert om för många generiska material
     if (materialWarnings.length > 0) {
       console.warn('⚠️ Material quality issues detected:', materialWarnings);
+      
+      const criticalIssues = materialWarnings.filter(w => 
+        w.includes('saknar märke') || w.includes('för generisk')
+      );
+      
+      if (criticalIssues.length > 5) {
+        console.error(`❌ BLOCKERAR: ${criticalIssues.length} material är för generiska!`);
+        throw new Error(`För många generiska material (${criticalIssues.length} st). AI måste specificera märke, storlek och finish för alla material.`);
+      }
     }
     
     // SANITY CHECK: Verify quote matches user's actual request
