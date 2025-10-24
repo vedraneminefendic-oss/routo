@@ -647,6 +647,13 @@ function autoCorrectQuote(quote: any, baseTotals: any): any {
   
   console.log('🔧 Smart repair: Analyserar AI:ns offert...');
   
+  // FAS 2.2: Varning för enkla arbetsposter med många timmar
+  const workItems = correctedQuote.workItems || [];
+  if (workItems.length === 1 && workItems[0].hours > 20) {
+    console.warn(`⚠️ FAS 2.2: Endast 1 arbetspost med ${workItems[0].hours}h - kan vara för generisk`);
+    // Lägg till info-meddelande men blockera inte
+  }
+  
   // ÅTGÄRD 2: ENDAST validera totaler - AI skapar alla arbetsposter själv
   // Vi litar på AI:ns beskrivningar och justerar bara timpriset om fel
   Object.entries(baseTotals.workHours).forEach(([type, expectedHours]) => {
@@ -952,22 +959,25 @@ function calculateInformationQuality(
     score += 10;
   }
 
-  // Betyg:
-  // 90-100: Excellent - Generera offert direkt
-  // 70-89: Good - Generera offert med anteckningar om antaganden
-  // 50-69: Fair - Fråga 1 kritisk fråga
-  // 0-49: Poor - Fråga 2 kritiska frågor
-
+  // FAS 2.1: PROJEKTSPECIFIKA TRÖSKLAR
+  // Badrum/kök kräver högre kvalitet (85p), enklare jobb 70p
+  const complexProject = /badrum|kok|renover/i.test(projectType);
+  const simpleProject = /mål|städ|konsult/i.test(projectType);
+  
+  const qualityThreshold = complexProject ? 85 : simpleProject ? 70 : 75;
+  
   let reason = '';
   if (score >= 90) {
     reason = 'Excellent info - generating quote';
-  } else if (score >= 70) {
+  } else if (score >= qualityThreshold) {
     reason = 'Good info - will add assumptions in notes';
   } else if (score >= 50) {
     reason = 'Fair info - asking 1 critical question';
   } else {
     reason = 'Poor info - need more details';
   }
+  
+  console.log(`📊 Quality Score: ${score}/100 (threshold: ${qualityThreshold} for ${projectType})`);
 
   return { score, missingCritical, reason };
 }
@@ -2482,6 +2492,8 @@ serve(async (req) => {
     // ============================================
     // HANDOFF AI IMPROVEMENT: Post-Quote Modification Detection
     // ============================================
+    let previousQuoteForModification: any = null;
+    
     const isModificationRequest = conversation_history && 
       conversation_history.length > 2 && 
       description.toLowerCase().match(/(lägg till|ändra|justera|ta bort|uppdatera|modifiera|lägg in|inkludera|ta med)/);
@@ -2498,13 +2510,12 @@ serve(async (req) => {
       if (lastAssistantMessage) {
         console.log('📝 Found previous quote - preparing for modification');
         
-        // FAS 2.3: Extrahera tidigare offert för att inkludera i AI-prompten
+        // FAS 1.3: Extrahera tidigare offert för att inkludera i AI-prompten
         try {
           const previousQuoteMatch = lastAssistantMessage.content.match(/\{[\s\S]*"workItems"[\s\S]*\}/);
           if (previousQuoteMatch) {
-            const previousQuote = JSON.parse(previousQuoteMatch[0]);
-            console.log('✅ Extracted previous quote for modification context');
-            // Note: Previous quote extracted for potential future use
+            previousQuoteForModification = JSON.parse(previousQuoteMatch[0]);
+            console.log('✅ FAS 1.3: Extracted previous quote for AI modification context');
           }
         } catch (e) {
           console.warn('⚠️ Could not extract previous quote:', e);
@@ -3589,6 +3600,12 @@ Timpris: ${JSON.stringify(baseTotals.hourlyRatesByType)}
 
 **PROJEKT:** "${completeDescription}"
 
+${previousQuoteForModification ? `**🔄 MODIFIERA TIDIGARE OFFERT:**
+Du ska INTE skapa en ny offert från scratch - du ska UPPDATERA denna befintliga offert enligt användarens nya önskemål:
+${JSON.stringify(previousQuoteForModification, null, 2)}
+
+Behåll ALLA befintliga arbetsposter och material som användaren INTE ber dig ändra!` : ''}
+
 **FAS 2.1: KÄND INFO FRÅN KONVERSATION:**
 ${alreadyKnownFacts.area ? `✅ Area: ${alreadyKnownFacts.area}` : '❌ Area: SAKNAS - gissa INTE!'}
 ${alreadyKnownFacts.materialLevel ? `✅ Materialkvalitet: ${alreadyKnownFacts.materialLevel}` : '❌ Materialkvalitet: SAKNAS - använd Standard som default'}
@@ -3598,7 +3615,75 @@ ${alreadyKnownFacts.deadline ? `⏰ Deadline: ${alreadyKnownFacts.deadline}` : '
 **VIKTIGT:** Använd EXAKT dessa värden i din offert. GISSA ALDRIG!
 
 Detaljnivå: ${detailLevel === 'standard' ? '4-6 arbetsposter, 5-10 material' : '2-3 arbetsposter, 3-5 material'}
-${personalContext ? `\nAnvändarens stil: ${personalContext.substring(0, 150)}` : ''}
+${personalContext ? `\n**FAS 3.1: ANVÄNDARENS STIL & TIDIGARE OFFERTER:**\n${personalContext.substring(0, 300)}` : ''}
+
+${learningContext?.previousQuotes && learningContext.previousQuotes.length > 0 ? `
+**FAS 3.1: LEARNING FROM USER'S PREVIOUS QUOTES:**
+Här är exempel på hur användaren brukar skriva offerter - använd liknande språk och stil:
+${learningContext.previousQuotes.slice(0, 2).map((q: any) => {
+  const quote = q.quote_data;
+  return `
+Exempel från tidigare ${q.title}:
+Arbetsposter: ${quote.workItems?.slice(0, 2).map((w: any) => w.name).join(', ')}
+Material: ${quote.materials?.slice(0, 2).map((m: any) => m.description || m.name).join(', ')}
+`;
+}).join('\n')}
+` : ''}
+
+**FAS 1.1: BRANSCH-SPECIFIKA EXEMPEL & TYPISKA FEL**
+
+📘 **BADRUMSRENOVERING (80-120h):**
+✅ KORREKT struktur:
+• "Läggning av väggkakel 16 kvm Arredo Ceramiche 30x60cm vit matt inkl. fogning, tätning och efterbehandling" (Plattsättare, 34h)
+• "Installation av duschblandare Oras Safira termostat krom inkl. anslutning och provtryckning" (VVS, 6h)
+• "Dragning av 5 eluttag, 3 takspots och badrumsfläkt Systemair CBF-100 inkl. brytare och kabeldragning" (Elektriker, 14h)
+
+⚠️ GLÖM INTE:
+- Fogning och tätning vid kakel (alltid!)
+- Underlag före golvläggning (viktigt!)
+- Provtryckning efter VVS (säkerhet!)
+- Efterbehandling av ytor (kvalitet!)
+
+📗 **KÖKSRENOVERING (60-100h):**
+✅ KORREKT struktur:
+• "Montering av köksskåp Ballingslöv 8 lpm inkl. hyllplan, lådor och justeringsfötter" (Snickare, 24h)
+• "Installation av diskbänk Blanco Metra 6 S kompositgranit grå inkl. blandare och avlopp" (VVS, 8h)
+• "Läggning av klinker golv 12 kvm Mutina 30x30cm grå inkl. fog, grundning och underlag" (Plattsättare, 18h)
+
+⚠️ GLÖM INTE:
+- Vattenlås och avlopp vid diskho (alltid!)
+- Grundning före kakel (viktigt!)
+- Socklar och avslutningslister (kvalitet!)
+
+📙 **MÅLNING (20-40h):**
+✅ KORREKT struktur:
+• "Målning av väggar 85 kvm Alcro Tidevärv kulör Moln inkl. spackling, slipning och 2 lager" (Målare, 24h)
+• "Målning av tak 40 kvm Beckers Takmatt vit inkl. förarbete och 1 lager" (Målare, 12h)
+
+⚠️ GLÖM INTE:
+- Spackling och slipning före målning (alltid!)
+- Grundning på nya ytor (viktigt!)
+- Antal lager (spec!)
+
+📕 **EL-ARBETE:**
+✅ KORREKT struktur:
+• "Dragning av 8 eluttag i kök inkl. kabelkanaler, brytare och anslutning till elcentral" (Elektriker, 18h)
+• "Installation av 12 takspots Malmbergs MD-16 LED dimbar vit inkl. driver och kabeldragning" (Elektriker, 14h)
+
+⚠️ GLÖM INTE:
+- Kabeldragning och kabelkanaler (spec!)
+- Driver för LED-spottar (viktigt!)
+- Anslutning till elcentral (säkerhet!)
+
+📒 **VVS-ARBETE:**
+✅ KORREKT struktur:
+• "Byte av radiator 800x600mm Purmo Compact inkl. ventiler, termostater och provtryckning" (VVS, 8h)
+• "Installation av toalettstol Gustavsberg Nautic 5500 P-lås vit inkl. anslutning och tätning" (VVS, 4h)
+
+⚠️ GLÖM INTE:
+- Provtryckning efter installation (säkerhet!)
+- Tätning vid sanitetsgods (viktigt!)
+- Ventiler och termostater vid radiator (spec!)
 
 **ARBETSPOSTER - VAR KONKRET:**
 ✅ BRA exempel:
@@ -3635,16 +3720,21 @@ Premium: Kakel 650-1200+ kr/kvm, Kranar 2500-5000+ kr
 Kakel: Arredo, Cerafloor, Konradssons, Mutina
 Kranar: Oras, Gustavsberg, Blanco, FM Mattsson
 Sanitet: Gustavsberg, IDO, Ifö
+Målning: Alcro, Beckers, Jotun
+El: Malmbergs, Schneider, ABB
+VVS: Oras, Grohe, FM Mattsson
 
 **SKATTEAVDRAG:** ${deductionInfo}
 
 **FAS 3.1: KONSEKVENSER VID FEL:**
 ❌ Generisk material (t.ex. "Kakel") → Offerten BLOCKERAS och du måste generera om
-❌ Saknar märke/storlek → Validering MISSLYCKAS
+❌ Saknar märke/storlek → Validering MISSLYCKAS (max 3 generiska material tillåtna)
 ❌ Mindre än 15 tecken i materialnamn → FÖR GENERISK
+❌ Glöm typiska steg (fogning, grundning, tätning) → Ofullständig offert
 ✅ Specifik material (t.ex. "Kakel vägg Arredo Ceramiche 30x60cm vit matt") → Offerten GODKÄNNS direkt
+✅ Inkludera alla steg i arbetsposterna (t.ex. "inkl. fogning, tätning och efterbehandling") → Professionell offert
 
-SKAPA OFFERT NU - inkludera märke, storlek och finish på ALLA material!`
+SKAPA OFFERT NU - inkludera märke, storlek och finish på ALLA material + alla typiska steg i arbetsposterna!`
           },
           {
             role: 'user',
@@ -3838,7 +3928,7 @@ SKAPA OFFERT NU - inkludera märke, storlek och finish på ALLA material!`
       }
     }
     
-    // FAS 1.1: Varning istället för att blockera - låt Smart Repair hantera det
+    // FAS 3.2: STRÄNGARE TRÖSKEL - max 3 generiska material (ner från 5)
     if (materialWarnings.length > 0) {
       console.warn('⚠️ Material quality issues detected:', materialWarnings);
       
@@ -3846,8 +3936,8 @@ SKAPA OFFERT NU - inkludera märke, storlek och finish på ALLA material!`
         w.includes('saknar märke') || w.includes('för generisk')
       );
       
-      if (criticalIssues.length > 5) {
-        console.warn(`⚠️ ${criticalIssues.length} generiska material - kommer att repareras av Smart Repair`);
+      if (criticalIssues.length > 3) {
+        console.warn(`⚠️ FAS 3.2: ${criticalIssues.length} generiska material (max 3 tillåtet) - kommer att repareras av Smart Repair`);
         allWarnings.push(`ℹ️ Vissa material saknade detaljerad information och har kompletterats automatiskt`);
         // NOTE: Vi blockerar INTE längre - låter Smart Repair fixa det istället
       }
