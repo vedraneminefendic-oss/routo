@@ -2504,9 +2504,7 @@ serve(async (req) => {
           if (previousQuoteMatch) {
             const previousQuote = JSON.parse(previousQuoteMatch[0]);
             console.log('✅ Extracted previous quote for modification context');
-            
-            // Store for later use in AI prompt (we'll add it to completeDescription)
-            (global as any).previousQuoteForModification = previousQuote;
+            // Note: Previous quote extracted for potential future use
           }
         } catch (e) {
           console.warn('⚠️ Could not extract previous quote:', e);
@@ -3569,17 +3567,17 @@ Lägg till dem i materials-array med dessa standardpriser:
         },
         signal: aiController.signal,
         body: JSON.stringify({
-        model: TEXT_MODEL,
-        tools: [{
-          type: "function",
-          function: {
-            name: "create_quote",
-            description: "Skapa en strukturerad offert baserat på jobbeskrivning och förutberäknade totaler",
-            parameters: quoteSchema
-          }
-        }],
-        tool_choice: { type: "function", function: { name: "create_quote" } },
-        messages: [
+          model: TEXT_MODEL,
+          tools: [{
+            type: "function",
+            function: {
+              name: "create_quote",
+              description: "Skapa en strukturerad offert baserat på jobbeskrivning och förutberäknade totaler",
+              parameters: quoteSchema
+            }
+          }],
+          tool_choice: { type: "function", function: { name: "create_quote" } },
+          messages: [
           {
             role: 'system',
             content: `PROFESSIONELL OFFERT - SVENSKA HANTVERKSARBETEN
@@ -3653,7 +3651,7 @@ SKAPA OFFERT NU - inkludera märke, storlek och finish på ALLA material!`
             content: completeDescription // ✅ FIX 2: Använd HELA konversationen istället för bara senaste meddelandet
           }
         ]
-      }),
+      })
     });
       
       clearTimeout(aiTimeoutId);
@@ -3815,6 +3813,7 @@ SKAPA OFFERT NU - inkludera märke, storlek och finish på ALLA material!`
     
     // ÅTGÄRD 4: Validate material details for quality
     console.log('🔍 Validating material detail quality...');
+    const allWarnings: string[] = [];
     const materialWarnings: string[] = [];
     
     if (generatedQuote.materials && Array.isArray(generatedQuote.materials)) {
@@ -3913,8 +3912,6 @@ SKAPA OFFERT NU - inkludera märke, storlek och finish på ALLA material!`
     
     // POST-GENERATION VALIDATION & AUTO-REPAIR
     console.log('🔍 Performing post-generation validation...');
-    
-    const allWarnings: string[] = [];
     
     // Lägg till diameter-varning om diameter uppskattades automatiskt
     if (diameterWarning) {
