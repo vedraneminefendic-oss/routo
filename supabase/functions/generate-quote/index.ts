@@ -843,40 +843,114 @@ function getDomainKnowledge(description: string): {
 }
 
 // ============================================
-// FAS 1: PROJECT-SPECIFIC QUESTIONS
+// FAS 1: KUNSKAPSDATABAS FÖR HANTVERKARJOBB
 // ============================================
-function getProjectSpecificQuestion(description: string, projectType: string): string {
-  const lowerDesc = description.toLowerCase();
-  
-  // Badrum-specifika frågor
-  if (/badrum|dusch|wc/i.test(projectType || '')) {
-    if (lowerDesc.includes('renovera') || lowerDesc.includes('badrum')) {
-      return 'Ska hela badrummet rivas eller är det partiell renovering? Behövs nya VVS-installationer?';
+const HANTVERKAR_KUNSKAP = {
+  badrum: {
+    typiska_moment: ['Rivning av kakel/klinker', 'VVS (rör, golvbrunn, armaturer)', 'El (uttag, fläkt)', 'Tätskikt/fuktspärr', 'Kakel/klinker läggning', 'Fogning', 'Montering WC/handfat/dusch'],
+    smart_uppfoljning: (knownFacts: any, description: string) => {
+      const questions = [];
+      const lowerDesc = description.toLowerCase();
+      if (!lowerDesc.includes('riv') && !lowerDesc.includes('helt')) {
+        questions.push('Ska hela badrummet rivas ner till råspont eller är det partiell renovering?');
+      }
+      if (!lowerDesc.includes('vvs') && !lowerDesc.includes('rör') && !lowerDesc.includes('kran')) {
+        questions.push('Behövs nya VVS-installationer (rör, golvbrunn) eller bara byte av armaturer?');
+      }
+      if (!knownFacts.materialLevel && !lowerDesc.includes('kakel') && !lowerDesc.includes('klinker')) {
+        questions.push('Vilket kakel/klinker har du valt? (storlek och typ behövs för beräkning)');
+      }
+      return questions.slice(0, 2);
+    }
+  },
+  kok: {
+    typiska_moment: ['Rivning av skåp/bänkar', 'VVS (diskho, diskmaskin)', 'El (uttag, spis, fläkt)', 'Montering skåp', 'Bänkskiva', 'Kakelsättning stänkskydd', 'Vitvaror'],
+    smart_uppfoljning: (knownFacts: any, description: string) => {
+      const questions = [];
+      const lowerDesc = description.toLowerCase();
+      if (!lowerDesc.includes('luckor') && !lowerDesc.includes('helt') && !lowerDesc.includes('riv')) {
+        questions.push('Ska bara luckor bytas eller hela köket rivas och ersättas?');
+      }
+      if (!lowerDesc.includes('el') && !lowerDesc.includes('uttag')) {
+        questions.push('Behövs nya eluttag för vitvaror (diskmaskin, ugn, spis)?');
+      }
+      if (!lowerDesc.includes('vitvaror') && !lowerDesc.includes('montage')) {
+        questions.push('Ingår montering av vitvaror i projektet?');
+      }
+      return questions.slice(0, 2);
+    }
+  },
+  malning: {
+    typiska_moment: ['Förarbete (spackling, slipning)', 'Tvättning', 'Sparmålning lister', 'Tak (1-2 lager)', 'Väggar (2 lager)', 'Lister/foder', 'Städning'],
+    smart_uppfoljning: (knownFacts: any, description: string) => {
+      const questions = [];
+      const lowerDesc = description.toLowerCase();
+      if (!knownFacts.quantity && !lowerDesc.match(/\d+\s*rum/)) {
+        questions.push('Hur många rum ska målas? Vilka rum är det (ex. vardagsrum, sovrum, hall)?');
+      }
+      if (!lowerDesc.includes('tak') && !lowerDesc.includes('vägg') && !lowerDesc.includes('lister')) {
+        questions.push('Ska tak, väggar och lister målas eller bara väggar?');
+      }
+      if (!lowerDesc.includes('spackling') && !lowerDesc.includes('slipning') && !lowerDesc.includes('förarbete')) {
+        questions.push('Behövs spackling/slipning av skador eller är väggarna i gott skick?');
+      }
+      return questions.slice(0, 2);
+    }
+  },
+  elektriker: {
+    typiska_moment: ['Kabeldragning', 'Uttag/strömbrytare', 'Belysning', 'Elcentral', 'Laddbox', 'Värmesystem'],
+    smart_uppfoljning: (knownFacts: any, description: string) => {
+      const questions = [];
+      const lowerDesc = description.toLowerCase();
+      if (!lowerDesc.match(/\d+\s*(uttag|armatur|strömbrytare)/)) {
+        questions.push('Hur många nya uttag/strömbrytare/armaturer behövs?');
+      }
+      if (!lowerDesc.includes('elcentral') && !lowerDesc.includes('säkring')) {
+        questions.push('Behöver elcentralen uppgraderas eller räcker befintlig kapacitet?');
+      }
+      return questions.slice(0, 2);
+    }
+  },
+  vvs: {
+    typiska_moment: ['Kranar/armaturer', 'Rördragning', 'WC/handfat', 'Golvbrunn', 'Vattenlås', 'Tätskiktskontroll'],
+    smart_uppfoljning: (knownFacts: any, description: string) => {
+      const questions = [];
+      const lowerDesc = description.toLowerCase();
+      if (!lowerDesc.includes('kran') && !lowerDesc.includes('wc') && !lowerDesc.includes('handfat') && !lowerDesc.includes('dusch')) {
+        questions.push('Vilka VVS-komponenter ska bytas exakt? (kranar, WC, handfat, duschblandare)');
+      }
+      if (!lowerDesc.includes('rör') && !lowerDesc.includes('stamledning')) {
+        questions.push('Behövs nya rördragningar eller bara byte av synliga armaturer?');
+      }
+      return questions.slice(0, 2);
     }
   }
+};
+
+// ============================================
+// FAS 1: SMART PROJECT-SPECIFIC QUESTIONS
+// ============================================
+function getSmartProjectQuestions(
+  description: string, 
+  projectType: string,
+  knownFacts: any
+): string[] {
+  const lowerDesc = description.toLowerCase();
   
-  // Kök-specifika frågor
-  if (/kok/i.test(projectType || '')) {
-    return 'Ska alla vitvaror bytas ut eller bara skåpsluckor? Behövs nya el-uttag?';
+  // Identifiera projekttyp och hämta kunskap
+  let kunskap = null;
+  if (/badrum|dusch|wc/i.test(projectType || '')) kunskap = HANTVERKAR_KUNSKAP.badrum;
+  else if (/kok/i.test(projectType || '')) kunskap = HANTVERKAR_KUNSKAP.kok;
+  else if (/mala|farg/i.test(projectType || '')) kunskap = HANTVERKAR_KUNSKAP.malning;
+  else if (/elektr|uttag|belysn/i.test(projectType || '')) kunskap = HANTVERKAR_KUNSKAP.elektriker;
+  else if (/vvs|ror|kran/i.test(projectType || '')) kunskap = HANTVERKAR_KUNSKAP.vvs;
+  
+  if (!kunskap) {
+    return ['Kan du beskriva omfattningen av arbetet lite mer specifikt? (ex. vilka delar ingår)'];
   }
   
-  // Målning-specifika frågor
-  if (/mala|farg/i.test(projectType || '')) {
-    return 'Hur många rum ska målas? Behöver tak och golv målas eller bara väggar?';
-  }
-  
-  // Elektriker-specifika frågor
-  if (/elektr|uttag|belysn/i.test(projectType || '')) {
-    return 'Hur många nya uttag/armaturer behövs? Behöver elcentralen uppgraderas?';
-  }
-  
-  // VVS-specifika frågor
-  if (/vvs|ror|kran/i.test(projectType || '')) {
-    return 'Vilka VVS-komponenter ska bytas? Behövs nya rördragningar eller bara byte av armaturer?';
-  }
-  
-  // Default fallback (endast om inget matchar)
-  return 'Kan du beskriva omfattningen av arbetet lite mer specifikt? (ex. vilka delar ingår)';
+  // Generera smarta frågor baserat på vad som SAKNAS
+  return kunskap.smart_uppfoljning(knownFacts, description);
 }
 
 // ============================================
@@ -3142,10 +3216,10 @@ Lägg till dem i materials-array med dessa standardpriser:
         console.log('❓ Materialkvalitet KRÄVS för detta projekt - frågar användaren');
       }
       
-      // FAS 1: Ask project-specific questions instead of generic ones
+      // FAS 1: Ask smart project-specific questions based on knowledge database
       if (infoQuality.missingCritical.includes('projekttyp')) {
-        const specificQuestion = getProjectSpecificQuestion(fullContext, projectType);
-        questions.push(specificQuestion);
+        const smartQuestions = getSmartProjectQuestions(fullContext, projectType, alreadyKnownFacts);
+        questions.push(...smartQuestions); // Lägg till alla smarta frågor (max 2)
       }
       
       // FAS 1.4: Prioritera materialkvalitetsfrågan och skicka max 2 frågor
@@ -3723,6 +3797,28 @@ ${previousQuotesSection}
 - Spackling och slipning före målning (alltid!)
 - Grundning på nya ytor (viktigt!)
 - Antal lager (spec!)
+
+**KUNSKAPSDATABAS: Vad ingår NORMALT i olika projekt?**
+
+🚿 **BADRUMSRENOVERING (totalrenovering = 80-120h):**
+Typiskt omfattar: Rivning kakel/klinker (8-12h) → VVS nya rör/golvbrunn/armaturer (12-20h) → El uttag/fläkt/belysning (4-8h) → Tätskikt hela rummet (6-8h) → Kakel vägg 25kvm + Klinker golv 8kvm (16-24h) → Fogning (4-6h) → Montering WC/handfat/duschblandare (4-6h)
+→ Om beskrivningen säger "renovera badrum" men INTE nämner VVS/el/kakel → dessa ingår NORMALT!
+
+🍳 **KÖKSRENOVERING (totalrenovering = 60-100h):**
+Typiskt omfattar: Rivning gamla skåp (4-6h) → VVS diskho/diskmaskin (8-12h) → El uttag/spis/fläkt (12-16h) → Montering nya skåp (24-32h) → Bänkskiva (6-8h) → Kakelsättning stänkskydd (8-12h) → Vitvaror (4-6h)
+→ Om beskrivningen säger "renovera kök" men INTE nämner el/vitvaror → dessa ingår NORMALT!
+
+🎨 **MÅLNING 3 RUM + HALL (120 kvm = 40-60h):**
+Typiskt omfattar: Förarbete spackling/slipning (8-12h) → Tvättning (2-4h) → Sparmålning lister (6-10h) → Tak 2 lager (12-16h) → Väggar 2 lager (16-24h) → Lister (4-6h)
+→ Om beskrivningen säger "måla 3 rum" men INTE nämner tak/lister → dessa ingår NORMALT!
+
+⚡ **EL-ARBETE (varierar mycket):**
+Typiskt omfattar: Kabeldragning → Uttag/strömbrytare → Belysning → Eventuellt elcentralsuppgradering
+→ Om beskrivningen säger "dra el" men INTE nämner antal uttag → FRÅGA!
+
+🔧 **VVS-ARBETE (varierar mycket):**
+Typiskt omfattar: Byte kranar/armaturer → Eventuellt nya rör → WC/handfat → Golvbrunn → Tätskiktskontroll
+→ Om beskrivningen säger "VVS badrum" men INTE nämner vad → FRÅGA!
 
 📕 **EL-ARBETE:**
 ✅ KORREKT struktur:
