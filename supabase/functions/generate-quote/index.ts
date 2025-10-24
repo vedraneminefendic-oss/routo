@@ -928,7 +928,133 @@ const HANTVERKAR_KUNSKAP = {
 };
 
 // ============================================
-// FAS 1: SMART PROJECT-SPECIFIC QUESTIONS
+// FAS 1: STRUKTURERADE FÖLJDFRÅGOR MED FASTA ALTERNATIV
+// ============================================
+function getDetailedFollowUpQuestions(
+  description: string,
+  projectType: string,
+  knownFacts: any
+): { questions: string[], suggestedAnswers: string[][] } {
+  const lowerDesc = description.toLowerCase();
+  
+  // BADRUM
+  if (/badrum|dusch|wc/i.test(projectType || '')) {
+    const questions = [];
+    const answers = [];
+    
+    if (!knownFacts.omfattning) {
+      questions.push('1️⃣ Omfattning av badrummet:');
+      answers.push([
+        'A) Totalrenovering (riva ner till råspont)',
+        'B) Partiell renovering (endast kakel/VVS)',
+        'C) Endast uppfräschning (målning + armaturer)'
+      ]);
+    }
+    
+    if (!knownFacts.kakel) {
+      questions.push('2️⃣ Kakel och klinker:');
+      answers.push([
+        'A) Budget (Arredo, Peronda) ~300-500 kr/kvm',
+        'B) Mellanprisklass (Marazzi, Porcelanosa) ~600-1000 kr/kvm',
+        'C) Premium (Mutina, Bisazza) ~1200-2500 kr/kvm',
+        'D) Jag har redan valt specifika produkter (ange märke/modell)'
+      ]);
+    }
+    
+    if (!knownFacts.vvs) {
+      questions.push('3️⃣ VVS-komponenter:');
+      answers.push([
+        'A) Duschblandare termostat (Oras, FM Mattsson)',
+        'B) Badkarsblandare med handdush',
+        'C) Toalett P-lås (Gustavsberg, IDO)',
+        'D) Handfat 60cm + blandare',
+        'E) Golvbrunn rostfritt 100mm',
+        'F) Alla ovanstående'
+      ]);
+    }
+    
+    return { questions, suggestedAnswers: answers };
+  }
+  
+  // KÖK
+  if (/kok/i.test(projectType || '')) {
+    const questions = [];
+    const answers = [];
+    
+    if (!knownFacts.omfattning) {
+      questions.push('1️⃣ Omfattning av köket:');
+      answers.push([
+        'A) Totalrenovering (riva allt)',
+        'B) Nya luckor + bänkskiva',
+        'C) Endast målning av luckor'
+      ]);
+    }
+    
+    if (!knownFacts.bankskiva) {
+      questions.push('2️⃣ Bänkskiva:');
+      answers.push([
+        'A) Laminat (Ikea, Ballingslöv) ~1500-3000 kr/lpm',
+        'B) Komposit (Silestone, Caesarstone) ~6000-10000 kr/lpm',
+        'C) Marmor/granit ~8000-15000 kr/lpm'
+      ]);
+    }
+    
+    if (!knownFacts.vitvaror) {
+      questions.push('3️⃣ Vitvaror ingår?');
+      answers.push([
+        'A) Ja, inkludera alla (spis, ugn, diskmaskin, kyl)',
+        'B) Nej, bara montering av befintliga'
+      ]);
+    }
+    
+    return { questions, suggestedAnswers: answers };
+  }
+  
+  // MÅLNING
+  if (/mala|farg/i.test(projectType || '')) {
+    const questions = [];
+    const answers = [];
+    
+    if (!knownFacts.omfattning) {
+      questions.push('1️⃣ Vad ska målas?');
+      answers.push([
+        'A) Tak + väggar + lister (komplett)',
+        'B) Endast väggar',
+        'C) Endast tak',
+        'D) Fasad utvändigt'
+      ]);
+    }
+    
+    if (!knownFacts.forarbete) {
+      questions.push('2️⃣ Förarbete behövs?');
+      answers.push([
+        'A) Ja, mycket spackling och slipning',
+        'B) Lite spackling av småskador',
+        'C) Nej, släta väggar'
+      ]);
+    }
+    
+    if (!knownFacts.farg) {
+      questions.push('3️⃣ Färgval:');
+      answers.push([
+        'A) Standard vit (Alcro, Beckers) ~200-300 kr/liter',
+        'B) Kulörfärg specifik nyans',
+        'C) Specialfärg (ex. svart/mörk) kräver extra lager'
+      ]);
+    }
+    
+    return { questions, suggestedAnswers: answers };
+  }
+  
+  // Default fallback
+  return {
+    questions: ['Kan du beskriva projektet mer specifikt?'],
+    suggestedAnswers: [[]]
+  };
+}
+
+// ============================================
+// FAS 1: SMART PROJECT-SPECIFIC QUESTIONS (LEGACY)
 // ============================================
 function getSmartProjectQuestions(
   description: string, 
@@ -3167,6 +3293,10 @@ Lägg till dem i materials-array med dessa standardpriser:
       : description;
     
     const { projectType } = getDomainKnowledge(fullContext);
+    
+    // STEP 1.5: Använd strukturerade följdfrågor (flytta hit efter projectType är definierad)
+    const detailedQuestions = getDetailedFollowUpQuestions(fullContext, projectType || '', alreadyKnownFacts);
+    
     const infoQuality = calculateInformationQuality(
       alreadyKnownFacts,
       projectType || 'general',
@@ -3218,8 +3348,23 @@ Lägg till dem i materials-array med dessa standardpriser:
       
       // FAS 1: Ask smart project-specific questions based on knowledge database
       if (infoQuality.missingCritical.includes('projekttyp')) {
-        const smartQuestions = getSmartProjectQuestions(fullContext, projectType, alreadyKnownFacts);
-        questions.push(...smartQuestions); // Lägg till alla smarta frågor (max 2)
+        // Använd strukturerade följdfrågor istället för öppna frågor
+        let questionText = '🔍 **För att skapa en exakt offert behöver jag lite mer detaljer:**\n\n';
+        
+        if (detailedQuestions.questions.length > 0) {
+          detailedQuestions.questions.forEach((q, i) => {
+            questionText += `${q}\n`;
+            if (detailedQuestions.suggestedAnswers[i]?.length > 0) {
+              questionText += detailedQuestions.suggestedAnswers[i].join('\n') + '\n\n';
+            }
+          });
+          questionText += '📝 **Svara gärna med bokstaven eller beskriv fritt!**';
+          questions.push(questionText);
+        } else {
+          // Fallback till gamla frågor om strukturerade saknas
+          const smartQuestions = getSmartProjectQuestions(fullContext, projectType || '', alreadyKnownFacts);
+          questions.push(...smartQuestions); // Lägg till alla smarta frågor (max 2)
+        }
       }
       
       // FAS 1.4: Prioritera materialkvalitetsfrågan och skicka max 2 frågor
@@ -3769,6 +3914,42 @@ ${previousQuotesSection}
 ✅ KORREKT struktur:
 • "Läggning av väggkakel 16 kvm Arredo Ceramiche 30x60cm vit matt inkl. fogning, tätning och efterbehandling" (Plattsättare, 34h)
 • "Installation av duschblandare Oras Safira termostat krom inkl. anslutning och provtryckning" (VVS, 6h)
+
+🚨 **KRITISKT: MATERIAL-SPECIFIKATION (FÖLJ EXAKT ANNARS BLOCKERAS OFFERTEN)**
+
+**RÄTT sätt att specificera material:**
+
+🛁 **BADRUM:**
+✅ "Väggkakel - Arredo Storm 30x60cm grå matt, 25 kvm" ← PERFEKT!
+✅ "Golvklinker - Peronda Argila 60x60cm beige, 8 kvm"
+✅ "Fogar - Weber Vetonit VH Standard vit, 15 kg"
+✅ "Fuktspärr - Mapei Mapelastic AquaDefense, 20 kg"
+✅ "Golvbrunn - Purus Line 100mm rostfritt, 1 st"
+✅ "Duschblandare - Oras Safira termostat krom 7193, 1 st"
+✅ "Toalettstol - Gustavsberg Nautic 5500 P-lås vit, 1 st"
+✅ "Handfat - IDO Glow 60cm vit med blandare Oras Safira, 1 st"
+
+❌ ALDRIG skriva:
+- "Kakel" ← FEL! (saknar märke, storlek, finish)
+- "Fogmassa och silikon" ← FEL! (2 produkter - dela upp!)
+- "VVS-material" ← FEL! (för generiskt)
+- "Material och förbrukning" ← FEL! (måste specificera varje produkt)
+
+🍳 **KÖK:**
+✅ "Köksluckor - Ballingslöv Form grå matt, 8 dörrar 60x80cm"
+✅ "Bänkskiva - Silestone Blanco Orion 3cm, 6 lpm"
+✅ "Diskbänk - Blanco Metra 6 S kompositgranit grå, 1 st"
+✅ "Stänkskydd kakel - Marazzi Oficina 7.5x15cm vit blank, 4 kvm"
+
+🎨 **MÅLNING:**
+✅ "Väggfärg - Alcro Tidevärv kulör Moln matt, 30 liter"
+✅ "Takfärg - Beckers Takmatt 04 vit, 15 liter"
+✅ "Spackel - Weber Vetonit LR+ Finspackel, 25 kg"
+
+**REGEL:**
+→ VARJE material MÅSTE ha: Märke + Modell + Storlek/Färg + Mängd + Enhet
+→ Om användaren INTE angett märke → använd exempel från listan ovan baserat på projektet
+→ Om användaren sagt "budget/mellan/premium" → matcha mot rätt prisklass
 • "Dragning av 5 eluttag, 3 takspots och badrumsfläkt Systemair CBF-100 inkl. brytare och kabeldragning" (Elektriker, 14h)
 
 ⚠️ GLÖM INTE:
@@ -4096,11 +4277,45 @@ SKAPA OFFERT NU - inkludera märke, storlek och finish på ALLA material + alla 
     }
     
     // FAS 3.2: STRÄNGARE TRÖSKEL - max 3 generiska material (ner från 5)
+    // KRITISK VALIDERING: Blockera generiska material helt
+    const FORBIDDEN_GENERIC_MATERIALS = [
+      /^material$/i,
+      /^kakel$/i,
+      /^klinker$/i,
+      /^fogmassa$/i,
+      /^vvs-material$/i,
+      /^el-material$/i,
+      /material och förbrukning/i,
+      /diverse material/i
+    ];
+    
     if (materialWarnings.length > 0) {
       console.warn('⚠️ Material quality issues detected:', materialWarnings);
       
+      // Blockera helt om det matchar förbjudna termer
+      for (const material of generatedQuote.materials || []) {
+        const matName = material.description || material.name || '';
+        for (const pattern of FORBIDDEN_GENERIC_MATERIALS) {
+          if (pattern.test(matName)) {
+            materialWarnings.push(`❌ BLOCKERAD: Material "${matName}" är för generiskt - AI:n måste specificera märke, modell och storlek`);
+            console.error(`❌ BLOCKERAD: Material "${matName}" är för generiskt`);
+          }
+        }
+        
+        // Kräv att material har minst 3 ord (märke + modell + storlek)
+        const wordCount = matName.trim().split(/\s+/).length;
+        if (wordCount < 3 && !/(summa|diverse|övrigt)/i.test(matName)) {
+          materialWarnings.push(`⚠️ Material "${matName}" är för kort - bör innehålla märke, modell och storlek (minst 3 ord)`);
+        }
+        
+        // Kräv att material har mängd specificerad
+        if (!material.quantity || material.quantity <= 0) {
+          materialWarnings.push(`⚠️ Material "${matName}" saknar mängd - måste ange antal/kvm/kg/liter`);
+        }
+      }
+      
       const criticalIssues = materialWarnings.filter(w => 
-        w.includes('saknar märke') || w.includes('för generisk')
+        w.includes('saknar märke') || w.includes('för generisk') || w.includes('BLOCKERAD')
       );
       
       if (criticalIssues.length > 3) {
