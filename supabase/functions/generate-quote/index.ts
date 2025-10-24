@@ -843,6 +843,43 @@ function getDomainKnowledge(description: string): {
 }
 
 // ============================================
+// FAS 1: PROJECT-SPECIFIC QUESTIONS
+// ============================================
+function getProjectSpecificQuestion(description: string, projectType: string): string {
+  const lowerDesc = description.toLowerCase();
+  
+  // Badrum-specifika frågor
+  if (/badrum|dusch|wc/i.test(projectType || '')) {
+    if (lowerDesc.includes('renovera') || lowerDesc.includes('badrum')) {
+      return 'Ska hela badrummet rivas eller är det partiell renovering? Behövs nya VVS-installationer?';
+    }
+  }
+  
+  // Kök-specifika frågor
+  if (/kok/i.test(projectType || '')) {
+    return 'Ska alla vitvaror bytas ut eller bara skåpsluckor? Behövs nya el-uttag?';
+  }
+  
+  // Målning-specifika frågor
+  if (/mala|farg/i.test(projectType || '')) {
+    return 'Hur många rum ska målas? Behöver tak och golv målas eller bara väggar?';
+  }
+  
+  // Elektriker-specifika frågor
+  if (/elektr|uttag|belysn/i.test(projectType || '')) {
+    return 'Hur många nya uttag/armaturer behövs? Behöver elcentralen uppgraderas?';
+  }
+  
+  // VVS-specifika frågor
+  if (/vvs|ror|kran/i.test(projectType || '')) {
+    return 'Vilka VVS-komponenter ska bytas? Behövs nya rördragningar eller bara byte av armaturer?';
+  }
+  
+  // Default fallback (endast om inget matchar)
+  return 'Kan du beskriva omfattningen av arbetet lite mer specifikt? (ex. vilka delar ingår)';
+}
+
+// ============================================
 // HANDOFF AI IMPROVEMENT: Already Known Facts Analysis
 // ============================================
 function analyzeConversationHistory(conversationHistory?: any[]): {
@@ -930,11 +967,20 @@ function calculateInformationQuality(
     console.log('📊 Bonus: Konkret omfattning specificerad (+30p)');
   }
 
-  // Mått finns? +40 poäng (KRITISKT för renoveringsprojekt)
+  // Mått finns? Högre poäng för badrum med area
   const needsMeasurements = /renover|bygg|mål|lägg|install|fäll/i.test(projectType);
+  const hasArea = Boolean(facts.area);
+  const hasQuantity = Boolean(facts.quantity);
+  
   if (needsMeasurements) {
-    if (facts.area || facts.quantity) {
-      score += 40;
+    if (hasArea || hasQuantity) {
+      // FAS 3: Badrum med area räcker oftast - ge högre poäng
+      if (/badrum|dusch|wc/i.test(projectType) && hasArea) {
+        score += 45; // Höjt från 40 till 45
+        console.log('📊 Bonus: Badrum med area specificerad (+45p)');
+      } else {
+        score += 40;
+      }
     } else {
       missingCritical.push('storlek/antal');
     }
@@ -950,11 +996,18 @@ function calculateInformationQuality(
 
   // ÅTGÄRD 3: Material level KRÄVS för renoveringsprojekt (-30 poäng om saknas)
   // FAS 1.3: Använd normaliserad text (kok istället för kök)
+  // FAS 3: Mindre straffpoäng om area finns för badrum
   const needsMaterialLevel = /badrum|kok|renover|bygg|install/i.test(projectType);
   if (needsMaterialLevel && !facts.materialLevel) {
-    score -= 30;
-    missingCritical.push('materialkvalitet');
-    console.log('⚠️ Materialkvalitet saknas - kritiskt för renoveringsprojekt (-30p)');
+    // Mindre straffpoäng för badrum om area finns
+    if (/badrum|dusch|wc/i.test(projectType) && hasArea) {
+      score -= 15; // Minskat från 30
+      console.log('⚠️ Materialkvalitet önskvärd men ej kritisk när area finns (-15p)');
+    } else {
+      score -= 30;
+      missingCritical.push('materialkvalitet');
+      console.log('⚠️ Materialkvalitet saknas - kritiskt för renoveringsprojekt (-30p)');
+    }
   } else if (facts.materialLevel) {
     score += 10;
   }
@@ -3089,9 +3142,10 @@ Lägg till dem i materials-array med dessa standardpriser:
         console.log('❓ Materialkvalitet KRÄVS för detta projekt - frågar användaren');
       }
       
-      // Only ask about project type if unclear
+      // FAS 1: Ask project-specific questions instead of generic ones
       if (infoQuality.missingCritical.includes('projekttyp')) {
-        questions.push('Kan du beskriva projektet lite mer detaljerat?');
+        const specificQuestion = getProjectSpecificQuestion(fullContext, projectType);
+        questions.push(specificQuestion);
       }
       
       // FAS 1.4: Prioritera materialkvalitetsfrågan och skicka max 2 frågor
@@ -3703,18 +3757,30 @@ ${previousQuotesSection}
 
 Format: "[Åtgärd] [Omfattning] [Detaljer]" ([Yrkesroll], [Timmar])
 
-**MATERIAL - SPECIFICERA ALLT:**
-✅ BRA exempel:
-• "Kakel vägg Arredo Ceramiche 30x60cm vit matt 16 kvm @ 450 kr/kvm"
-• "Duschblandare Oras Safira termostat krom"
-• "Toalettstol Gustavsberg Nautic 5500 P-lås vit"
+**MATERIAL - SPECIFICERA ALLT (KRITISKT!):**
 
-❌ FEL exempel (för generiska):
-• "Kakel" - saknar märke, mått, finish
-• "Blandare" - saknar märke, modell
-• "Sanitetsgods" - oklar produkt
+✅ RÄTT sätt att specificera material (FÖLJ EXAKT DENNA STRUKTUR):
+1. Kakel vägg - Arredo Storm 30x60cm grå matt, 25 kvm @ 450 kr/kvm
+2. Klinker golv - Peronda Argila 60x60cm beige, 8 kvm @ 380 kr/kvm
+3. Fogar - Weber Vetonit VH Standard vit, 15 kg @ 85 kr/kg
+4. Fuktspärr - Mapei Mapelastic AquaDefense, 20 kg @ 425 kr/kg
+5. Golvbrunn - Purus Line 100mm rostfritt, 1 st @ 890 kr
+6. Duschblandare - Oras Safira termostat 7193 krom, 1 st @ 2 450 kr
+7. Toalettstol - Gustavsberg Nautic 5500 P-lås vit, 1 st @ 3 200 kr
+8. Handfat - IDO Glow 60cm vit med blandare, 1 st @ 2 890 kr
 
-Format: "[Produkt] [Märke/Serie] [Storlek] [Färg/Finish] [Mängd] @ [Pris]"
+❌ FEL sätt (ANVÄND ALDRIG DESSA):
+• "Kakel" (för generiskt - saknar märke, storlek, finish)
+• "Fogmassa och silikon" (kombinerar 2 material - dela upp!)
+• "Golvbrunn och rördelar" (kombinerar 3+ produkter - dela upp!)
+• "Blandare" (saknar märke, modell, finish)
+• "Sanitetsgods" (oklar produkt)
+
+**KONSEKVENS VID FEL:**
+→ Om du skriver generiska material blockeras offerten och du måste generera om
+→ Varje material MÅSTE ha: Märke + Modell + Storlek + Finish + Mängd + Pris
+
+Format: "[Produkt] - [Märke] [Modell] [Storlek] [Färg/Finish], [Mängd] @ [Pris]"
 
 **KVALITETSNIVÅER (priser 2025):**
 Budget: Kakel 250-400 kr/kvm, Kranar 800-1500 kr
