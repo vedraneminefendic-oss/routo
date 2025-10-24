@@ -3567,6 +3567,22 @@ Lägg till dem i materials-array med dessa standardpriser:
     }
     
     let response: Response;
+    const previousQuotes = (learningContext as any)?.previousQuotes as any[] | undefined;
+    const previousQuotesSection = Array.isArray(previousQuotes) && previousQuotes.length > 0
+      ? `
+**FAS 3.1: LEARNING FROM USER'S PREVIOUS QUOTES:**
+Här är exempel på hur användaren brukar skriva offerter - använd liknande språk och stil:
+${
+          previousQuotes.slice(0, 2).map((q: any) => {
+            const quote = q.quote_data;
+            return `Exempel från tidigare ${q.title}:
+Arbetsposter: ${quote.workItems?.slice(0, 2).map((w: any) => w.name).join(', ')}
+Material: ${quote.materials?.slice(0, 2).map((m: any) => m.description || m.name).join(', ')}
+`;
+          }).join('\n')
+        }
+`
+      : '';
     try {
       console.log(`⏱️ Starting main AI generation (timeout: ${TIMEOUT_MAIN_GENERATION}ms)...`);
       
@@ -3617,18 +3633,7 @@ ${alreadyKnownFacts.deadline ? `⏰ Deadline: ${alreadyKnownFacts.deadline}` : '
 Detaljnivå: ${detailLevel === 'standard' ? '4-6 arbetsposter, 5-10 material' : '2-3 arbetsposter, 3-5 material'}
 ${personalContext ? `\n**FAS 3.1: ANVÄNDARENS STIL & TIDIGARE OFFERTER:**\n${personalContext.substring(0, 300)}` : ''}
 
-${learningContext?.previousQuotes && learningContext.previousQuotes.length > 0 ? `
-**FAS 3.1: LEARNING FROM USER'S PREVIOUS QUOTES:**
-Här är exempel på hur användaren brukar skriva offerter - använd liknande språk och stil:
-${learningContext.previousQuotes.slice(0, 2).map((q: any) => {
-  const quote = q.quote_data;
-  return `
-Exempel från tidigare ${q.title}:
-Arbetsposter: ${quote.workItems?.slice(0, 2).map((w: any) => w.name).join(', ')}
-Material: ${quote.materials?.slice(0, 2).map((m: any) => m.description || m.name).join(', ')}
-`;
-}).join('\n')}
-` : ''}
+${previousQuotesSection}
 
 **FAS 1.1: BRANSCH-SPECIFIKA EXEMPEL & TYPISKA FEL**
 
