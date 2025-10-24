@@ -915,8 +915,9 @@ function calculateInformationQuality(
     missingCritical.push('projekttyp');
   }
 
-  // ÅTGÄRD 4: Bonus för konkret omfattning (+30 poäng för "5 uttag", "3 träd", etc.)
-  const hasConcreteScope = /\d+\s*(uttag|träd|fönster|dörr|meter|rutor|lampor|element)/i.test(facts.area?.toString() || facts.quantity?.toString() || '');
+  // ÅTGÄRD 4: Bonus för konkret omfattning (+30 poäng för "3 träd", "5 fönster", etc.)
+  // FAS 2.2: "uttag" borttaget - inte tillräckligt konkret för bonus
+  const hasConcreteScope = /\d+\s*(träd|fönster|dörr|meter|rutor|lampor|element)/i.test(facts.area?.toString() || facts.quantity?.toString() || '');
   if (hasConcreteScope) {
     score += 30;
     console.log('📊 Bonus: Konkret omfattning specificerad (+30p)');
@@ -941,7 +942,8 @@ function calculateInformationQuality(
   }
 
   // ÅTGÄRD 3: Material level KRÄVS för renoveringsprojekt (-30 poäng om saknas)
-  const needsMaterialLevel = /renover|badrum|kök|bygg|lägg|el-install/i.test(projectType);
+  // FAS 1.3: Använd normaliserad text (kok istället för kök)
+  const needsMaterialLevel = /badrum|kok|renover|bygg|install/i.test(projectType);
   if (needsMaterialLevel && !facts.materialLevel) {
     score -= 30;
     missingCritical.push('materialkvalitet');
@@ -2495,8 +2497,20 @@ serve(async (req) => {
       
       if (lastAssistantMessage) {
         console.log('📝 Found previous quote - preparing for modification');
-        // Note: The modification will be handled by the AI with the full conversation context
-        // The AI will see the previous quote and the modification request together
+        
+        // FAS 2.3: Extrahera tidigare offert för att inkludera i AI-prompten
+        try {
+          const previousQuoteMatch = lastAssistantMessage.content.match(/\{[\s\S]*"workItems"[\s\S]*\}/);
+          if (previousQuoteMatch) {
+            const previousQuote = JSON.parse(previousQuoteMatch[0]);
+            console.log('✅ Extracted previous quote for modification context');
+            
+            // Store for later use in AI prompt (we'll add it to completeDescription)
+            (global as any).previousQuoteForModification = previousQuote;
+          }
+        } catch (e) {
+          console.warn('⚠️ Could not extract previous quote:', e);
+        }
       }
     }
 
@@ -3026,7 +3040,8 @@ Lägg till dem i materials-array med dessa standardpriser:
     console.log(`📊 Information Quality Score: ${infoQuality.score}/100 - ${infoQuality.reason}`);
     
     // STEP 3: Decide based on quality score and context
-    const shouldAskQuestions = infoQuality.score < 70 && exchangeCount === 0 && !userExplicitlyWantsQuote && !isModificationRequest;
+    // FAS 2.2: Höjd tröskel från 70 till 75 för bättre kvalitet
+    const shouldAskQuestions = infoQuality.score < 75 && exchangeCount === 0 && !userExplicitlyWantsQuote && !isModificationRequest;
 
     if (shouldAskQuestions) {
       console.log('💬 FAS 1: Checking if clarification needed...');
@@ -3058,7 +3073,8 @@ Lägg till dem i materials-array med dessa standardpriser:
       }
       
       // ÅTGÄRD 3: ALLTID fråga om materialkvalitet för renoveringsprojekt
-      const needsMaterialLevel = /renover|badrum|kök|bygg|lägg|el-install/i.test(projectType || '');
+      // FAS 1.3: Använd normaliserad text (kok istället för kök)
+      const needsMaterialLevel = /badrum|kok|renover|bygg|install/i.test(projectType || '');
       if (needsMaterialLevel && !alreadyKnownFacts.materialLevel) {
         questions.push('Vilken kvalitetsnivå önskar du på material? (Budget/Standard/Premium)');
         console.log('❓ Materialkvalitet KRÄVS för detta projekt - frågar användaren');
@@ -3069,14 +3085,19 @@ Lägg till dem i materials-array med dessa standardpriser:
         questions.push('Kan du beskriva projektet lite mer detaljerat?');
       }
       
-      // Om vi har minst 1 kritisk fråga → fråga ENDAST DEN
+      // FAS 1.4: Prioritera materialkvalitetsfrågan och skicka max 2 frågor
       if (questions.length > 0) {
-        console.log(`🤔 HANDOFF AI: Asking ${questions.length} NEW question(s) (skipping already known facts)`);
+        // Sortera så materialkvalitet kommer först
+        const sortedQuestions = questions.sort((a, b) => 
+          a.includes('kvalitetsnivå') ? -1 : 1
+        );
+        
+        console.log(`🤔 HANDOFF AI: Asking ${Math.min(sortedQuestions.length, 2)} NEW question(s) (skipping already known facts)`);
         return new Response(
           JSON.stringify({
             type: 'clarification',
             message: 'För att skapa en exakt offert behöver jag veta:',
-            questions: questions.slice(0, 1) // MAX 1 fråga åt gången!
+            questions: sortedQuestions.slice(0, 2) // MAX 2 frågor åt gången (prioritera materialkvalitet)
           }),
           { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
         );
@@ -3569,7 +3590,15 @@ Arbetskostnad: ${baseTotals.workCost} kr | Material: ${baseTotals.materialCost} 
 Timpris: ${JSON.stringify(baseTotals.hourlyRatesByType)}
 
 **PROJEKT:** "${completeDescription}"
-${alreadyKnownFacts.materialLevel ? `Materialkvalitet: ${alreadyKnownFacts.materialLevel}` : ''}
+
+**FAS 2.1: KÄND INFO FRÅN KONVERSATION:**
+${alreadyKnownFacts.area ? `✅ Area: ${alreadyKnownFacts.area}` : '❌ Area: SAKNAS - gissa INTE!'}
+${alreadyKnownFacts.materialLevel ? `✅ Materialkvalitet: ${alreadyKnownFacts.materialLevel}` : '❌ Materialkvalitet: SAKNAS - använd Standard som default'}
+${alreadyKnownFacts.quantity ? `✅ Antal: ${alreadyKnownFacts.quantity}` : ''}
+${alreadyKnownFacts.deadline ? `⏰ Deadline: ${alreadyKnownFacts.deadline}` : ''}
+
+**VIKTIGT:** Använd EXAKT dessa värden i din offert. GISSA ALDRIG!
+
 Detaljnivå: ${detailLevel === 'standard' ? '4-6 arbetsposter, 5-10 material' : '2-3 arbetsposter, 3-5 material'}
 ${personalContext ? `\nAnvändarens stil: ${personalContext.substring(0, 150)}` : ''}
 
@@ -3610,6 +3639,12 @@ Kranar: Oras, Gustavsberg, Blanco, FM Mattsson
 Sanitet: Gustavsberg, IDO, Ifö
 
 **SKATTEAVDRAG:** ${deductionInfo}
+
+**FAS 3.1: KONSEKVENSER VID FEL:**
+❌ Generisk material (t.ex. "Kakel") → Offerten BLOCKERAS och du måste generera om
+❌ Saknar märke/storlek → Validering MISSLYCKAS
+❌ Mindre än 15 tecken i materialnamn → FÖR GENERISK
+✅ Specifik material (t.ex. "Kakel vägg Arredo Ceramiche 30x60cm vit matt") → Offerten GODKÄNNS direkt
 
 SKAPA OFFERT NU - inkludera märke, storlek och finish på ALLA material!`
           },
@@ -3804,7 +3839,7 @@ SKAPA OFFERT NU - inkludera märke, storlek och finish på ALLA material!`
       }
     }
     
-    // ÅTGÄRD 5: Blockera offert om för många generiska material
+    // FAS 1.1: Varning istället för att blockera - låt Smart Repair hantera det
     if (materialWarnings.length > 0) {
       console.warn('⚠️ Material quality issues detected:', materialWarnings);
       
@@ -3813,8 +3848,9 @@ SKAPA OFFERT NU - inkludera märke, storlek och finish på ALLA material!`
       );
       
       if (criticalIssues.length > 5) {
-        console.error(`❌ BLOCKERAR: ${criticalIssues.length} material är för generiska!`);
-        throw new Error(`För många generiska material (${criticalIssues.length} st). AI måste specificera märke, storlek och finish för alla material.`);
+        console.warn(`⚠️ ${criticalIssues.length} generiska material - kommer att repareras av Smart Repair`);
+        allWarnings.push(`ℹ️ Vissa material saknade detaljerad information och har kompletterats automatiskt`);
+        // NOTE: Vi blockerar INTE längre - låter Smart Repair fixa det istället
       }
     }
     
@@ -3927,26 +3963,30 @@ SKAPA OFFERT NU - inkludera märke, storlek och finish på ALLA material!`
       generatedQuote = repairedQuote;
     }
     
-    // IMPROVED VALIDATION: Try smart repair first, fallback only as last resort
-    console.log('Validating quote output...');
-    const validation = validateQuoteOutput(generatedQuote, baseTotals, baseTotals.hourlyRatesByType, detailLevel);
+    // FAS 1.2: IMPROVED VALIDATION - Smart Repair FÖRE validering
+    console.log('🔧 Running Smart Repair BEFORE validation...');
     
-    let finalQuote = generatedQuote;
+    // STEG 1: Kör Smart Repair FÖRST för att reparera AI:ns offert
+    const smartRepairedQuote = autoCorrectQuote(generatedQuote, baseTotals);
     
-    if (!validation.valid) {
-      console.error('Quote validation failed:', validation.errors);
+    // STEG 2: Validera den reparerade offerten
+    console.log('Validating repaired quote...');
+    const repairedValidation = validateQuoteOutput(smartRepairedQuote, baseTotals, baseTotals.hourlyRatesByType, detailLevel);
+    
+    let finalQuote = smartRepairedQuote;
+    
+    if (repairedValidation.valid) {
+      console.log('✅ Smart repair + validering lyckades - AI:ns beskrivningar bevarade!');
+    } else {
+      console.error('❌ Smart repair misslyckades:', repairedValidation.errors);
       
-      // STEG 1: Försök smart reparera AI:ns offert
-      console.log('🔧 Försöker reparera AI:ns offert med autoCorrectQuote()...');
-      const smartRepairedQuote = autoCorrectQuote(generatedQuote, baseTotals);
+      // STEG 3: Validera även original-offerten för att se om den var bättre
+      console.log('🔍 Checking if original quote was better...');
+      const originalValidation = validateQuoteOutput(generatedQuote, baseTotals, baseTotals.hourlyRatesByType, detailLevel);
       
-      // Validera den reparerade offerten
-      const repairedValidation = validateQuoteOutput(smartRepairedQuote, baseTotals, baseTotals.hourlyRatesByType, detailLevel);
-      
-      if (repairedValidation.valid) {
-        console.log('✅ Smart repair lyckades - AI:ns beskrivningar bevarade!');
-        finalQuote = smartRepairedQuote;
-        allWarnings.push('ℹ️ Offerten justerades automatiskt för korrekt kalkyl');
+      if (originalValidation.valid) {
+        console.log('✅ Original quote was valid - using original instead of repair');
+        finalQuote = generatedQuote;
       } else {
         // STEG 2: Smart repair misslyckades - använd fallback som sista utväg
         console.error('❌ Smart repair failed, using fallback quote as last resort...');
