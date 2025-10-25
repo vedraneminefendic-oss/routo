@@ -88,11 +88,11 @@ export const QuoteSheet = ({
           <div className="flex flex-col gap-3 pt-4 border-t sticky bottom-0 bg-background pb-4">
             <Button 
               onClick={onSend}
-              className="w-full gap-2"
+              className="w-full gap-2 bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700"
               size="lg"
             >
               <Send className="h-4 w-4" />
-              Skicka till kund
+              Spara och gå till skicka
             </Button>
             <div className="grid grid-cols-2 gap-3">
               <Button 

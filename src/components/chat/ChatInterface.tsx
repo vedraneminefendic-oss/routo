@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -26,6 +27,7 @@ interface ChatInterfaceProps {
 }
 
 export const ChatInterface = ({ onQuoteGenerated, isGenerating }: ChatInterfaceProps) => {
+  const navigate = useNavigate();
   const [messages, setMessages] = useState<Message[]>([]);
   const [isTyping, setIsTyping] = useState(false);
   const [sessionId, setSessionId] = useState<string | null>(null);
@@ -409,22 +411,80 @@ export const ChatInterface = ({ onQuoteGenerated, isGenerating }: ChatInterfaceP
 
   const handleSendQuote = async () => {
     if (!generatedQuote) return;
-    setShowQuoteSheet(false);
-    onQuoteGenerated(generatedQuote);
-    toast({
-      title: "Öppnar offert",
-      description: "Nu kan du skicka offerten till kunden."
-    });
+    
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Användaren är inte inloggad');
+      
+      const { data: savedQuote, error } = await supabase
+        .from('quotes')
+        .insert({
+          user_id: user.id,
+          title: generatedQuote.title || 'Offert',
+          description: messages.find(m => m.role === 'user')?.content || '',
+          generated_quote: generatedQuote,
+          status: 'draft',
+          customer_id: null
+        })
+        .select()
+        .single();
+      
+      if (error) throw error;
+      
+      setShowQuoteSheet(false);
+      
+      toast({
+        title: "✅ Offert sparad!",
+        description: "Nu kan du välja mottagare och skicka."
+      });
+      
+      navigate('/quotes');
+      
+    } catch (error: any) {
+      console.error('Error saving quote:', error);
+      toast({
+        title: "Fel",
+        description: error.message || "Kunde inte spara offert",
+        variant: "destructive"
+      });
+    }
   };
 
   const handleSaveAsDraft = async () => {
     if (!generatedQuote) return;
-    setShowQuoteSheet(false);
-    onQuoteGenerated(generatedQuote);
-    toast({
-      title: "Sparar offert",
-      description: "Offerten sparas och kan skickas senare."
-    });
+    
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Användaren är inte inloggad');
+      
+      const { error } = await supabase
+        .from('quotes')
+        .insert({
+          user_id: user.id,
+          title: generatedQuote.title || 'Offert',
+          description: messages.find(m => m.role === 'user')?.content || '',
+          generated_quote: generatedQuote,
+          status: 'draft',
+          customer_id: null
+        });
+      
+      if (error) throw error;
+      
+      toast({
+        title: "✅ Offert sparad!",
+        description: "Offerten finns nu i dina utkast."
+      });
+      
+      setShowQuoteSheet(false);
+      
+    } catch (error: any) {
+      console.error('Error saving quote:', error);
+      toast({
+        title: "Fel",
+        description: error.message || "Kunde inte spara offert",
+        variant: "destructive"
+      });
+    }
   };
 
   const handleEditQuote = () => {
