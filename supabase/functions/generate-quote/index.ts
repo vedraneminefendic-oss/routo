@@ -214,6 +214,115 @@ function validateQuoteAgainstConversation(
 }
 
 // ============================================
+// CONFIDENCE SCORE (FÖRBÄTTRING #5)
+// ============================================
+
+function calculateConfidenceScore(
+  quote: any,
+  description: string,
+  conversationHistory: ConversationMessage[],
+  userRates: any[],
+  similarQuotes: any[]
+): {
+  overall: number;
+  breakdown: {
+    measurements: number;
+    materials: number;
+    pricing: number;
+    scope: number;
+  };
+  missingInfo: string[];
+} {
+  
+  const missingInfo: string[] = [];
+  let measurementsScore = 0;
+  let materialsScore = 0;
+  let pricingScore = 0;
+  let scopeScore = 0;
+  
+  const fullText = (description + ' ' + conversationHistory.map(m => m.content).join(' ')).toLowerCase();
+  
+  // 1. MEASUREMENTS (0-1)
+  const hasMeasurements = /(\d+)\s*(kvm|m2|m²|meter|m|kvadrat|cm|mm|st|granar|träd|rum)/gi.test(fullText);
+  if (hasMeasurements) {
+    measurementsScore = 1.0;
+  } else if (fullText.match(/(stor|liten|mellan|ca|ungefär|cirka)/gi)) {
+    measurementsScore = 0.5;
+    missingInfo.push("Exakta mått saknas (endast ungefärlig storlek angiven)");
+  } else {
+    measurementsScore = 0.0;
+    missingInfo.push("Inga mått angivna");
+  }
+  
+  // 2. MATERIALS (0-1)
+  const materials = quote.materials || [];
+  if (materials.length === 0) {
+    materialsScore = 1.0; // No materials needed
+  } else {
+    const specificMaterials = materials.filter((m: any) => {
+      const name = m.name?.toLowerCase() || '';
+      // Specific material has at least 3 words AND brand/model
+      const hasEnoughWords = name.split(' ').length >= 3;
+      const hasGenericWords = name.includes('material') || name.includes('förbrukning') || name.includes('diverse');
+      return hasEnoughWords && !hasGenericWords;
+    });
+    
+    materialsScore = materials.length > 0 ? specificMaterials.length / materials.length : 1.0;
+    
+    if (materialsScore < 0.7 && materials.length > 0) {
+      missingInfo.push("Vissa material är generiska (märke/modell inte specificerad)");
+    }
+  }
+  
+  // 3. PRICING (0-1)
+  if (userRates.length > 0) {
+    pricingScore = 1.0; // Using own rates
+  } else if (similarQuotes.length > 0) {
+    pricingScore = 0.8; // Based on similar quotes
+    missingInfo.push("Använder priser från liknande offerter (inte dina egna)");
+  } else {
+    pricingScore = 0.6; // Standard rates
+    missingInfo.push("Använder standardpriser (ingen användarhistorik)");
+  }
+  
+  // 4. SCOPE (0-1)
+  const vagueWords = ['renovera', 'fixa', 'uppdatera', 'göra om', 'åtgärda'];
+  const hasVagueWords = vagueWords.some(w => fullText.includes(w));
+  const hasSpecificWords = fullText.match(/(riva|kakel|måla|installera|byta|montera|demontera|fälla|klippa)/gi);
+  
+  if (hasSpecificWords) {
+    scopeScore = 1.0; // Clear scope
+  } else if (hasVagueWords && conversationHistory.length > 2) {
+    scopeScore = 0.7; // Vague but discussed
+    missingInfo.push("Omfattning diskuterad men kan behöva förtydligas");
+  } else if (hasVagueWords) {
+    scopeScore = 0.4; // Vague and not discussed
+    missingInfo.push("Omfattning är oklar (t.ex. 'renovera' kan betyda olika saker)");
+  } else {
+    scopeScore = 0.8; // Okay but not perfect
+  }
+  
+  // Calculate overall (weighted average)
+  const overall = (
+    measurementsScore * 0.25 +
+    materialsScore * 0.25 +
+    pricingScore * 0.25 +
+    scopeScore * 0.25
+  );
+  
+  return {
+    overall: Math.round(overall * 100) / 100,
+    breakdown: {
+      measurements: Math.round(measurementsScore * 100) / 100,
+      materials: Math.round(materialsScore * 100) / 100,
+      pricing: Math.round(pricingScore * 100) / 100,
+      scope: Math.round(scopeScore * 100) / 100
+    },
+    missingInfo: missingInfo
+  };
+}
+
+// ============================================
 // DEDUCTION TYPE DETECTION
 // ============================================
 
@@ -459,16 +568,73 @@ ${historyText || 'Ingen tidigare konversation'}
 
 ${similarQuotesText}
 
+**PROJEKTTYP-IDENTIFIERING:**
+Analysera beskrivningen och identifiera projekttyp:
+- BADRUMSRENOVERING: kakel, badkar, dusch, wc, badrum
+- MÅLNING: måla, färg, pensla, rulla, väggar, tak
+- TRÄDGÅRD/FALLNING: träd, fälla, stubb, häck, gräs, trädgård
+- ALTAN/BYGGE: altan, byggnad, grund, fundament
+- VVS: rör, avlopp, vatten, läcka, blandare
+- EL: elarbete, el, elektriker, uttag, lampor
+
+**SCOPE DETECTION (KRITISKT):**
+Om beskrivningen innehåller vaga ord ("renovera", "fixa", "uppdatera", "göra om") utan tydlig omfattning:
+→ Ställ ALLTID en fråga om omfattning med konkreta exempel och prisklasser.
+
+**Exempel scope-fråga för badrumsrenovering:**
+"Vad innebär renoveringen för er del?
+- Lätt uppdatering (målning + nya armaturer): ~15 000-25 000 kr
+- Mellanrenovering (nya kakel + VVS): ~80 000-120 000 kr
+- Totalrenovering (riva till råvägg): ~150 000-250 000 kr
+
+Vilken nivå ligger detta projekt på?"
+
+**Exempel scope-fråga för målning:**
+"Vad omfattar målningen?
+- Bara målning av färdiga väggar: ~150-250 kr/kvm
+- Spackling + målning: ~250-400 kr/kvm
+- Omfattande reparationer + spackling + målning: ~400-600 kr/kvm
+
+Vilken nivå ligger detta projekt på?"
+
 **DIN UPPGIFT:**
-Analysera om hantverkaren har gett dig tillräckligt med information för att skapa en komplett offert.
+Analysera konversationen och beskrivningen. Avgör om det finns tillräcklig information för att skapa en korrekt offert.
 
-Om NEJ → Ställ 1-2 korta, naturliga frågor till hantverkaren om vad som saknas:
-- "Hur stor yta är det?" (inte "Hur många kvm?")
-- "Tar du/kunden hand om bortforslingen, eller ska det ingå i offerten?"
-- "Vilken materialkvalitet brukar du använda för detta?"
-- "Ingår rivning i detta jobb?"
+**PROJEKTSPECIFIKA FRÅGOR:**
 
-Om JA → Returnera tom array
+**Om BADRUMSRENOVERING:**
+✅ "Ingår rivning av gamla kakel och VVS eller är det redan gjort?"
+✅ "Hur stort är badrummet ungefär (i kvm)?"
+✅ "Tar du hand om bortforsling eller ska det ingå?"
+✅ "Vilken kakelkvalitet brukar du använda för detta?"
+
+**Om MÅLNING:**
+✅ "Hur många rum och hur stor total yta?"
+✅ "Ingår spackling av sprickor eller är väggarna färdiga?"
+✅ "Vilken färgkvalitet brukar du använda (Alcro/Beckers/annat)?"
+✅ "Tak och väggar eller bara väggar?"
+
+**Om TRÄDARBETE/FALLNING:**
+✅ "Hur stora träd (höjd och diameter på stammen)?"
+✅ "Tar du hand om bortforsling eller ska stubbarna kvarlämnas?"
+✅ "Är det fritt framkomst eller krävs specialutrustning?"
+✅ "Behöver stubbarna fräsas?"
+
+**Om ALTAN/BYGGE:**
+✅ "Hur stor yta ska byggas (i kvm)?"
+✅ "Vilket material brukar du använda (tryckimpregnerat/lärkträ/komposit)?"
+✅ "Ingår grund/fundament eller är det redan på plats?"
+✅ "Ingår räcke och trappa?"
+
+**Om VVS:**
+✅ "Vad behöver göras exakt (nya rör, byte av blandare, åtgärda läcka)?"
+✅ "Är det synligt arbete eller innanför vägg?"
+✅ "Ingår kakel/puts-lagning efter arbetet?"
+
+**Om EL:**
+✅ "Vad behöver göras (nya uttag, lampor, säkringsskåp)?"
+✅ "Hur många uttag/lampor handlar det om?"
+✅ "Behöver elcentral uppdateras?"
 
 **VIKTIGT - TON OCH STIL:**
 - Prata som till en kollega/hantverkare, inte till slutkunden
@@ -477,16 +643,6 @@ Om JA → Returnera tom array
 - Max 2 frågor
 - Korta och tydliga
 - Inga A/B/C-alternativ
-
-**EXEMPEL PÅ BRA FRÅGOR:**
-✅ "Tar du hand om bortforslingen eller ska det faktureras?"
-✅ "Hur stor yta handlar det om ungefär?"
-✅ "Ingår förberedande arbete som rivning/spackling?"
-
-**EXEMPEL PÅ DÅLIGA FRÅGOR:**
-❌ "Hur många kvm?" (för direkt, prata inte till kunden)
-❌ "Vill ni ha budget eller premium?" (du pratar inte med kunden)
-❌ "Ska det rivas?" (för vagt, fråga om det ingår i jobbet)
 
 Returnera JSON:
 {"questions": ["Fråga 1", "Fråga 2"]} eller {"questions": []}`;
@@ -1074,6 +1230,25 @@ Deno.serve(async (req) => {
     }
 
     // ============================================
+    // STEP 6.5: CALCULATE CONFIDENCE SCORE (FÖRBÄTTRING #5)
+    // ============================================
+    
+    console.log('📊 Calculating confidence score...');
+    const confidenceScore = calculateConfidenceScore(
+      quote,
+      description,
+      conversation_history,
+      hourlyRates || [],
+      similarQuotes
+    );
+
+    console.log(`📊 Confidence: ${Math.round(confidenceScore.overall * 100)}% (Mått: ${Math.round(confidenceScore.breakdown.measurements * 100)}%, Material: ${Math.round(confidenceScore.breakdown.materials * 100)}%, Priser: ${Math.round(confidenceScore.breakdown.pricing * 100)}%, Omfattning: ${Math.round(confidenceScore.breakdown.scope * 100)}%)`);
+    
+    if (confidenceScore.missingInfo.length > 0) {
+      console.log(`⚠️ Missing info: ${confidenceScore.missingInfo.join(', ')}`);
+    }
+
+    // ============================================
     // STEP 7: BASIC VALIDATION & MATERIAL RETRY IF NEEDED
     // ============================================
 
@@ -1107,6 +1282,7 @@ Deno.serve(async (req) => {
         type: 'complete_quote',
         quote,
         deductionType: finalDeductionType,
+        confidence: confidenceScore,
         validation: validation.issues.length > 0 ? {
           warnings: validation.issues
         } : undefined,
