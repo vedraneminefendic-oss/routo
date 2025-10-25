@@ -798,7 +798,7 @@ Deno.serve(async (req) => {
         
         return new Response(
           JSON.stringify({
-            needsClarification: true,
+            type: 'clarification',
             questions,
           }),
           {
@@ -857,7 +857,7 @@ Deno.serve(async (req) => {
 
     return new Response(
       JSON.stringify({
-        needsClarification: false,
+        type: 'complete_quote',
         quote,
         deductionType: finalDeductionType,
         validation: validation.issues.length > 0 ? {
