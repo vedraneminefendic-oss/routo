@@ -391,122 +391,127 @@ interface QuoteReadiness {
   reasoning: string;
 }
 
+function calculateDeterministicReadiness(
+  description: string,
+  conversationHistory: ConversationMessage[],
+  conversationFeedback: ConversationFeedback
+): {
+  readiness_score: number;
+  can_generate: boolean;
+  reasoning: string;
+  critical_missing: string[];
+  optional_missing: string[];
+} {
+  const allText = (description + ' ' + conversationHistory.map(m => m.content).join(' ')).toLowerCase();
+  
+  let score = 0;
+  const critical_missing: string[] = [];
+  const optional_missing: string[] = [];
+  
+  // 1. PROJECT TYPE (20 points) - CRITICAL
+  const hasProjectType = /\b(målning|renovera|badrum|kök|fälla|träd|el|vvs|snickeri|städ|golv|tak|kakel|måla|rusta)\b/i.test(allText);
+  if (hasProjectType || conversationFeedback.understood.project_type) {
+    score += 20;
+    console.log('  - Project type: ✅ 20p');
+  } else {
+    critical_missing.push('Projekttyp (vad ska göras?)');
+    console.log('  - Project type: ❌ 0p');
+  }
+  
+  // 2. MEASUREMENTS (30 points) - CRITICAL
+  const hasMeasurements = /(\d+)\s*(kvm|m2|m²|meter|m|kvadrat|cm|mm|st|rum|träd)/gi.test(allText);
+  if (hasMeasurements || (conversationFeedback.understood.measurements && conversationFeedback.understood.measurements.length > 0)) {
+    score += 30;
+    console.log('  - Measurements: ✅ 30p');
+  } else {
+    critical_missing.push('Mått (kvm, antal rum, storlek)');
+    console.log('  - Measurements: ❌ 0p');
+  }
+  
+  // 3. SCOPE (25 points) - IMPORTANT
+  const hasSpecificScope = /\b(riva|kakel|måla|installera|byta|montera|demontera|fälla|klippa|spackel|tapet)\b/i.test(allText);
+  if (hasSpecificScope || conversationFeedback.understood.scope) {
+    score += 25;
+    console.log('  - Scope: ✅ 25p');
+  } else if (conversationHistory.length >= 2) {
+    score += 15; // Partial points if discussed but not specific
+    optional_missing.push('Mer detaljer om arbetets omfattning');
+    console.log('  - Scope: ⚠️ 15p');
+  } else {
+    critical_missing.push('Arbetets omfattning (vad ska göras exakt?)');
+    console.log('  - Scope: ❌ 0p');
+  }
+  
+  // 4. MATERIALS (15 points) - NICE TO HAVE
+  const hasMaterials = conversationFeedback.understood.materials && conversationFeedback.understood.materials.length > 0;
+  const mentionsMaterialQuality = /\b(budget|standard|premium|billig|dyr|bra|enkel|lyxig|alcro|beckers|rusta|biltema|jula|bauhaus)\b/i.test(allText);
+  if (hasMaterials || mentionsMaterialQuality) {
+    score += 15;
+    console.log('  - Materials: ✅ 15p');
+  } else {
+    optional_missing.push('Materialkvalitet (budget/standard/premium)');
+    console.log('  - Materials: ❌ 0p');
+  }
+  
+  // 5. ADDITIONAL CONTEXT (10 points) - NICE TO HAVE
+  const hasBudget = conversationFeedback.understood.budget || /\b(\d{4,6})\s*kr\b/i.test(allText);
+  const hasTimeline = conversationFeedback.understood.timeline || /\b(vecka|månad|snabbt|brådskande|vänta)\b/i.test(allText);
+  if (hasBudget) {
+    score += 5;
+    console.log('  - Budget: ✅ 5p');
+  } else {
+    optional_missing.push('Budget eller prisintervall');
+    console.log('  - Budget: ❌ 0p');
+  }
+  if (hasTimeline) {
+    score += 5;
+    console.log('  - Timeline: ✅ 5p');
+  } else {
+    optional_missing.push('Tidsplan');
+    console.log('  - Timeline: ❌ 0p');
+  }
+  
+  // Determine if we can generate
+  const can_generate = score >= 75 && critical_missing.length === 0;
+  
+  let reasoning = '';
+  if (score >= 92) {
+    reasoning = 'All nödvändig information finns - klar för offertgenerering';
+  } else if (score >= 75) {
+    reasoning = 'Tillräckligt med information för att skapa offert med rimliga antaganden';
+  } else if (score >= 50) {
+    reasoning = 'Grundläggande information finns, men behöver mer detaljer';
+  } else {
+    reasoning = 'För lite information - behöver kritiska detaljer';
+  }
+  
+  console.log(`  → Total: ${score}/100 (can_generate: ${can_generate})`);
+  
+  return {
+    readiness_score: Math.min(100, score),
+    can_generate,
+    reasoning,
+    critical_missing,
+    optional_missing
+  };
+}
+
 // ÅTGÄRD 2: Projektspecifik readiness med högre trösklar för badrumsrenoveringar
 function determineQuoteReadiness(
   description: string,
   conversationHistory: ConversationMessage[],
   conversationFeedback: ConversationFeedback
 ): QuoteReadiness {
-  const allText = [description, ...conversationHistory.map(m => m.content)].join(' ').toLowerCase();
-  
-  // Detektera projekttyp
-  const isBathroomRenovation = allText.match(/badrum.*renover|renovera.*badrum/i);
-  
-  let score = 0;
-  const critical: string[] = [];
-  const optional: string[] = [];
-  
-  // 1. Har vi projekttyp? (20 poäng)
-  const hasProjectType = conversationFeedback.understood.project_type || 
-    allText.match(/badrum|kök|målning|altan|träd|fälla|el|vvs|renovera|bygga/i);
-  if (hasProjectType) {
-    score += 20;
-  } else {
-    critical.push('Projekttyp oklar');
-  }
-  
-  // 2. Har vi mått/omfattning? (30 poäng)
-  const hasMeasurements = conversationFeedback.understood.measurements?.length || 
-    allText.match(/\d+\s*(kvm|m2|m²|meter|m|st|rum|träd|granar)/i);
-  if (hasMeasurements) {
-    score += 30;
-  } else {
-    // Vissa projekt behöver inte exakta mått
-    if (allText.match(/fälla|stubb|träd|el|vvs/i)) {
-      score += 20; // Delpoäng
-      optional.push('Exakta mått förbättrar precision');
-    } else {
-      critical.push('Storlek/omfattning saknas');
-    }
-  }
-  
-  // 3. Har vi scope/detaljer? (25 poäng)
-  const hasScope = conversationFeedback.understood.scope || 
-    allText.match(/rivning|spackling|målning|kakel|installation|byte|reparation|totalrenover|mellanbadrum/i) ||
-    conversationHistory.length >= 2;
-  if (hasScope) {
-    score += 25;
-  } else {
-    // För badrumsrenoveringar är scope kritiskt
-    if (isBathroomRenovation) {
-      critical.push('Omfattning måste förtydligas för badrum (total/mellan/ytskikt)');
-    } else {
-      optional.push('Omfattning kan förtydligas');
-    }
-  }
-  
-  // ÅTGÄRD 2: Extra validering för badrumsrenoveringar
-  if (isBathroomRenovation) {
-    const hasVVSScope = allText.match(/vvs|rör|avlopp|uppdate|installa|flytta|dra|innanpå|utanpå/i);
-    const hasMaterialInfo = allText.match(/kakel|klinker|inredning|material|kund står för|tar vi med|vi ordnar/i);
-    
-    if (!hasVVSScope) {
-      critical.push('VVS-omfattning oklar (nytt/uppgradera/flytta/inget)');
-      score -= 15;
-    }
-    
-    if (!hasMaterialInfo) {
-      critical.push('Material/inredning ansvar oklart (vad kund tar, vad ni tar)');
-      score -= 10;
-    }
-  }
-  
-  // 4. Har vi material/kvalitetsnivå? (15 poäng)
-  const hasMaterials = conversationFeedback.understood.materials?.length ||
-    allText.match(/standard|premium|budget|kakel|färg|trä|material|kund står för|tar vi med/i);
-  if (hasMaterials) {
-    score += 15;
-  } else {
-    optional.push('Materialkvalitet kan anges');
-  }
-  
-  // 5. Tidsram/deadline? (10 poäng - bonus)
-  const hasTimeline = conversationFeedback.understood.timeline ||
-    allText.match(/snabbt|inom|vecka|månad|brådskande/i);
-  if (hasTimeline) {
-    score += 10;
-  }
-  
-  // Använd också feedback confidence
-  const adjustedScore = Math.round((score + conversationFeedback.confidence) / 2);
-  
-  // ÅTGÄRD 2: Projektspecifika trösklar
-  let minConfidence = 90;
-  if (isBathroomRenovation) {
-    minConfidence = 92; // Högre krav för badrum
-  }
-  
-  const canGenerate = adjustedScore >= minConfidence && critical.length === 0;
-  
-  let reasoning = '';
-  if (adjustedScore >= minConfidence && critical.length === 0) {
-    reasoning = 'Mycket bra underlag, kan generera exakt offert direkt';
-  } else if (adjustedScore >= 70) {
-    reasoning = isBathroomRenovation 
-      ? `Behöver mer info för badrumsrenovering (kräver ${minConfidence}% readiness)`
-      : 'Tillräckligt underlag för offert, kan förbättras med mer detaljer';
-  } else if (adjustedScore >= 50) {
-    reasoning = 'Grundläggande info finns, men behöver mer för exakthet';
-  } else {
-    reasoning = 'Behöver mer info för att generera korrekt offert';
-  }
+  console.log('📊 Readiness breakdown:');
+  // Use deterministic calculation
+  const deterministic = calculateDeterministicReadiness(description, conversationHistory, conversationFeedback);
   
   return {
-    readiness_score: adjustedScore,
-    can_generate: canGenerate,
-    critical_missing: critical,
-    optional_missing: optional,
-    reasoning
+    readiness_score: deterministic.readiness_score,
+    can_generate: deterministic.can_generate,
+    reasoning: deterministic.reasoning,
+    critical_missing: deterministic.critical_missing,
+    optional_missing: deterministic.optional_missing
   };
 }
 
@@ -2951,10 +2956,10 @@ ${summary}
     const exclusions = parseExclusions(actualConversationHistory);
     const inclusions = detectInclusions(actualConversationHistory);
     
-    // ÅTGÄRD 1: CONTEXT CONFIRMATION (80-90% readiness)
+    // ÅTGÄRD 1: CONTEXT CONFIRMATION (75-91% readiness)
     // Visa sammanfattning och be om bekräftelse innan offertgenerering
-    if (readiness.readiness_score >= 80 && readiness.readiness_score < 92 && actualConversationHistory.length > 0) {
-      console.log('📋 Context confirmation triggered');
+    if (readiness.readiness_score >= 75 && readiness.readiness_score < 92 && actualConversationHistory.length > 0) {
+      console.log('📋 Context confirmation triggered (readiness: ' + readiness.readiness_score + '%)');
       
       const summary = buildProjectSummary(
         completeDescription,
@@ -2993,10 +2998,10 @@ ${readiness.optional_missing.length > 0 ? `💡 **Kan förbättras:**\n${readine
       );
     }
 
-    // ÅTGÄRD 4: CONVERSATION REVIEW OPTION (70-79% readiness)
+    // ÅTGÄRD 4: CONVERSATION REVIEW OPTION (50-74% readiness)
     // Ge användaren tre val istället för att pusha direkt
-    if (readiness.readiness_score >= 70 && readiness.readiness_score < 80 && actualConversationHistory.length > 0) {
-      console.log('💡 Conversation review option triggered');
+    if (readiness.readiness_score >= 50 && readiness.readiness_score < 75 && actualConversationHistory.length > 0) {
+      console.log('💡 Conversation review option triggered (readiness: ' + readiness.readiness_score + '%)');
       
       // ÅTGÄRD 3: Fixa "[object Object]" - formatera understood korrekt
       const understoodItems: string[] = [];
