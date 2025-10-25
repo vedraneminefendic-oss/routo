@@ -932,17 +932,22 @@ function calculateROTRUT(quote: any, deductionType: string, recipients: number, 
     maxPerPerson: maxDeduction,
     numberOfRecipients: recipients,
     totalMaxDeduction,
-    workCost, // Arbetskostnad före moms
+    laborCost: workCost, // ✅ ÄNDRAT från workCost → laborCost (Arbetskostnad före moms)
     workCostWithVAT, // Arbetskostnad inkl. moms (underlag för avdrag)
     eligibleAmount, // = workCostWithVAT (100% är berättigad)
     calculatedDeduction, // = eligibleAmount × deductionRate
-    actualDeduction, // = min(calculatedDeduction, totalMaxDeduction)
-    customerPays,
+    deductionAmount: actualDeduction, // ✅ ÄNDRAT från actualDeduction → deductionAmount
+    priceAfterDeduction: customerPays, // ✅ ÄNDRAT från customerPays → priceAfterDeduction
   };
 
   quote.summary.customerPays = customerPays;
 
-  console.log(`💰 ${deductionType.toUpperCase()}-avdrag: ${Math.round(actualDeduction)} kr av ${Math.round(eligibleAmount)} kr arbetskostnad (${recipients} mottagare, max ${totalMaxDeduction} kr)`);
+  console.log(`💰 ${deductionType.toUpperCase()}-avdrag detaljer:`, {
+    laborCost: workCost,
+    workCostWithVAT,
+    deductionAmount: actualDeduction,
+    priceAfterDeduction: customerPays
+  });
 }
 
 // ============================================
@@ -1411,6 +1416,24 @@ Exempel:
 }
 
 **KRITISKT - MATERIAL-SPECIFIKATION:**
+
+**VIKTIGT - ANVÄND KUNDENS ÖNSKEMÅL:**
+Om kunden nämner ett specifikt märke, produkt eller kvalitet i konversationen 
+(t.ex. "Tekknos färg", "Beckers", "Alcro", "Jotun"), MÅSTE du använda 
+EXAKT det märket i offerten, inte ett annat alternativ!
+
+Exempel på KORREKT hantering:
+✅ Kund: "Jag vill använda Tekknos färg"
+   → Material: "Tekknos Väggfärg Premium matt vit, 10 liter"
+
+✅ Kund: "Vi brukar köpa Beckers"
+   → Material: "Beckers Perfekt Väggfärg matt, 15 liter"
+
+❌ Kund: "Jag vill använda Tekknos färg"
+   → Material: "Alcro Addera Täckfärg" (FEL! Annat märke)
+
+Om inget märke nämnts kan du välja ett lämpligt märke själv.
+
 VARJE material MÅSTE specificeras enligt: **Märke + Modell + Storlek/Färg + Mängd + Enhet**
 
 ✅ **Exempel RÄTT:**

@@ -29,12 +29,13 @@ export const EstimateSummary = ({
   rotRutDeduction,
   total = 0
 }: EstimateSummaryProps) => {
-  // ÅTGÄRD 2A: Säkerställ att ROT/RUT-data alltid har värden
+  // ÅTGÄRD 2A: Säkerställ att ROT/RUT-data alltid har värden (med backwards compatibility)
   const safeRotRutDeduction = rotRutDeduction ? {
     ...rotRutDeduction,
-    laborCost: rotRutDeduction.laborCost ?? 0,
-    deductionAmount: rotRutDeduction.deductionAmount ?? 0,
-    priceAfterDeduction: rotRutDeduction.priceAfterDeduction ?? 0,
+    // ✅ Stöd både nya OCH gamla fältnamn (för backwards compatibility)
+    laborCost: rotRutDeduction.laborCost ?? (rotRutDeduction as any).workCost ?? 0,
+    deductionAmount: rotRutDeduction.deductionAmount ?? (rotRutDeduction as any).actualDeduction ?? 0,
+    priceAfterDeduction: rotRutDeduction.priceAfterDeduction ?? (rotRutDeduction as any).customerPays ?? 0,
     deductionRate: rotRutDeduction.deductionRate ?? 0.50
   } : undefined;
   return (
