@@ -73,7 +73,7 @@ export const ChatInterface = ({ onQuoteGenerated, isGenerating }: ChatInterfaceP
     createSession();
   }, [toast]);
 
-  const handleSendMessage = async (content: string, images?: string[], retryCount = 0) => {
+  const handleSendMessage = async (content: string, images?: string[], intent?: string, retryCount = 0) => {
     if (!sessionId) {
       // Try to recreate session
       try {
@@ -88,7 +88,7 @@ export const ChatInterface = ({ onQuoteGenerated, isGenerating }: ChatInterfaceP
             description: "Försöker igen..."
           });
           // Retry the message send
-          return handleSendMessage(content, images, retryCount);
+          return handleSendMessage(content, images, intent, retryCount);
         }
       } catch (error) {
         toast({
@@ -192,7 +192,8 @@ export const ChatInterface = ({ onQuoteGenerated, isGenerating }: ChatInterfaceP
             detailLevel: 'standard',
             deductionType: 'auto',
             numberOfRecipients: 1,
-            imageAnalysis: imageAnalysis
+            imageAnalysis: imageAnalysis,
+            intent: intent
           },
           signal: controller.signal
         });
@@ -445,7 +446,7 @@ export const ChatInterface = ({ onQuoteGenerated, isGenerating }: ChatInterfaceP
         });
         
         await new Promise(resolve => setTimeout(resolve, backoffTime));
-        return handleSendMessage(content, images, retryCount + 1);
+        return handleSendMessage(content, images, intent, retryCount + 1);
       }
       
       toast({

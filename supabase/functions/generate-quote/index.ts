@@ -40,6 +40,7 @@ const RequestSchema = z.object({
   customerId: z.string().optional(),
   referenceQuoteId: z.string().optional(),
   imageAnalysis: z.any().optional(),
+  intent: z.string().optional(),
 });
 
 type ConversationMessage = z.infer<typeof ConversationMessageSchema>;
@@ -2251,11 +2252,13 @@ Deno.serve(async (req) => {
       customerId,
       referenceQuoteId,
       imageAnalysis,
+      intent,
     } = validatedData;
 
     console.log('Description:', description);
     console.log('Deduction type requested:', deductionType);
     console.log('Conversation history length:', conversation_history.length);
+    console.log('Intent:', intent);
 
     // Get user ID from JWT
     const authHeader = req.headers.get('Authorization');
@@ -2416,6 +2419,153 @@ Deno.serve(async (req) => {
     }
 
     // ============================================
+    // STEP 3.5: HANDLE EXPLICIT INTENTS FROM BUTTONS
+    // ============================================
+    
+    if (intent) {
+      console.log(`🎯 Handling explicit intent: ${intent}`);
+      
+      // Hämta feedback och readiness för att kunna visa information
+      let conversationFeedback: ConversationFeedback;
+      
+      if (sessionId && actualConversationHistory.length > 0) {
+        const { data: cachedSession } = await supabaseClient
+          .from('conversation_sessions')
+          .select('conversation_feedback')
+          .eq('id', sessionId)
+          .single();
+        
+        if (cachedSession?.conversation_feedback?.message_count === actualConversationHistory.length) {
+          conversationFeedback = cachedSession.conversation_feedback.data;
+        } else {
+          conversationFeedback = await analyzeConversationProgress(
+            completeDescription,
+            actualConversationHistory,
+            LOVABLE_API_KEY
+          );
+        }
+      } else {
+        conversationFeedback = await analyzeConversationProgress(
+          completeDescription,
+          actualConversationHistory.length > 0 ? actualConversationHistory : conversation_history,
+          LOVABLE_API_KEY
+        );
+      }
+      
+      const readiness = determineQuoteReadiness(
+        completeDescription,
+        actualConversationHistory,
+        conversationFeedback
+      );
+      
+      // Route baserat på intent
+      if (intent === 'confirm' || intent === 'generate') {
+        console.log('✅ User confirmed via button, forcing quote generation');
+        readiness.readiness_score = 95;
+        readiness.can_generate = true;
+        // Fortsätt till offertgenerering nedan
+      } else if (intent === 'edit') {
+        console.log('✏️ User wants to edit via button');
+        
+        const editMessage = `✏️ **Vad vill du ändra?**
+
+Välj vad du vill justera:`;
+
+        return new Response(
+          JSON.stringify({
+            type: 'edit_prompt',
+            message: editMessage,
+            conversationFeedback,
+            readiness,
+            quickReplies: [
+              { label: '📏 Mått och storlek', action: 'edit_measurements' },
+              { label: '🔨 Omfattning', action: 'edit_scope' },
+              { label: '🎨 Materialkvalitet', action: 'edit_materials' },
+              { label: '✅ Vad som ingår', action: 'edit_inclusions' },
+              { label: '❌ Vad som inte ingår', action: 'edit_exclusions' },
+              { label: '💰 Budget', action: 'edit_budget' }
+            ]
+          }),
+          {
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+            status: 200,
+          }
+        );
+      } else if (intent === 'add_info' || intent === 'more_info') {
+        console.log('➕ User wants to add more info via button');
+        
+        const questions = await askClarificationQuestions(
+          completeDescription,
+          actualConversationHistory,
+          [], // similarQuotes - tomt för nu
+          LOVABLE_API_KEY
+        );
+
+        if (questions && questions.length > 0) {
+          console.log(`💬 Asking ${questions.length} clarification question(s)`);
+          
+          return new Response(
+            JSON.stringify({
+              type: 'clarification',
+              questions: questions,
+              conversationFeedback,
+              readiness,
+              quickReplies: [
+                { label: '📋 Generera ändå', action: 'generate' }
+              ]
+            }),
+            {
+              headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+              status: 200,
+            }
+          );
+        }
+      } else if (intent === 'review') {
+        console.log('👁️ User wants to review summary via button');
+        
+        const exclusions = parseExclusions(actualConversationHistory);
+        const inclusions = detectInclusions(actualConversationHistory);
+        
+        const summary = buildProjectSummary(
+          completeDescription,
+          actualConversationHistory,
+          exclusions,
+          inclusions,
+          conversationFeedback
+        );
+        
+        const confirmationMessage = `✅ **Sammanfattning av projektet:**
+
+${summary}
+
+🎯 **Readiness: ${readiness.readiness_score}%**
+
+**Stämmer detta?**`;
+
+        return new Response(
+          JSON.stringify({
+            type: 'context_confirmation',
+            message: confirmationMessage,
+            summary: summary,
+            conversationFeedback,
+            readiness,
+            can_generate_now: true,
+            quickReplies: [
+              { label: '✅ Ja, generera offert', action: 'confirm' },
+              { label: '✏️ Ändra något', action: 'edit' },
+              { label: '➕ Lägg till mer info', action: 'add_info' }
+            ]
+          }),
+          {
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+            status: 200,
+          }
+        );
+      }
+      // Om intent = confirm/generate, fortsätt till generering
+    }
+
+    // ============================================
     // STEP 4: ANALYZE CONVERSATION & READINESS (FÖRBÄTTRING #1 & #3)
     // ============================================
 
@@ -2468,7 +2618,7 @@ Deno.serve(async (req) => {
 
     const readiness = determineQuoteReadiness(
       completeDescription,
-      conversation_history,
+      actualConversationHistory,
       conversationFeedback
     );
 
@@ -2589,8 +2739,77 @@ Deno.serve(async (req) => {
       .filter(m => m.role === 'user')
       .slice(-1)[0];
     
-    const wasConfirmationShown = lastAssistantMsg?.content.includes('Stämmer detta?');
-    const userConfirmed = lastUserMsg?.content.match(/^(ja|stämmer|generera|korrekt|yes|det stämmer)/i);
+    const wasConfirmationShown = lastAssistantMsg?.content.includes('Stämmer detta?') || lastAssistantMsg?.content.includes('Vad vill du göra?');
+    const text = (lastUserMsg?.content || '').trim().toLowerCase();
+    
+    // Prioritera "ändra" och "mer info" före "bekräfta"
+    const wantsEdit = /\b(ändra|ändring|redigera|justera)\b/i.test(text);
+    const wantsMoreInfo = /\b(lägg till|mer info|komplettera|mer detaljer|specificera)\b/i.test(text);
+    
+    // Om användaren klickade "Ändra något" eller "Lägg till mer info" från bekräftelsen
+    if (wasConfirmationShown && wantsEdit) {
+      console.log('✏️ User wants to edit, showing edit options');
+      
+      const editMessage = `✏️ **Vad vill du ändra?**
+
+Välj vad du vill justera:`;
+
+      return new Response(
+        JSON.stringify({
+          type: 'edit_prompt',
+          message: editMessage,
+          conversationFeedback,
+          readiness,
+          quickReplies: [
+            { label: '📏 Mått och storlek', action: 'edit_measurements' },
+            { label: '🔨 Omfattning', action: 'edit_scope' },
+            { label: '🎨 Materialkvalitet', action: 'edit_materials' },
+            { label: '✅ Vad som ingår', action: 'edit_inclusions' },
+            { label: '❌ Vad som inte ingår', action: 'edit_exclusions' },
+            { label: '💰 Budget', action: 'edit_budget' }
+          ]
+        }),
+        {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          status: 200,
+        }
+      );
+    }
+    
+    if (wasConfirmationShown && wantsMoreInfo) {
+      console.log('➕ User wants to add more info, asking clarification questions');
+      
+      const questions = await askClarificationQuestions(
+        completeDescription,
+        actualConversationHistory,
+        similarQuotes,
+        LOVABLE_API_KEY
+      );
+
+      if (questions && questions.length > 0) {
+        console.log(`💬 Asking ${questions.length} clarification question(s)`);
+        
+        return new Response(
+          JSON.stringify({
+            type: 'clarification',
+            questions: questions,
+            conversationFeedback,
+            readiness,
+            quickReplies: [
+              { label: '📋 Generera ändå', action: 'generate' }
+            ]
+          }),
+          {
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+            status: 200,
+          }
+        );
+      }
+    }
+    
+    // Striktare bekräftelse-regex - måste börja med bekräftande ord
+    const confirmedPattern = /^(ja|stämmer|det stämmer|bekräfta|yes|ok|okej|okay|kör|generera)([.!?]|$)/i;
+    const userConfirmed = confirmedPattern.test(text);
     
     if (wasConfirmationShown && userConfirmed) {
       console.log('✅ User confirmed after context_confirmation, forcing quote generation');

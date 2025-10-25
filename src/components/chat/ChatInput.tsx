@@ -6,7 +6,7 @@ import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 
 interface ChatInputProps {
-  onSendMessage: (message: string, images?: string[]) => void;
+  onSendMessage: (message: string, images?: string[], intent?: string) => void;
   disabled?: boolean;
 }
 

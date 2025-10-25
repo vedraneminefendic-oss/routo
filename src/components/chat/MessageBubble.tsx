@@ -5,7 +5,7 @@ import { QuickReplies } from "./QuickReplies";
 
 interface MessageBubbleProps {
   message: Message;
-  onSendMessage?: (content: string) => void;
+  onSendMessage?: (content: string, images?: string[], intent?: string) => void;
   isTyping?: boolean;
 }
 
@@ -15,18 +15,24 @@ export const MessageBubble = ({ message, onSendMessage, isTyping }: MessageBubbl
   const handleQuickReplySelect = (action: string, label: string) => {
     if (!onSendMessage) return;
     
-    // Map action till faktiskt svar
+    // Map action till faktiskt svar - undvik "Jag..." för att inte trigga bekräftelse-regex
     const responseMap: Record<string, string> = {
       'confirm': 'Ja, generera offert',
-      'edit': 'Jag vill ändra något',
-      'add_info': 'Jag vill lägga till mer information',
+      'edit': 'Ändra något',
+      'add_info': 'Lägg till mer information',
       'review': 'Granska sammanfattning',
       'generate': 'Generera direkt',
-      'more_info': 'Lägg till mer info'
+      'more_info': 'Lägg till mer info',
+      'edit_measurements': 'Jag vill ändra mått och storlek',
+      'edit_scope': 'Jag vill ändra omfattningen',
+      'edit_materials': 'Jag vill ändra materialkvaliteten',
+      'edit_inclusions': 'Jag vill ändra vad som ingår',
+      'edit_exclusions': 'Jag vill ändra vad som inte ingår',
+      'edit_budget': 'Jag vill ändra budgeten'
     };
     
     const response = responseMap[action] || label;
-    onSendMessage(response);
+    onSendMessage(response, undefined, action); // Skicka action som intent
   };
   
   return (
