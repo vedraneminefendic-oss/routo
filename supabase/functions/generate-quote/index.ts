@@ -2419,44 +2419,64 @@ Deno.serve(async (req) => {
     }
 
     // ============================================
-    // STEP 3.5: HANDLE EXPLICIT INTENTS FROM BUTTONS
+    // STEP 3.5: FETCH CONVERSATION FEEDBACK ONCE (BEFORE INTENT HANDLING)
+    // ============================================
+    
+    console.log('📊 Fetching conversation feedback...');
+    let conversationFeedback: ConversationFeedback;
+    let readiness: QuoteReadiness;
+
+    if (sessionId && actualConversationHistory.length > 0) {
+      const { data: cachedSession } = await supabaseClient
+        .from('conversation_sessions')
+        .select('conversation_feedback')
+        .eq('id', sessionId)
+        .single();
+      
+      if (cachedSession?.conversation_feedback?.message_count === actualConversationHistory.length) {
+        conversationFeedback = cachedSession.conversation_feedback.data;
+        console.log('💾 Using cached conversation feedback');
+      } else {
+        conversationFeedback = await analyzeConversationProgress(
+          completeDescription,
+          actualConversationHistory,
+          LOVABLE_API_KEY
+        );
+        
+        await supabaseClient
+          .from('conversation_sessions')
+          .update({
+            conversation_feedback: {
+              message_count: actualConversationHistory.length,
+              data: conversationFeedback
+            }
+          })
+          .eq('id', sessionId);
+      }
+    } else {
+      conversationFeedback = await analyzeConversationProgress(
+        completeDescription,
+        actualConversationHistory.length > 0 ? actualConversationHistory : conversation_history,
+        LOVABLE_API_KEY
+      );
+    }
+
+    readiness = determineQuoteReadiness(
+      completeDescription,
+      actualConversationHistory,
+      conversationFeedback
+    );
+
+    console.log(`🎯 Initial readiness: ${readiness.readiness_score}%`);
+    console.log(`  ✅ Förstått: ${Object.keys(conversationFeedback.understood).length} detaljer`);
+    console.log(`  ❓ Saknas: ${conversationFeedback.missing.length} saker`);
+
+    // ============================================
+    // STEP 4: HANDLE EXPLICIT INTENTS FROM BUTTONS
     // ============================================
     
     if (intent) {
       console.log(`🎯 Handling explicit intent: ${intent}`);
-      
-      // Hämta feedback och readiness för att kunna visa information
-      let conversationFeedback: ConversationFeedback;
-      
-      if (sessionId && actualConversationHistory.length > 0) {
-        const { data: cachedSession } = await supabaseClient
-          .from('conversation_sessions')
-          .select('conversation_feedback')
-          .eq('id', sessionId)
-          .single();
-        
-        if (cachedSession?.conversation_feedback?.message_count === actualConversationHistory.length) {
-          conversationFeedback = cachedSession.conversation_feedback.data;
-        } else {
-          conversationFeedback = await analyzeConversationProgress(
-            completeDescription,
-            actualConversationHistory,
-            LOVABLE_API_KEY
-          );
-        }
-      } else {
-        conversationFeedback = await analyzeConversationProgress(
-          completeDescription,
-          actualConversationHistory.length > 0 ? actualConversationHistory : conversation_history,
-          LOVABLE_API_KEY
-        );
-      }
-      
-      const readiness = determineQuoteReadiness(
-        completeDescription,
-        actualConversationHistory,
-        conversationFeedback
-      );
       
       // Route baserat på intent
       if (intent === 'confirm' || intent === 'generate') {
@@ -2484,6 +2504,37 @@ Välj vad du vill justera:`;
               { label: '✅ Vad som ingår', action: 'edit_inclusions' },
               { label: '❌ Vad som inte ingår', action: 'edit_exclusions' },
               { label: '💰 Budget', action: 'edit_budget' }
+            ]
+          }),
+          {
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+            status: 200,
+          }
+        );
+      } else if (intent?.startsWith('edit_')) {
+        console.log(`✏️ User wants to edit specific: ${intent}`);
+        
+        const editArea = intent.replace('edit_', '');
+        const editPrompts: Record<string, string> = {
+          'measurements': '📏 Berätta mer om måtten och storleken på projektet:',
+          'scope': '🔨 Vad vill du ändra gällande omfattningen av arbetet?',
+          'materials': '🎨 Vilken materialkvalitet föredrar du?',
+          'inclusions': '✅ Vad ska inkluderas i offerten?',
+          'exclusions': '❌ Vad ska INTE ingå i offerten?',
+          'budget': '💰 Vad har du för budget i åtanke?'
+        };
+        
+        const promptMessage = editPrompts[editArea] || 'Vad vill du ändra?';
+        
+        return new Response(
+          JSON.stringify({
+            type: 'clarification',
+            questions: [promptMessage],
+            conversationFeedback,
+            readiness,
+            quickReplies: [
+              { label: '🔙 Tillbaka', action: 'edit' },
+              { label: '📋 Generera ändå', action: 'generate' }
             ]
           }),
           {
@@ -2561,69 +2612,71 @@ ${summary}
             status: 200,
           }
         );
+      } else if (intent === 'review') {
+        console.log('👁️ User wants to review summary via button');
+        
+        const exclusions = parseExclusions(actualConversationHistory);
+        const inclusions = detectInclusions(actualConversationHistory);
+        
+        const summary = buildProjectSummary(
+          completeDescription,
+          actualConversationHistory,
+          exclusions,
+          inclusions,
+          conversationFeedback
+        );
+        
+        const confirmationMessage = `✅ **Sammanfattning av projektet:**
+
+${summary}
+
+🎯 **Readiness: ${readiness.readiness_score}%**
+
+**Stämmer detta?**`;
+
+        return new Response(
+          JSON.stringify({
+            type: 'context_confirmation',
+            message: confirmationMessage,
+            summary: summary,
+            conversationFeedback,
+            readiness,
+            can_generate_now: true,
+            quickReplies: [
+              { label: '✅ Ja, generera offert', action: 'confirm' },
+              { label: '✏️ Ändra något', action: 'edit' },
+              { label: '➕ Lägg till mer info', action: 'add_info' }
+            ]
+          }),
+          {
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+            status: 200,
+          }
+        );
+      } else if (intent) {
+        console.error(`❌ Unknown intent received: ${intent}`);
+        
+        return new Response(
+          JSON.stringify({
+            type: 'error',
+            message: `Okänd action: ${intent}. Försök igen eller beskriv vad du vill göra.`,
+            conversationFeedback,
+            readiness
+          }),
+          {
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+            status: 400,
+          }
+        );
       }
       // Om intent = confirm/generate, fortsätt till generering
     }
 
     // ============================================
-    // STEP 4: ANALYZE CONVERSATION & READINESS (FÖRBÄTTRING #1 & #3)
+    // STEP 5: CHECK READINESS (Skip if intent already forced generation)
     // ============================================
 
-    console.log('🔍 Analyzing conversation progress...');
-    
-    // Kolla om vi har cachat feedback för denna session
-    let conversationFeedback: ConversationFeedback;
-
-    if (sessionId && actualConversationHistory.length > 0) {
-      const { data: cachedSession } = await supabaseClient
-        .from('conversation_sessions')
-        .select('conversation_feedback')
-        .eq('id', sessionId)
-        .single();
-      
-      // Använd cachad feedback om vi redan analyserat exakt denna konversationslängd
-      if (cachedSession?.conversation_feedback?.message_count === actualConversationHistory.length) {
-        conversationFeedback = cachedSession.conversation_feedback.data;
-        console.log('💾 Using cached conversation feedback');
-      } else {
-        // Annars analysera på nytt
-        conversationFeedback = await analyzeConversationProgress(
-          completeDescription,
-          actualConversationHistory,
-          LOVABLE_API_KEY
-        );
-        
-        // Cacha resultatet
-        await supabaseClient
-          .from('conversation_sessions')
-          .update({
-            conversation_feedback: {
-              message_count: actualConversationHistory.length,
-              data: conversationFeedback
-            }
-          })
-          .eq('id', sessionId);
-      }
-    } else {
-      conversationFeedback = await analyzeConversationProgress(
-        completeDescription,
-        conversation_history,
-        LOVABLE_API_KEY
-      );
-    }
-
-    console.log(`📊 Conversation feedback: ${conversationFeedback.confidence}% confidence`);
-    console.log(`  ✅ Förstått: ${Object.keys(conversationFeedback.understood).length} detaljer`);
-    console.log(`  ❓ Saknas: ${conversationFeedback.missing.length} saker`);
-
-    const readiness = determineQuoteReadiness(
-      completeDescription,
-      actualConversationHistory,
-      conversationFeedback
-    );
-
-    console.log(`🎯 Readiness: ${readiness.readiness_score}% (kan generera: ${readiness.can_generate})`);
-    console.log(`  ⚠️ Kritiskt: ${readiness.critical_missing.length}, Valfritt: ${readiness.optional_missing.length}`);
+    console.log(`🎯 Final readiness check: ${readiness.readiness_score}% (kan generera: ${readiness.can_generate})`);
 
     // Update session with readiness score and stage
     if (sessionId) {
@@ -2638,7 +2691,7 @@ ${summary}
     }
 
     // ============================================
-    // STEP 5: CHECK IF CLARIFICATION NEEDED
+    // STEP 6: CHECK IF CLARIFICATION NEEDED
     // ============================================
 
     // ÅTGÄRD #3: Endast fråga om readiness < 85% OCH critical info saknas
@@ -2730,93 +2783,6 @@ ${summary}
     // STEG 1: Detektera inkluderingar och exkluderingar
     const exclusions = parseExclusions(actualConversationHistory);
     const inclusions = detectInclusions(actualConversationHistory);
-    
-    // FIX: Detektera om användaren bekräftade efter en context_confirmation
-    const lastAssistantMsg = actualConversationHistory
-      .filter(m => m.role === 'assistant')
-      .slice(-1)[0];
-    const lastUserMsg = actualConversationHistory
-      .filter(m => m.role === 'user')
-      .slice(-1)[0];
-    
-    const wasConfirmationShown = lastAssistantMsg?.content.includes('Stämmer detta?') || lastAssistantMsg?.content.includes('Vad vill du göra?');
-    const text = (lastUserMsg?.content || '').trim().toLowerCase();
-    
-    // Prioritera "ändra" och "mer info" före "bekräfta"
-    const wantsEdit = /\b(ändra|ändring|redigera|justera)\b/i.test(text);
-    const wantsMoreInfo = /\b(lägg till|mer info|komplettera|mer detaljer|specificera)\b/i.test(text);
-    
-    // Om användaren klickade "Ändra något" eller "Lägg till mer info" från bekräftelsen
-    if (wasConfirmationShown && wantsEdit) {
-      console.log('✏️ User wants to edit, showing edit options');
-      
-      const editMessage = `✏️ **Vad vill du ändra?**
-
-Välj vad du vill justera:`;
-
-      return new Response(
-        JSON.stringify({
-          type: 'edit_prompt',
-          message: editMessage,
-          conversationFeedback,
-          readiness,
-          quickReplies: [
-            { label: '📏 Mått och storlek', action: 'edit_measurements' },
-            { label: '🔨 Omfattning', action: 'edit_scope' },
-            { label: '🎨 Materialkvalitet', action: 'edit_materials' },
-            { label: '✅ Vad som ingår', action: 'edit_inclusions' },
-            { label: '❌ Vad som inte ingår', action: 'edit_exclusions' },
-            { label: '💰 Budget', action: 'edit_budget' }
-          ]
-        }),
-        {
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-          status: 200,
-        }
-      );
-    }
-    
-    if (wasConfirmationShown && wantsMoreInfo) {
-      console.log('➕ User wants to add more info, asking clarification questions');
-      
-      const questions = await askClarificationQuestions(
-        completeDescription,
-        actualConversationHistory,
-        similarQuotes,
-        LOVABLE_API_KEY
-      );
-
-      if (questions && questions.length > 0) {
-        console.log(`💬 Asking ${questions.length} clarification question(s)`);
-        
-        return new Response(
-          JSON.stringify({
-            type: 'clarification',
-            questions: questions,
-            conversationFeedback,
-            readiness,
-            quickReplies: [
-              { label: '📋 Generera ändå', action: 'generate' }
-            ]
-          }),
-          {
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-            status: 200,
-          }
-        );
-      }
-    }
-    
-    // Striktare bekräftelse-regex - måste börja med bekräftande ord
-    const confirmedPattern = /^(ja|stämmer|det stämmer|bekräfta|yes|ok|okej|okay|kör|generera)([.!?]|$)/i;
-    const userConfirmed = confirmedPattern.test(text);
-    
-    if (wasConfirmationShown && userConfirmed) {
-      console.log('✅ User confirmed after context_confirmation, forcing quote generation');
-      // Skip confirmation och gå direkt till generering genom att sätta readiness högt
-      readiness.readiness_score = 95;
-      readiness.can_generate = true;
-    }
     
     // ÅTGÄRD 1: CONTEXT CONFIRMATION (80-90% readiness)
     // Visa sammanfattning och be om bekräftelse innan offertgenerering
