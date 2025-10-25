@@ -436,6 +436,25 @@ ${similarQuotesText}
 
 ${industryDataText}
 
+**STANDARDPOSTER (inkludera ALLTID om relevanta för projektet):**
+✅ Slutstädning efter arbetet
+✅ Bortforsling av byggavfall
+✅ Skyddande av angränsande ytor
+✅ Grund- och färdigställningsarbete
+✅ Skyddsplast och maskering
+✅ Förbrukningsmaterial (skruv, spackel, etc.) - max 3-5% av material
+
+**STORA ARBETSMOMENT (kräver DISKUSSION innan inkludering):**
+❌ Rivning av konstruktioner (om inte explicit nämnt)
+❌ Nya installationer (VVS, el) utanför det diskuterade
+❌ Trädarbete eller markarbete (om inte projektet handlar om det)
+❌ Omfattande förberedande arbete (om inte diskuterat)
+❌ Extra hantverkare eller specialister
+
+**REGEL FÖR INKLUDERING:** 
+- Om något kostar >5000 kr OCH inte nämnts i konversationen → Inkludera INTE
+- Om något är en standardpost <2000 kr → Inkludera om relevant för projektet
+
 **KRITISKT - MATERIAL-SPECIFIKATION:**
 VARJE material MÅSTE specificeras enligt: **Märke + Modell + Storlek/Färg + Mängd + Enhet**
 
@@ -455,8 +474,9 @@ VARJE material MÅSTE specificeras enligt: **Märke + Modell + Storlek/Färg + M
 2. Inkludera maskiner/utrustning från listan när relevant
 3. Lär av tidigare liknande offerter (priser, omfattning, material)
 4. Använd branschdata som referens för att validera priser
-5. Var generös med detaljer men realistisk med tider
-6. Inkludera ALLA kostnader (rivning, bortforsling, etc.)
+5. Var realistisk med tider och endast inkludera vad som diskuterats
+6. Inkludera standardposter från listan ovan om relevanta
+7. Inkludera INTE stora arbetsmoment som inte diskuterats (se lista ovan)
 
 **RETURNERA JSON:**
 {
