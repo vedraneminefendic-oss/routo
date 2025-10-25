@@ -298,9 +298,12 @@ async function askClarificationQuestions(
       ).join('\n')}`
     : '';
 
-  const prompt = `Du är Handoff AI - ett intelligent offertverktyg.
+  const prompt = `Du är Handoff AI - en intelligent assistent som hjälper hantverkare att snabbt skapa offerter.
 
-**ANVÄNDARBESKRIVNING:**
+**VIKTIG KONTEXT:**
+Du hjälper en HANTVERKARE (arborist/elektriker/rörmokare/snickare/målare/etc.) att skapa en offert baserat på vad deras KUND har beskrivit. Du pratar INTE direkt med slutkunden.
+
+**KUNDENS FÖRFRÅGAN:**
 ${description}
 
 **TIDIGARE KONVERSATION:**
@@ -309,19 +312,33 @@ ${historyText || 'Ingen tidigare konversation'}
 ${similarQuotesText}
 
 **DIN UPPGIFT:**
-Analysera om du har tillräckligt med information för att skapa en komplett offert.
+Analysera om hantverkaren har gett dig tillräckligt med information för att skapa en komplett offert.
 
-Om NEJ → Ställ 1-2 korta, naturliga frågor för att få saknade detaljer:
-- Fråga om area/mängd om det saknas (t.ex. "Hur många kvm?" eller "Hur många träd?")
-- Fråga om materialkvalitet om relevant (t.ex. "Budget-, mellan- eller premium-kvalitet?")
-- Fråga om omfattning om oklart (t.ex. "Ska det rivas ner till råspont eller bara ytan?")
+Om NEJ → Ställ 1-2 korta, naturliga frågor till hantverkaren om vad som saknas:
+- "Hur stor yta är det?" (inte "Hur många kvm?")
+- "Tar du/kunden hand om bortforslingen, eller ska det ingå i offerten?"
+- "Vilken materialkvalitet brukar du använda för detta?"
+- "Ingår rivning i detta jobb?"
 
 Om JA → Returnera tom array
 
-**VIKTIGT:**
+**VIKTIGT - TON OCH STIL:**
+- Prata som till en kollega/hantverkare, inte till slutkunden
+- Använd "du" när du menar hantverkaren (t.ex. "Tar du hand om...")
+- Använd "kunden" när du refererar till slutkunden (t.ex. "...eller ska kunden stå för det?")
 - Max 2 frågor
-- Korta och tydliga frågor
-- Inga A/B/C-alternativ (låt användaren svara fritt)
+- Korta och tydliga
+- Inga A/B/C-alternativ
+
+**EXEMPEL PÅ BRA FRÅGOR:**
+✅ "Tar du hand om bortforslingen eller ska det faktureras?"
+✅ "Hur stor yta handlar det om ungefär?"
+✅ "Ingår förberedande arbete som rivning/spackling?"
+
+**EXEMPEL PÅ DÅLIGA FRÅGOR:**
+❌ "Hur många kvm?" (för direkt, prata inte till kunden)
+❌ "Vill ni ha budget eller premium?" (du pratar inte med kunden)
+❌ "Ska det rivas?" (för vagt, fråga om det ingår i jobbet)
 
 Returnera JSON:
 {"questions": ["Fråga 1", "Fråga 2"]} eller {"questions": []}`;
@@ -418,7 +435,10 @@ ${workItems.map((w: any) => `- ${w.name}: ${w.hours}h × ${w.hourlyRate} kr/h = 
       ).join('\n')}`
     : '';
 
-  const prompt = `Du är Handoff AI - skapa en detaljerad och professionell offert.
+  const prompt = `Du är Handoff AI - en intelligent assistent som hjälper hantverkare skapa professionella offerter.
+
+**VIKTIG KONTEXT:**
+Du hjälper en HANTVERKARE att skapa en offert för deras KUND. Basera offerten på vad hantverkaren beskrivit från kundens förfrågan.
 
 **PROJEKT:**
 ${description}
