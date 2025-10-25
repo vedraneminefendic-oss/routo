@@ -128,11 +128,24 @@ function buildProjectSummary(
   
   // Extrahera mått
   const measurements = conversationFeedback.understood.measurements || [];
-  const measurementStr = Array.isArray(measurements) && measurements.length > 0
-    ? measurements.join(', ')
-    : typeof measurements === 'string' && measurements.length > 0
-    ? measurements
-    : 'Inga specifika mått angivna';
+  const measurementStr = (() => {
+    if (Array.isArray(measurements) && measurements.length > 0) {
+      return measurements.join(', ');
+    }
+    if (typeof measurements === 'string' && measurements.length > 0) {
+      return measurements;
+    }
+    if (typeof measurements === 'object' && measurements !== null && !Array.isArray(measurements)) {
+      const parts: string[] = [];
+      if (measurements.area) parts.push(measurements.area);
+      if (measurements.rooms) parts.push(`${measurements.rooms} rum`);
+      if (measurements.height) parts.push(`höjd: ${measurements.height}`);
+      if (measurements.length) parts.push(`längd: ${measurements.length}`);
+      if (measurements.width) parts.push(`bredd: ${measurements.width}`);
+      return parts.length > 0 ? parts.join(', ') : 'Inga specifika mått angivna';
+    }
+    return 'Inga specifika mått angivna';
+  })();
   
   // STEG 1: Bygg inkluderade baserat på explicit bekräftade + detekterade
   const includedItems: string[] = [];
@@ -146,25 +159,26 @@ function buildProjectSummary(
   });
   
   // Lägg till detekterade från text (om de inte redan finns)
-  if (allText.includes('riv') && !includedItems.some(i => i.toLowerCase().includes('riv'))) {
+  // ANVÄND WORD BOUNDARIES för att undvika falskt positiva (t.ex "del" → "el")
+  if (/\b(riv|rivning|riva)\b/i.test(allText) && !includedItems.some(i => i.toLowerCase().includes('riv'))) {
     includedItems.push('Rivning');
   }
-  if ((allText.includes('kakel') || allText.includes('kakling')) && !includedItems.some(i => i.toLowerCase().includes('kakel'))) {
+  if (/\b(kakel|kakling|plattsättning)\b/i.test(allText) && !includedItems.some(i => i.toLowerCase().includes('kakel'))) {
     includedItems.push('Kakel/plattsättning');
   }
-  if ((allText.includes('vvs') || allText.includes('rör')) && !includedItems.some(i => i.toLowerCase().includes('vvs'))) {
+  if (/\b(vvs|rör)\b/i.test(allText) && !includedItems.some(i => i.toLowerCase().includes('vvs'))) {
     includedItems.push('VVS-arbeten');
   }
-  if ((allText.includes('el') || allText.includes('elektriker')) && !includedItems.some(i => i.toLowerCase().includes('el'))) {
+  if (/\b(el|elektriker|elarbete|elarbeten)\b/i.test(allText) && !includedItems.some(i => i.toLowerCase().includes('el'))) {
     includedItems.push('Elarbeten');
   }
-  if ((allText.includes('målning') || allText.includes('måla')) && !includedItems.some(i => i.toLowerCase().includes('målning'))) {
+  if (/\b(målning|måla|målning)\b/i.test(allText) && !includedItems.some(i => i.toLowerCase().includes('målning'))) {
     includedItems.push('Målning');
   }
-  if ((allText.includes('golv') || allText.includes('laminat') || allText.includes('parkett')) && !includedItems.some(i => i.toLowerCase().includes('golv'))) {
+  if (/\b(golv|laminat|parkett|golvarbeten)\b/i.test(allText) && !includedItems.some(i => i.toLowerCase().includes('golv'))) {
     includedItems.push('Golvarbeten');
   }
-  if ((allText.includes('snickeri') || allText.includes('snickare')) && !includedItems.some(i => i.toLowerCase().includes('snickeri'))) {
+  if (/\b(snickeri|snickare|snickeriarbeten)\b/i.test(allText) && !includedItems.some(i => i.toLowerCase().includes('snickeri'))) {
     includedItems.push('Snickeriarbeten');
   }
   
