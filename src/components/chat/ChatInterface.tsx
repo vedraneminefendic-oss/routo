@@ -266,6 +266,52 @@ export const ChatInterface = ({ onQuoteGenerated, isGenerating }: ChatInterfaceP
             }
           });
           
+        } else if (data?.type === 'context_confirmation') {
+          // ÅTGÄRD 1: Visa sammanfattning och be om bekräftelse
+          const aiMessage: Message = {
+            id: (Date.now() + 1).toString(),
+            role: 'assistant',
+            content: data.message,
+            timestamp: new Date(),
+            conversationFeedback: data.conversationFeedback,
+            readiness: data.readiness
+          };
+          setMessages(prev => [...prev, aiMessage]);
+          setConversationFeedback(data.conversationFeedback);
+          setReadiness(data.readiness);
+          
+          // Spara AI-svar
+          await supabase.functions.invoke('manage-conversation', {
+            body: {
+              action: 'save_message',
+              sessionId,
+              message: { role: 'assistant', content: aiMessage.content }
+            }
+          });
+          
+        } else if (data?.type === 'conversation_review') {
+          // ÅTGÄRD 4: Visa tre valmöjligheter för användaren
+          const aiMessage: Message = {
+            id: (Date.now() + 1).toString(),
+            role: 'assistant',
+            content: data.message,
+            timestamp: new Date(),
+            conversationFeedback: data.conversationFeedback,
+            readiness: data.readiness
+          };
+          setMessages(prev => [...prev, aiMessage]);
+          setConversationFeedback(data.conversationFeedback);
+          setReadiness(data.readiness);
+          
+          // Spara AI-svar
+          await supabase.functions.invoke('manage-conversation', {
+            body: {
+              action: 'save_message',
+              sessionId,
+              message: { role: 'assistant', content: aiMessage.content }
+            }
+          });
+          
         } else if (data?.type === 'proactive_ready') {
           // PROBLEM #6: PROACTIVE SIGNALING
           const aiMessage: Message = {

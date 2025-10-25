@@ -79,6 +79,104 @@ function buildCompleteDescription(history: ConversationMessage[], currentDescrip
   return `${baseDescription}\n\n**Ytterligare detaljer:**\n${userMessages.join('\n')}`.trim();
 }
 
+// ÅTGÄRD 2: Detektera tvetydiga fraser som "bara", "endast", "inte"
+function detectAmbiguousPhrase(message: string): {
+  isAmbiguous: boolean;
+  clarificationNeeded: string;
+} {
+  const lowerMessage = message.toLowerCase();
+  
+  // Pattern 1: "X ska bara Y" - kan betyda "inkludera Y" ELLER "endast Y"
+  if (lowerMessage.match(/ska bara|endast ska|ska endast/i)) {
+    return {
+      isAmbiguous: true,
+      clarificationNeeded: `Menar du att detta ska **inkluderas** i offerten (utöver annat), eller att **ENDAST** detta ska göras (inget annat)?`
+    };
+  }
+  
+  // Pattern 2: "Jag tar bara/endast X" - ofta betyder "exkludera allt annat"
+  if (lowerMessage.match(/jag tar bara|endast jag|kund tar bara|kunden tar bara/i)) {
+    return {
+      isAmbiguous: true,
+      clarificationNeeded: `Menar du att kunden tar hand om detta (så vi ska **ta bort det** från offerten)?`
+    };
+  }
+  
+  // Pattern 3: "inte X" eller "nej X" - kan vara förnekelse eller korrigering
+  if (lowerMessage.match(/^(inte|nej|ta bort)/i) && lowerMessage.length < 50) {
+    return {
+      isAmbiguous: true,
+      clarificationNeeded: `Menar du att vi ska **ta bort** något från offerten, eller att något **inte ingår**?`
+    };
+  }
+  
+  return { isAmbiguous: false, clarificationNeeded: '' };
+}
+
+// ÅTGÄRD 1: Bygg projektsammanfattning för context confirmation
+function buildProjectSummary(
+  description: string,
+  conversationHistory: ConversationMessage[],
+  exclusions: any[],
+  conversationFeedback: any
+): string {
+  const allText = [description, ...conversationHistory.map(m => m.content)].join(' ').toLowerCase();
+  
+  // Extrahera projekttyp
+  const projectType = conversationFeedback.understood.project_type || 'Okänt projekt';
+  
+  // Extrahera mått
+  const measurements = conversationFeedback.understood.measurements || [];
+  const measurementStr = measurements.length > 0 
+    ? measurements.join(', ') 
+    : 'Inga specifika mått angivna';
+  
+  // Identifiera inkluderade arbetsmoment (från scope och materials)
+  const includedItems: string[] = [];
+  
+  if (allText.includes('riv')) includedItems.push('Rivning');
+  if (allText.includes('kakel') || allText.includes('kakling')) includedItems.push('Kakel/plattsättning');
+  if (allText.includes('vvs') || allText.includes('rör')) includedItems.push('VVS-arbeten');
+  if (allText.includes('el') || allText.includes('elektriker')) includedItems.push('Elarbeten');
+  if (allText.includes('målning') || allText.includes('måla')) includedItems.push('Målning');
+  if (allText.includes('golv') || allText.includes('laminat') || allText.includes('parkett')) includedItems.push('Golvarbeten');
+  if (allText.includes('snickeri') || allText.includes('snickare')) includedItems.push('Snickeriarbeten');
+  
+  const includedStr = includedItems.length > 0 
+    ? includedItems.map(i => `✅ ${i}`).join('\n') 
+    : '✅ Basarbeten enligt beskrivning';
+  
+  // Exkluderade arbetsmoment
+  const excludedStr = exclusions.length > 0
+    ? exclusions.map(e => `❌ ${e.item} (${e.reason})`).join('\n')
+    : '❌ Inga specifika exkluderingar';
+  
+  // Prisintervall (rough estimate baserat på projekttyp)
+  let priceRange = '30,000 - 80,000 kr';
+  if (allText.includes('badrum') && allText.includes('renovera')) {
+    priceRange = '80,000 - 150,000 kr';
+  } else if (allText.includes('kök') && allText.includes('renovera')) {
+    priceRange = '100,000 - 200,000 kr';
+  } else if (allText.includes('målning')) {
+    priceRange = '15,000 - 50,000 kr';
+  } else if (allText.includes('fälla') || allText.includes('träd')) {
+    priceRange = '10,000 - 40,000 kr';
+  }
+  
+  return `
+📋 **Projekttyp:** ${projectType}
+📏 **Storlek:** ${measurementStr}
+
+**Inkluderade arbetsmoment:**
+${includedStr}
+
+**Exkluderat från offerten:**
+${excludedStr}
+
+💰 **Uppskattat prisintervall:** ${priceRange} (innan ROT/RUT-avdrag)
+  `.trim();
+}
+
 // ============================================
 // PROBLEM #1: CONVERSATION FEEDBACK SYSTEM
 // ============================================
@@ -2294,10 +2392,75 @@ Deno.serve(async (req) => {
       }
     }
 
-    // ÅTGÄRD #3: PROACTIVE SIGNALING
-    // Om readiness är 70-84%, fråga användaren om de vill generera nu eller lägga till mer
-    if (readiness.readiness_score >= 70 && readiness.readiness_score < 85 && actualConversationHistory.length > 0) {
-      console.log('💡 Proactive readiness signal triggered');
+    // ÅTGÄRD 2: Kolla om senaste meddelandet innehåller tvetydig fras
+    const lastUserMessage = actualConversationHistory
+      .filter(m => m.role === 'user')
+      .slice(-1)[0];
+    
+    if (lastUserMessage) {
+      const ambiguityCheck = detectAmbiguousPhrase(lastUserMessage.content);
+      
+      if (ambiguityCheck.isAmbiguous) {
+        console.log('⚠️ Ambiguous phrase detected, asking for clarification...');
+        
+        return new Response(
+          JSON.stringify({
+            type: 'clarification',
+            questions: [ambiguityCheck.clarificationNeeded],
+            conversationFeedback,
+            readiness
+          }),
+          {
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+            status: 200,
+          }
+        );
+      }
+    }
+
+    // ÅTGÄRD 1: CONTEXT CONFIRMATION (80-90% readiness)
+    // Visa sammanfattning och be om bekräftelse innan offertgenerering
+    if (readiness.readiness_score >= 80 && readiness.readiness_score < 92 && actualConversationHistory.length > 0) {
+      console.log('📋 Context confirmation triggered');
+      
+      const summary = buildProjectSummary(
+        completeDescription,
+        actualConversationHistory,
+        parseExclusions(actualConversationHistory),
+        conversationFeedback
+      );
+      
+      const confirmationMessage = `✅ **Jag tror jag har förstått projektet!**
+
+${summary}
+
+🎯 **Readiness: ${readiness.readiness_score}%**
+
+${readiness.optional_missing.length > 0 ? `💡 **Kan förbättras:**\n${readiness.optional_missing.map(m => `- ${m}`).join('\n')}\n\n` : ''}**Stämmer detta?**
+- ✅ **Ja, generera offert** (säg "ja", "stämmer" eller "generera")
+- ✏️ **Ändra något** (berätta vad som ska ändras)
+- ➕ **Lägg till mer info** (ange ytterligare detaljer)`;
+
+      return new Response(
+        JSON.stringify({
+          type: 'context_confirmation',
+          message: confirmationMessage,
+          summary: summary,
+          conversationFeedback,
+          readiness,
+          can_generate_now: true
+        }),
+        {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          status: 200,
+        }
+      );
+    }
+
+    // ÅTGÄRD 4: CONVERSATION REVIEW OPTION (70-79% readiness)
+    // Ge användaren tre val istället för att pusha direkt
+    if (readiness.readiness_score >= 70 && readiness.readiness_score < 80 && actualConversationHistory.length > 0) {
+      console.log('💡 Conversation review option triggered');
       
       // ÅTGÄRD 3: Fixa "[object Object]" - formatera understood korrekt
       const understoodItems: string[] = [];
@@ -2325,23 +2488,24 @@ Deno.serve(async (req) => {
         ? understoodItems.join('\n- ') 
         : 'Grundläggande projektinfo';
 
-      const proactiveMessage = `✅ Jag har nu tillräckligt med information för att skapa en offert!
+      const reviewMessage = `✅ Jag kan generera offerten nu, men vi kan också förbättra den ytterligare.
 
-**Förstått:**
+**Vad jag förstått:**
 - ${understoodList}
 
 🎯 **Readiness: ${readiness.readiness_score}%** - ${readiness.reasoning}
 
-${readiness.optional_missing.length > 0 ? `💡 **Kan förbättras:**\n${readiness.optional_missing.map(m => `- ${m}`).join('\n')}\n\n` : ''}Vill du:
-1. 📋 **Generera offerten nu** (säg "generera" eller "ja")
-2. ➕ **Lägga till mer info först** för högre precision
+${readiness.optional_missing.length > 0 ? `💡 **Kan förbättras:**\n${readiness.optional_missing.map(m => `- ${m}`).join('\n')}\n\n` : ''}**Vad vill du göra?**
+1. ✅ **Granska sammanfattning** - Se full översikt innan generering
+2. 📋 **Generera direkt** - Skapa offerten nu
+3. ➕ **Lägg till mer info** - Förbättra precisionen först
 
-Vad föredrar du?`;
+Svara med **1**, **2** eller **3** (eller "granska", "generera", "mer info")`;
 
       return new Response(
         JSON.stringify({
-          type: 'proactive_ready',
-          message: proactiveMessage,
+          type: 'conversation_review',
+          message: reviewMessage,
           conversationFeedback,
           readiness,
           can_generate_now: true
