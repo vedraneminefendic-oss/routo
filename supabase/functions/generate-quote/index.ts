@@ -1187,6 +1187,8 @@ function parseExclusions(conversationHistory: ConversationMessage[]): Exclusion[
 function detectInclusions(conversationHistory: ConversationMessage[]): string[] {
   const inclusions: string[] = [];
   
+  console.log('🔍 Analyzing inclusions from conversation...');
+  
   for (let i = 0; i < conversationHistory.length - 1; i++) {
     const aiMsg = conversationHistory[i];
     const userMsg = conversationHistory[i + 1];
@@ -1196,17 +1198,31 @@ function detectInclusions(conversationHistory: ConversationMessage[]): string[] 
       const aiAsked = aiMsg.content.toLowerCase();
       const userSaid = userMsg.content.toLowerCase();
       
+      // KRITISK FIX: Kolla att AI faktiskt FRÅGADE (innehåller frågetecken)
+      const hasQuestionMark = aiMsg.content.includes('?');
+      
       // Positiva bekräftelser
       const isPositive = userSaid.match(/^(ja|det ingår|ja det ingår|ingår|yes|stämmer|korrekt|exakt)/i);
       
-      if (isPositive) {
-        // Extrahera ämnen från AI:ns fråga
-        const topics = ['rivning', 'riv', 'vvs', 'el', 'elektriker', 'kakel', 'kakling', 'plattsättning', 'målning', 'måla', 'golv', 'golvarbeten', 'snickeri', 'tak'];
-        topics.forEach(topic => {
-          if (aiAsked.includes(topic)) {
-            inclusions.push(topic);
-          }
-        });
+      if (isPositive && hasQuestionMark) {
+        // FÖRBÄTTRING: Kolla att frågan handlar om inkludering
+        const isInclusionQuestion = aiAsked.match(/ingår|inkludera|behöver|ska.*ingå|tar.*hand om|vill.*ha/i);
+        
+        if (isInclusionQuestion) {
+          console.log(`  📋 Found inclusion question: "${aiMsg.content.substring(0, 50)}..."`);
+          console.log(`  ✅ User confirmed: "${userMsg.content}"`);
+          
+          // Extrahera ämnen från AI:ns fråga
+          const topics = ['rivning', 'riv', 'vvs', 'el', 'elektriker', 'kakel', 'kakling', 'plattsättare', 'plattsättning', 'målning', 'måla', 'golv', 'golvarbeten', 'snickeri', 'tak'];
+          topics.forEach(topic => {
+            if (aiAsked.includes(topic)) {
+              console.log(`    ➕ Adding inclusion: ${topic}`);
+              inclusions.push(topic);
+            }
+          });
+        } else {
+          console.log(`  ⚠️ User said yes but question was not about inclusion: "${aiMsg.content.substring(0, 50)}..."`);
+        }
       }
     }
   }
@@ -2514,6 +2530,24 @@ Deno.serve(async (req) => {
     // STEG 1: Detektera inkluderingar och exkluderingar
     const exclusions = parseExclusions(actualConversationHistory);
     const inclusions = detectInclusions(actualConversationHistory);
+    
+    // FIX: Detektera om användaren bekräftade efter en context_confirmation
+    const lastAssistantMsg = actualConversationHistory
+      .filter(m => m.role === 'assistant')
+      .slice(-1)[0];
+    const lastUserMsg = actualConversationHistory
+      .filter(m => m.role === 'user')
+      .slice(-1)[0];
+    
+    const wasConfirmationShown = lastAssistantMsg?.content.includes('Stämmer detta?');
+    const userConfirmed = lastUserMsg?.content.match(/^(ja|stämmer|generera|korrekt|yes|det stämmer)/i);
+    
+    if (wasConfirmationShown && userConfirmed) {
+      console.log('✅ User confirmed after context_confirmation, forcing quote generation');
+      // Skip confirmation och gå direkt till generering genom att sätta readiness högt
+      readiness.readiness_score = 95;
+      readiness.can_generate = true;
+    }
     
     // ÅTGÄRD 1: CONTEXT CONFIRMATION (80-90% readiness)
     // Visa sammanfattning och be om bekräftelse innan offertgenerering
