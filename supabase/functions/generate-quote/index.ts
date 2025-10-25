@@ -128,8 +128,10 @@ function buildProjectSummary(
   
   // Extrahera mått
   const measurements = conversationFeedback.understood.measurements || [];
-  const measurementStr = measurements.length > 0 
-    ? measurements.join(', ') 
+  const measurementStr = Array.isArray(measurements) && measurements.length > 0
+    ? measurements.join(', ')
+    : typeof measurements === 'string' && measurements.length > 0
+    ? measurements
     : 'Inga specifika mått angivna';
   
   // STEG 1: Bygg inkluderade baserat på explicit bekräftade + detekterade
@@ -2564,12 +2566,20 @@ ${readiness.optional_missing.length > 0 ? `💡 **Kan förbättras:**\n${readine
       if (conversationFeedback.understood.project_type) {
         understoodItems.push(`Projekttyp: ${conversationFeedback.understood.project_type}`);
       }
-      if (conversationFeedback.understood.measurements?.length) {
-        understoodItems.push(`Mått: ${conversationFeedback.understood.measurements.join(', ')}`);
-      }
-      if (conversationFeedback.understood.materials?.length) {
-        understoodItems.push(`Material: ${conversationFeedback.understood.materials.join(', ')}`);
-      }
+    if (conversationFeedback.understood.measurements) {
+      const measurements = conversationFeedback.understood.measurements;
+      const measurementText = Array.isArray(measurements)
+        ? measurements.join(', ')
+        : measurements;
+      understoodItems.push(`Mått: ${measurementText}`);
+    }
+    if (conversationFeedback.understood.materials) {
+      const materials = conversationFeedback.understood.materials;
+      const materialsText = Array.isArray(materials)
+        ? materials.join(', ')
+        : materials;
+      understoodItems.push(`Material: ${materialsText}`);
+    }
       if (conversationFeedback.understood.scope) {
         understoodItems.push(`Omfattning: ${conversationFeedback.understood.scope}`);
       }
