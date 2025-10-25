@@ -109,7 +109,7 @@ Beskrivning: "${description}"
 Returnera JSON: {"type": "rot"} eller {"type": "rut"} eller {"type": "none"}`;
 
   try {
-    const response = await fetch('https://api.lovable.app/v1/chat/completions', {
+    const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -327,7 +327,7 @@ Returnera JSON:
 {"questions": ["Fråga 1", "Fråga 2"]} eller {"questions": []}`;
 
   try {
-    const response = await fetch('https://api.lovable.app/v1/chat/completions', {
+    const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -503,7 +503,7 @@ VARJE material MÅSTE specificeras enligt: **Märke + Modell + Storlek/Färg + M
   try {
     console.log('🤖 Generating quote with AI...');
     
-    const response = await fetch('https://api.lovable.app/v1/chat/completions', {
+    const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -580,7 +580,7 @@ Returnera JSON med ALLA material från original-offerten men med bättre specifi
 }`;
 
   try {
-    const response = await fetch('https://api.lovable.app/v1/chat/completions', {
+    const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
