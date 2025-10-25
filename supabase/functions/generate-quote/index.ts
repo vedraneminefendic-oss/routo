@@ -54,15 +54,29 @@ interface LearningContext {
 // HELPER FUNCTIONS
 // ============================================
 
-function buildConversationSummary(history: ConversationMessage[], currentDescription: string): string {
+// ÅTGÄRD 1: Bygg komplett beskrivning från första meddelandet + konversation
+function buildCompleteDescription(history: ConversationMessage[], currentDescription: string): string {
   if (!history || history.length === 0) return currentDescription;
   
+  // Hitta första user-meddelandet (oftast mest detaljerat)
+  const firstUserMessage = history.find(m => m.role === 'user');
+  const firstDescription = firstUserMessage?.content || currentDescription;
+  
+  // Om första meddelandet är längre än currentDescription, använd det istället
+  const baseDescription = firstDescription.length > currentDescription.length 
+    ? firstDescription 
+    : currentDescription;
+  
+  // Samla alla user-svar efter första meddelandet
   const userMessages = history
     .filter(m => m.role === 'user')
     .map(m => m.content)
-    .join(' ');
+    .filter(content => content !== baseDescription); // Exkludera basbeskrivningen
   
-  return `${currentDescription} ${userMessages}`.trim();
+  if (userMessages.length === 0) return baseDescription;
+  
+  // Bygg komplett beskrivning
+  return `${baseDescription}\n\n**Ytterligare detaljer:**\n${userMessages.join('\n')}`.trim();
 }
 
 // ============================================
@@ -178,12 +192,16 @@ interface QuoteReadiness {
   reasoning: string;
 }
 
+// ÅTGÄRD 2: Projektspecifik readiness med högre trösklar för badrumsrenoveringar
 function determineQuoteReadiness(
   description: string,
   conversationHistory: ConversationMessage[],
   conversationFeedback: ConversationFeedback
 ): QuoteReadiness {
   const allText = [description, ...conversationHistory.map(m => m.content)].join(' ').toLowerCase();
+  
+  // Detektera projekttyp
+  const isBathroomRenovation = allText.match(/badrum.*renover|renovera.*badrum/i);
   
   let score = 0;
   const critical: string[] = [];
@@ -215,17 +233,38 @@ function determineQuoteReadiness(
   
   // 3. Har vi scope/detaljer? (25 poäng)
   const hasScope = conversationFeedback.understood.scope || 
-    allText.match(/rivning|spackling|målning|kakel|installation|byte|reparation/i) ||
+    allText.match(/rivning|spackling|målning|kakel|installation|byte|reparation|totalrenover|mellanbadrum/i) ||
     conversationHistory.length >= 2;
   if (hasScope) {
     score += 25;
   } else {
-    optional.push('Omfattning kan förtydligas');
+    // För badrumsrenoveringar är scope kritiskt
+    if (isBathroomRenovation) {
+      critical.push('Omfattning måste förtydligas för badrum (total/mellan/ytskikt)');
+    } else {
+      optional.push('Omfattning kan förtydligas');
+    }
+  }
+  
+  // ÅTGÄRD 2: Extra validering för badrumsrenoveringar
+  if (isBathroomRenovation) {
+    const hasVVSScope = allText.match(/vvs|rör|avlopp|uppdate|installa|flytta|dra|innanpå|utanpå/i);
+    const hasMaterialInfo = allText.match(/kakel|klinker|inredning|material|kund står för|tar vi med|vi ordnar/i);
+    
+    if (!hasVVSScope) {
+      critical.push('VVS-omfattning oklar (nytt/uppgradera/flytta/inget)');
+      score -= 15;
+    }
+    
+    if (!hasMaterialInfo) {
+      critical.push('Material/inredning ansvar oklart (vad kund tar, vad ni tar)');
+      score -= 10;
+    }
   }
   
   // 4. Har vi material/kvalitetsnivå? (15 poäng)
   const hasMaterials = conversationFeedback.understood.materials?.length ||
-    allText.match(/standard|premium|budget|kakel|färg|trä|material/i);
+    allText.match(/standard|premium|budget|kakel|färg|trä|material|kund står för|tar vi med/i);
   if (hasMaterials) {
     score += 15;
   } else {
@@ -242,17 +281,21 @@ function determineQuoteReadiness(
   // Använd också feedback confidence
   const adjustedScore = Math.round((score + conversationFeedback.confidence) / 2);
   
-  // ÅTGÄRD #3: SPRINT 1 - Skärpta thresholds
-  // >= 90%: Kan generera direkt (hög kvalitet, inga kritiska saknas)
-  // 70-89%: Proactive signal (fråga användaren)
-  // < 70%: Ställ frågor
-  const canGenerate = adjustedScore >= 90 && critical.length === 0;
+  // ÅTGÄRD 2: Projektspecifika trösklar
+  let minConfidence = 90;
+  if (isBathroomRenovation) {
+    minConfidence = 92; // Högre krav för badrum
+  }
+  
+  const canGenerate = adjustedScore >= minConfidence && critical.length === 0;
   
   let reasoning = '';
-  if (adjustedScore >= 90 && critical.length === 0) {
+  if (adjustedScore >= minConfidence && critical.length === 0) {
     reasoning = 'Mycket bra underlag, kan generera exakt offert direkt';
   } else if (adjustedScore >= 70) {
-    reasoning = 'Tillräckligt underlag för offert, kan förbättras med mer detaljer';
+    reasoning = isBathroomRenovation 
+      ? `Behöver mer info för badrumsrenovering (kräver ${minConfidence}% readiness)`
+      : 'Tillräckligt underlag för offert, kan förbättras med mer detaljer';
   } else if (adjustedScore >= 50) {
     reasoning = 'Grundläggande info finns, men behöver mer för exakthet';
   } else {
@@ -2010,8 +2053,8 @@ Deno.serve(async (req) => {
     const user_id = user.id;
     console.log('Generating quote for user:', user_id);
 
-    // Build complete description from conversation
-    const completeDescription = buildConversationSummary(conversation_history, description);
+    // ÅTGÄRD 1 & 4: Build complete description from conversation
+    const completeDescription = buildCompleteDescription(conversation_history, description);
 
     // ============================================
     // STEP 1: FETCH USER DATA
@@ -2256,18 +2299,36 @@ Deno.serve(async (req) => {
     if (readiness.readiness_score >= 70 && readiness.readiness_score < 85 && actualConversationHistory.length > 0) {
       console.log('💡 Proactive readiness signal triggered');
       
-      const understoodList = Object.entries(conversationFeedback.understood)
-        .filter(([_, value]) => value)
-        .map(([key, value]) => {
-          if (Array.isArray(value)) return value.join(', ');
-          return value;
-        })
-        .join('\n- ');
+      // ÅTGÄRD 3: Fixa "[object Object]" - formatera understood korrekt
+      const understoodItems: string[] = [];
+      
+      if (conversationFeedback.understood.project_type) {
+        understoodItems.push(`Projekttyp: ${conversationFeedback.understood.project_type}`);
+      }
+      if (conversationFeedback.understood.measurements?.length) {
+        understoodItems.push(`Mått: ${conversationFeedback.understood.measurements.join(', ')}`);
+      }
+      if (conversationFeedback.understood.materials?.length) {
+        understoodItems.push(`Material: ${conversationFeedback.understood.materials.join(', ')}`);
+      }
+      if (conversationFeedback.understood.scope) {
+        understoodItems.push(`Omfattning: ${conversationFeedback.understood.scope}`);
+      }
+      if (conversationFeedback.understood.budget) {
+        understoodItems.push(`Budget: ${conversationFeedback.understood.budget}`);
+      }
+      if (conversationFeedback.understood.timeline) {
+        understoodItems.push(`Tidsplan: ${conversationFeedback.understood.timeline}`);
+      }
+      
+      const understoodList = understoodItems.length > 0 
+        ? understoodItems.join('\n- ') 
+        : 'Grundläggande projektinfo';
 
       const proactiveMessage = `✅ Jag har nu tillräckligt med information för att skapa en offert!
 
 **Förstått:**
-${understoodList ? '- ' + understoodList : 'Grundläggande projektinfo'}
+- ${understoodList}
 
 🎯 **Readiness: ${readiness.readiness_score}%** - ${readiness.reasoning}
 
