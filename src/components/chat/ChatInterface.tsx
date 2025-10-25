@@ -270,6 +270,36 @@ export const ChatInterface = ({ onQuoteGenerated, isGenerating }: ChatInterfaceP
           });
           
         } else if (data?.type === 'complete_quote') {
+          // ÅTGÄRD 3: Validera att offerten är giltig innan vi visar den
+          if (!data.quote || !data.quote.summary) {
+            console.error('❌ Invalid quote received:', data);
+            toast({
+              title: "Fel i offerten",
+              description: "Offerten kunde inte genereras korrekt. Försök igen eller kontakta support.",
+              variant: "destructive"
+            });
+            return;
+          }
+
+          // Validera att alla kritiska fält finns och är giltiga nummer
+          const hasValidSummary = 
+            typeof data.quote.summary.totalBeforeVAT === 'number' &&
+            typeof data.quote.summary.totalWithVAT === 'number' &&
+            !isNaN(data.quote.summary.totalBeforeVAT) &&
+            !isNaN(data.quote.summary.totalWithVAT) &&
+            data.quote.summary.totalBeforeVAT >= 0 &&
+            data.quote.summary.totalWithVAT >= 0;
+
+          if (!hasValidSummary) {
+            console.error('❌ Quote summary has invalid values:', data.quote.summary);
+            toast({
+              title: "Fel i beräkningar",
+              description: "Offerten innehåller felaktiga beräkningar. Försök igen.",
+              variant: "destructive"
+            });
+            return;
+          }
+
           const elapsedTime = ((Date.now() - startTime) / 1000).toFixed(1);
           
           // Show success with timing

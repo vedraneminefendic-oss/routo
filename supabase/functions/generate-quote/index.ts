@@ -983,6 +983,44 @@ function basicValidation(quote: any): { valid: boolean; issues: string[] } {
 }
 
 // ============================================
+// ÅTGÄRD 1A: EXTRACT ANSWERED QUESTIONS
+// ============================================
+
+function extractAnsweredQuestions(conversation: Array<{role: string, content: string}>): string[] {
+  const answeredTopics: string[] = [];
+  
+  for (let i = 0; i < conversation.length - 1; i++) {
+    const currentMsg = conversation[i];
+    const nextMsg = conversation[i + 1];
+    
+    // Om AI frågade något och användaren svarade
+    if (currentMsg.role === 'assistant' && nextMsg.role === 'user') {
+      // Extrahera ämnet från frågan och svaret
+      const topics = [
+        'framkomst', 'specialutrustning', 'maskiner', 'tillgänglighet',
+        'stubb', 'fräs', 'bortforsling', 'transport', 'forsling',
+        'diameter', 'höjd', 'mått', 'storlek', 'yta', 'area',
+        'tidplan', 'när', 'datum', 'deadline', 'tidsram',
+        'rivning', 'rivningsarbete', 'förberedelse',
+        'kakel', 'material', 'kvalitet', 'märke',
+        'omfattning', 'scope', 'nivå'
+      ];
+      
+      topics.forEach(topic => {
+        const questionMentionsTopic = currentMsg.content.toLowerCase().includes(topic);
+        const answerMentionsTopic = nextMsg.content.toLowerCase().includes(topic);
+        
+        if (questionMentionsTopic && answerMentionsTopic) {
+          answeredTopics.push(topic);
+        }
+      });
+    }
+  }
+  
+  return [...new Set(answeredTopics)]; // Ta bort dubbletter
+}
+
+// ============================================
 // AI: ASK CLARIFICATION QUESTIONS
 // ============================================
 
@@ -992,6 +1030,9 @@ async function askClarificationQuestions(
   similarQuotes: any[],
   apiKey: string
 ): Promise<string[]> {
+  
+  // ÅTGÄRD 1B: Extrahera redan besvarade frågor
+  const answeredQuestions = extractAnsweredQuestions(conversationHistory);
   
   const historyText = conversationHistory
     .map(m => `${m.role === 'user' ? 'Användare' : 'AI'}: ${m.content}`)
@@ -1015,6 +1056,29 @@ ${description}
 ${historyText || 'Ingen tidigare konversation'}
 
 ${similarQuotesText}
+
+**🚨 KRITISKT: Följande frågor har REDAN besvarats i konversationen:**
+${answeredQuestions.length > 0 
+  ? answeredQuestions.map(q => `- ${q} (FRÅGA INTE OM DETTA IGEN!)`).join('\n')
+  : '(Inga frågor besvarade än)'}
+
+**EXEMPEL PÅ BRA OCH DÅLIGT BETEENDE:**
+
+❌ DÅLIGT:
+AI: "Behöver stubbarna fräsas?"
+Användare: "Ja, stubbarna behöver fräsas"
+AI: "Behöver stubbarna fräsas?" <-- DETTA ÄR FEL! Samma fråga igen!
+
+✅ BRA:
+AI: "Behöver stubbarna fräsas?"
+Användare: "Ja, stubbarna behöver fräsas"
+AI: "Är det fritt framkomst för maskiner?" <-- GÅ VIDARE TILL NÄSTA FRÅGA
+
+**REGLER:**
+1. Läs HELA konversationshistoriken innan du ställer frågor
+2. Ställ ALDRIG en fråga om något som redan diskuterats
+3. Om användaren har svarat på en fråga, gå vidare till nästa ämne
+4. Om alla viktiga frågor är besvarade, returnera tom lista: {"questions": []}
 
 **PROJEKTTYP-IDENTIFIERING:**
 Analysera beskrivningen och identifiera projekttyp:
@@ -1506,6 +1570,31 @@ VARJE material MÅSTE specificeras enligt: **Märke + Modell + Storlek/Färg + M
     const data = await response.json();
     const quote = JSON.parse(data.choices[0].message.content);
     
+    // ÅTGÄRD 4: Debug-logging för AI response structure
+    console.log('📊 AI Response Structure:', {
+      hasQuote: !!quote,
+      hasWorkItems: !!quote?.workItems,
+      workItemsCount: quote?.workItems?.length ?? 0,
+      hasMaterials: !!quote?.materials,
+      materialsCount: quote?.materials?.length ?? 0,
+      hasEquipment: !!quote?.equipment,
+      equipmentCount: quote?.equipment?.length ?? 0,
+      hasSummary: !!quote?.summary,
+      summaryKeys: quote?.summary ? Object.keys(quote.summary) : [],
+      summaryValues: quote?.summary
+    });
+
+    // Validera att AI:n returnerade rätt format
+    if (!quote) {
+      console.error('❌ AI returned empty response!');
+      throw new Error('AI response missing quote object');
+    }
+    
+    if (!quote.workItems && !quote.materials && !quote.equipment) {
+      console.error('❌ AI returned quote with no items!');
+      throw new Error('Quote has no workItems, materials, or equipment');
+    }
+    
     console.log('✅ Quote generated successfully');
     return quote;
   } catch (error) {
@@ -1884,6 +1973,81 @@ Vad föredrar du?`;
       finalDeductionType,
       LOVABLE_API_KEY
     );
+
+    // ============================================
+    // ÅTGÄRD 2B: VALIDATE QUOTE SUMMARY
+    // ============================================
+    
+    function validateQuoteSummary(quote: any): { valid: boolean; issues: string[] } {
+      const issues: string[] = [];
+      
+      if (!quote.summary) {
+        issues.push('Quote missing summary object');
+        return { valid: false, issues };
+      }
+      
+      const requiredFields = [
+        'totalBeforeVAT', 'workCost', 'materialCost', 
+        'vatAmount', 'totalWithVAT', 'customerPays'
+      ];
+      
+      const missingFields = requiredFields.filter(field => 
+        quote.summary[field] === undefined || 
+        quote.summary[field] === null
+      );
+      
+      if (missingFields.length > 0) {
+        issues.push(`Summary missing fields: ${missingFields.join(', ')}`);
+      }
+      
+      // Validera att värden är nummer och inte NaN
+      requiredFields.forEach(field => {
+        if (quote.summary[field] !== undefined && 
+            (typeof quote.summary[field] !== 'number' || isNaN(quote.summary[field]))) {
+          issues.push(`Summary field ${field} is not a valid number: ${quote.summary[field]}`);
+        }
+      });
+      
+      return { valid: issues.length === 0, issues };
+    }
+
+    const summaryValidation = validateQuoteSummary(quote);
+    
+    if (!summaryValidation.valid) {
+      console.error('❌ Quote summary validation failed:', summaryValidation.issues);
+      console.error('Current summary:', quote.summary);
+      
+      // Fallback: Beräkna värden från items
+      console.log('⚠️ Attempting to rebuild summary from items...');
+      
+      const totalWork = quote.workItems?.reduce((sum: number, item: any) => 
+        sum + (item.subtotal || 0), 0
+      ) || 0;
+      
+      const totalMaterial = quote.materials?.reduce((sum: number, item: any) => 
+        sum + (item.subtotal || 0), 0
+      ) || 0;
+      
+      const totalEquipment = quote.equipment?.reduce((sum: number, item: any) => 
+        sum + (item.subtotal || 0), 0
+      ) || 0;
+      
+      const totalBeforeVAT = totalWork + totalMaterial + totalEquipment;
+      const vatAmount = totalBeforeVAT * 0.25;
+      const totalWithVAT = totalBeforeVAT * 1.25;
+      
+      quote.summary = {
+        workCost: totalWork,
+        materialCost: totalMaterial,
+        equipmentCost: totalEquipment,
+        totalBeforeVAT: totalBeforeVAT,
+        vatAmount: vatAmount,
+        totalWithVAT: totalWithVAT,
+        customerPays: totalWithVAT
+      };
+      
+      console.log('✅ Summary rebuilt:', quote.summary);
+    }
 
     // ============================================
     // STEP 6: VALIDATE QUOTE AGAINST CONVERSATION (FÖRBÄTTRING #2)
