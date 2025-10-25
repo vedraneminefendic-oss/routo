@@ -1,5 +1,5 @@
 import { Button } from "@/components/ui/button";
-import { Hammer, Home, Paintbrush, Wrench, Zap, Trees } from "lucide-react";
+import { Home, Paintbrush, Wrench, Trees, Hammer, MessageSquare } from "lucide-react";
 
 interface ConversationStarterProps {
   onStarterClick: (text: string) => void;
@@ -8,63 +8,70 @@ interface ConversationStarterProps {
 const starters = [
   {
     icon: Home,
-    text: "Renovera ett badrum på 8 kvm med kakel och klinker",
+    text: "Renovering av rum",
     category: "Renovering"
   },
   {
     icon: Paintbrush,
-    text: "Måla om 3 rum och hall, ca 120 kvm bostadsyta",
+    text: "Målningsarbete",
     category: "Målning"
   },
   {
-    icon: Zap,
-    text: "Byta ut el-installation i äldre villa",
-    category: "Elarbete"
+    icon: Wrench,
+    text: "VVS & El-arbete",
+    category: "Installation"
   },
   {
     icon: Trees,
-    text: "Fälla 3 stora granar och stubbfräsa",
-    category: "Trädvård"
-  },
-  {
-    icon: Wrench,
-    text: "Installera nytt kök med VVS-arbeten",
-    category: "Kök & VVS"
+    text: "Trädgårdsarbete",
+    category: "Trädgård"
   },
   {
     icon: Hammer,
-    text: "Bygga altan 25 kvm med räcke och trappa",
-    category: "Snickeri"
+    text: "Snickeri & byggarbete",
+    category: "Bygg"
   }
 ];
 
 export const ConversationStarter = ({ onStarterClick }: ConversationStarterProps) => {
   return (
-    <div className="w-full max-w-2xl">
-      <p className="text-sm text-muted-foreground text-center mb-4">
-        Eller välj ett vanligt exempel:
+    <div className="w-full max-w-2xl space-y-4">
+      <p className="text-sm text-muted-foreground text-center">
+        Välj en kategori eller beskriv ditt projekt själv:
       </p>
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+      
+      {/* Berätta själv - Primary CTA */}
+      <Button
+        size="lg"
+        className="w-full gap-2 h-auto py-4"
+        onClick={() => {
+          const input = document.querySelector('textarea');
+          if (input) {
+            input.focus();
+          }
+        }}
+      >
+        <MessageSquare className="h-5 w-5" />
+        <span className="text-base">Berätta själv om ditt projekt</span>
+      </Button>
+
+      {/* Category Quick Starts */}
+      <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
         {starters.map((starter, index) => {
           const Icon = starter.icon;
           return (
             <Button
               key={index}
               variant="outline"
-              className="h-auto py-4 px-4 justify-start text-left hover:bg-muted hover:border-primary transition-all"
+              className="h-auto py-3 px-3 justify-start text-left hover:bg-muted hover:border-primary transition-all"
               onClick={() => onStarterClick(starter.text)}
             >
-              <div className="flex items-start gap-3 w-full">
-                <div className="flex-shrink-0 w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
+              <div className="flex flex-col items-center gap-2 w-full">
+                <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
                   <Icon className="h-5 w-5 text-primary" />
                 </div>
-                <div className="flex-1 min-w-0">
-                  <div className="text-xs text-muted-foreground mb-1">
-                    {starter.category}
-                  </div>
-                  <div className="text-sm font-medium text-foreground line-clamp-2">
-                    {starter.text}
-                  </div>
+                <div className="text-xs font-medium text-foreground text-center">
+                  {starter.text}
                 </div>
               </div>
             </Button>

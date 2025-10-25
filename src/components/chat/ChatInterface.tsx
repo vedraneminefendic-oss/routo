@@ -1,14 +1,13 @@
 import { useState, useRef, useEffect } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { MessageBubble } from "./MessageBubble";
 import { ChatInput } from "./ChatInput";
 import { ConversationStarter } from "./ConversationStarter";
-import { ContextPills } from "./ContextPills";
-import { Loader2, RotateCcw, Send, Save, Edit3 } from "lucide-react";
-import { EstimateSection } from "@/components/estimate/EstimateSection";
-import { EstimateSummary } from "@/components/estimate/EstimateSummary";
-import { LineItemData } from "@/components/estimate/LineItem";
+import { QuoteSheet } from "./QuoteSheet";
+import { Loader2, RotateCcw, Sparkles, ChevronDown, ChevronUp } from "lucide-react";
+import { Progress } from "@/components/ui/progress";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 
@@ -36,6 +35,8 @@ export const ChatInterface = ({ onQuoteGenerated, isGenerating }: ChatInterfaceP
   const [conversationFeedback, setConversationFeedback] = useState<any>(null);
   const [readiness, setReadiness] = useState<any>(null);
   const [showProactivePrompt, setShowProactivePrompt] = useState(false);
+  const [showQuoteSheet, setShowQuoteSheet] = useState(false);
+  const [feedbackExpanded, setFeedbackExpanded] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const chatContainerRef = useRef<HTMLDivElement>(null);
   const { toast } = useToast();
@@ -277,13 +278,14 @@ export const ChatInterface = ({ onQuoteGenerated, isGenerating }: ChatInterfaceP
             description: `Klar på ${elapsedTime} sekunder${data.usedFallback ? ' (snabbt läge)' : ''}`
           });
 
-          // Komplett offert genererad - visa inline
+          // Komplett offert genererad - visa i sheet
           setNeedsClarification(false);
           setClarificationQuestions([]);
           setShowProactivePrompt(false);
           setGeneratedQuote(data.quote);
           setConversationFeedback(data.conversationFeedback);
           setReadiness(data.readiness);
+          setShowQuoteSheet(true); // Öppna sheet automatiskt
           
           const aiMessage: Message = {
             id: (Date.now() + 1).toString(),
@@ -385,6 +387,7 @@ export const ChatInterface = ({ onQuoteGenerated, isGenerating }: ChatInterfaceP
 
   const handleSendQuote = async () => {
     if (!generatedQuote) return;
+    setShowQuoteSheet(false);
     onQuoteGenerated(generatedQuote);
     toast({
       title: "Öppnar offert",
@@ -394,6 +397,7 @@ export const ChatInterface = ({ onQuoteGenerated, isGenerating }: ChatInterfaceP
 
   const handleSaveAsDraft = async () => {
     if (!generatedQuote) return;
+    setShowQuoteSheet(false);
     onQuoteGenerated(generatedQuote);
     toast({
       title: "Sparar offert",
@@ -403,6 +407,7 @@ export const ChatInterface = ({ onQuoteGenerated, isGenerating }: ChatInterfaceP
 
   const handleEditQuote = () => {
     if (!generatedQuote) return;
+    setShowQuoteSheet(false);
     onQuoteGenerated(generatedQuote);
   };
 
@@ -410,50 +415,115 @@ export const ChatInterface = ({ onQuoteGenerated, isGenerating }: ChatInterfaceP
     handleSendMessage(text);
   };
 
-  // Smart Suggestions based on quote
-  const getSmartSuggestions = () => {
-    if (!generatedQuote) return [];
-    
-    const projectType = generatedQuote.title?.toLowerCase() || '';
-    const suggestions = [];
-
-    if (projectType.includes('badrum')) {
-      suggestions.push({ text: '➕ Lägg till golvvärme (+4500 kr)', estimate: 4500 });
-      suggestions.push({ text: '➕ Lägg till handdukstork (+2800 kr)', estimate: 2800 });
-    } else if (projectType.includes('altan') || projectType.includes('däck')) {
-      suggestions.push({ text: '➕ Lägg till belysning (+3200 kr)', estimate: 3200 });
-      suggestions.push({ text: '➕ Lägg till inglasning (+15000 kr)', estimate: 15000 });
-    } else if (projectType.includes('målning')) {
-      suggestions.push({ text: '➕ Inkludera spackling (+1500 kr)', estimate: 1500 });
-      suggestions.push({ text: '➕ Lägg till grundmålning (+2000 kr)', estimate: 2000 });
-    }
-
-    return suggestions;
+  const handleGenerateQuote = () => {
+    handleSendMessage("Generera en offert baserat på vår konversation");
+    setShowProactivePrompt(false);
   };
 
   return (
-    <Card className="overflow-hidden">
-      <div 
-        ref={chatContainerRef}
-        className="flex flex-col h-[600px] bg-background"
-      >
-        {/* Header med "Ny konversation"-knapp */}
-        {messages.length > 0 && (
-          <div className="border-b bg-muted/30 px-4 py-2 flex justify-end">
-            <Button 
-              variant="ghost" 
-              size="sm"
-              onClick={handleNewConversation}
-              className="gap-2"
-            >
-              <RotateCcw className="h-4 w-4" />
-              Ny konversation
-            </Button>
-          </div>
-        )}
-        
-        {/* Messages Area */}
-        <div className="flex-1 overflow-y-auto px-4 py-6 space-y-4">
+    <>
+      <Card className="overflow-hidden">
+        <div 
+          ref={chatContainerRef}
+          className="flex flex-col h-[600px] bg-background relative"
+        >
+          {/* Proactive Ready Banner - Sticky at top */}
+          {showProactivePrompt && readiness && readiness.readiness_score >= 85 && (
+            <div className="sticky top-0 z-10 bg-gradient-to-r from-green-500/10 via-primary/10 to-blue-500/10 border-b border-primary/20 px-4 py-3 backdrop-blur-sm">
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex items-center gap-3 flex-1">
+                  <div className="flex-shrink-0">
+                    <Sparkles className="h-5 w-5 text-primary animate-pulse" />
+                  </div>
+                  <div className="flex-1">
+                    <p className="text-sm font-semibold text-foreground">
+                      🎉 Redo att generera offert!
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      Jag har tillräckligt med information ({readiness.readiness_score}% beredskap)
+                    </p>
+                  </div>
+                </div>
+                <Button 
+                  size="sm"
+                  onClick={handleGenerateQuote}
+                  className="flex-shrink-0 gap-2"
+                >
+                  <Sparkles className="h-4 w-4" />
+                  Generera offert
+                </Button>
+              </div>
+            </div>
+          )}
+
+          {/* Minimalist Progress Bar - Only when readiness < 85% */}
+          {readiness && readiness.readiness_score < 85 && !generatedQuote && messages.length > 0 && (
+            <div className="sticky top-0 z-10 bg-background border-b px-4 py-2">
+              <div className="flex items-center justify-between gap-3 mb-1">
+                <div className="flex items-center gap-2 flex-1">
+                  <p className="text-xs font-medium text-muted-foreground">
+                    Konversationsstatus
+                  </p>
+                  <Badge variant="outline" className="text-xs">
+                    {readiness.readiness_score}%
+                  </Badge>
+                </div>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setFeedbackExpanded(!feedbackExpanded)}
+                  className="h-6 px-2 text-xs"
+                >
+                  {feedbackExpanded ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+                </Button>
+              </div>
+              <Progress value={readiness.readiness_score} className="h-1.5" />
+              
+              {/* Expandable Details */}
+              {feedbackExpanded && conversationFeedback && (
+                <div className="mt-3 pt-3 border-t text-xs space-y-2">
+                  {conversationFeedback.understood && conversationFeedback.understood.length > 0 && (
+                    <div>
+                      <p className="font-medium text-muted-foreground mb-1">✓ Förstått:</p>
+                      <ul className="space-y-0.5 text-muted-foreground pl-4">
+                        {conversationFeedback.understood.slice(0, 3).map((item: string, i: number) => (
+                          <li key={i}>• {item}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                  {conversationFeedback.missing && conversationFeedback.missing.length > 0 && (
+                    <div>
+                      <p className="font-medium text-muted-foreground mb-1">? Saknas:</p>
+                      <ul className="space-y-0.5 text-muted-foreground pl-4">
+                        {conversationFeedback.missing.slice(0, 2).map((item: string, i: number) => (
+                          <li key={i}>• {item}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Header med "Ny konversation"-knapp */}
+          {messages.length > 0 && (
+            <div className="border-b bg-muted/30 px-4 py-2 flex justify-end">
+              <Button 
+                variant="ghost" 
+                size="sm"
+                onClick={handleNewConversation}
+                className="gap-2"
+              >
+                <RotateCcw className="h-4 w-4" />
+                Ny konversation
+              </Button>
+            </div>
+          )}
+          
+          {/* Messages Area */}
+          <div className="flex-1 overflow-y-auto px-4 py-6 space-y-4">
           {messages.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-full space-y-6">
               <div className="text-center space-y-2">
@@ -472,248 +542,77 @@ export const ChatInterface = ({ onQuoteGenerated, isGenerating }: ChatInterfaceP
                 <MessageBubble key={message.id} message={message} />
               ))}
               
-              {/* PROBLEM #1: CONVERSATION FEEDBACK DISPLAY */}
-              {conversationFeedback && !generatedQuote && (
-                <div className="bg-muted/50 border border-border rounded-lg p-4 space-y-3 animate-in fade-in-50">
-                  <div className="flex items-center justify-between">
-                    <h4 className="text-sm font-semibold text-foreground">
-                      📊 AI:ns förståelse
-                    </h4>
-                    {readiness && (
-                      <div className="flex items-center gap-2">
-                        <div className="text-xs text-muted-foreground">
-                          Readiness:
-                        </div>
-                        <div className={`text-xs font-bold ${
-                          readiness.readiness_score >= 85 ? 'text-green-600' :
-                          readiness.readiness_score >= 70 ? 'text-yellow-600' :
-                          'text-orange-600'
-                        }`}>
-                          {readiness.readiness_score}%
-                        </div>
+              {/* Quote generated - show button to open sheet */}
+              {generatedQuote && (
+                <div className="bg-primary/10 border border-primary/20 rounded-lg p-4 animate-in fade-in-50">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-3">
+                      <Sparkles className="h-5 w-5 text-primary" />
+                      <div>
+                        <p className="text-sm font-semibold">Offert genererad!</p>
+                        <p className="text-xs text-muted-foreground">
+                          Klicka för att granska och skicka
+                        </p>
                       </div>
-                    )}
+                    </div>
+                    <Button 
+                      size="sm"
+                      onClick={() => setShowQuoteSheet(true)}
+                      className="gap-2"
+                    >
+                      Visa offert
+                    </Button>
                   </div>
-                  
-                  {/* Förstått */}
-                  {Object.keys(conversationFeedback.understood).length > 0 && (
-                    <div className="space-y-1">
-                      <div className="text-xs font-medium text-muted-foreground">✅ Förstått:</div>
-                      <div className="text-sm space-y-1">
-                        {Object.entries(conversationFeedback.understood).map(([key, value]: [string, any]) => (
-                          value && (
-                            <div key={key} className="text-foreground/80">
-                              • {key === 'project_type' ? 'Projekttyp' : 
-                                 key === 'measurements' ? 'Mått' :
-                                 key === 'materials' ? 'Material' :
-                                 key === 'scope' ? 'Omfattning' :
-                                 key === 'budget' ? 'Budget' :
-                                 key === 'timeline' ? 'Tidsram' : key}: {
-                                Array.isArray(value) ? value.join(', ') : value
-                              }
-                            </div>
-                          )
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                  
-                  {/* Saknas */}
-                  {conversationFeedback.missing && conversationFeedback.missing.length > 0 && (
-                    <div className="space-y-1">
-                      <div className="text-xs font-medium text-muted-foreground">❓ Kan förbättras:</div>
-                      <div className="text-sm space-y-1">
-                        {conversationFeedback.missing.map((item: string, idx: number) => (
-                          <div key={idx} className="text-foreground/80">
-                            • {item}
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                  
-                  {/* Förslag */}
-                  {conversationFeedback.suggestions && conversationFeedback.suggestions.length > 0 && (
-                    <div className="space-y-1">
-                      <div className="text-xs font-medium text-muted-foreground">💡 Förslag:</div>
-                      <div className="text-sm space-y-1">
-                        {conversationFeedback.suggestions.map((suggestion: string, idx: number) => (
-                          <div key={idx} className="text-foreground/80 italic">
-                            • {suggestion}
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
+                </div>
+              )}
+
+              {isTyping && (
+                <div className="flex justify-start">
+                  <div className="bg-muted rounded-lg px-4 py-3 flex items-center gap-2">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    <span className="text-sm text-muted-foreground">AI:n tänker...</span>
+                  </div>
                 </div>
               )}
               
-              {isTyping && (
-                <div className="flex items-center gap-2 text-muted-foreground">
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  <span className="text-sm">AI:n tänker...</span>
+              {/* Clarification quick replies */}
+              {needsClarification && clarificationQuestions.length > 0 && (
+                <div className="flex flex-wrap gap-2">
+                  {clarificationQuestions.slice(0, 3).map((question, index) => (
+                    <Button
+                      key={index}
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleSendMessage(question)}
+                      className="text-xs"
+                    >
+                      {question.substring(0, 40)}...
+                    </Button>
+                  ))}
                 </div>
               )}
-
-              {/* Visa genererad offert inline */}
-              {generatedQuote && (
-                <div className="animate-in fade-in-50 slide-in-from-bottom-4">
-                  <div className="bg-card border-2 border-primary/20 rounded-lg p-6 space-y-6">
-                    {/* Offert Header */}
-                    <div className="flex items-center justify-between border-b pb-4">
-                      <div>
-                        <h3 className="text-xl font-semibold text-foreground">Offert</h3>
-                        <p className="text-sm text-muted-foreground mt-1">
-                          Giltig till: {generatedQuote.validUntil ? new Date(generatedQuote.validUntil).toLocaleDateString('sv-SE') : 'Ej angivet'}
-                        </p>
-                      </div>
-                    </div>
-
-                    {/* Sections (Arbete, Material, etc.) */}
-                    <div className="space-y-4">
-                      {generatedQuote.sections && generatedQuote.sections.map((section: any, index: number) => (
-                        <EstimateSection
-                          key={index}
-                          title={section.title}
-                          items={section.items.map((item: any) => ({
-                            name: item.name || item.description || 'Post',
-                            quantity: item.quantity || 1,
-                            unit: item.unit || 'st',
-                            unitPrice: item.unitPrice || item.rate || 0
-                          }))}
-                          onItemUpdate={() => {}}
-                          onItemDelete={() => {}}
-                          defaultOpen={true}
-                        />
-                      ))}
-                    </div>
-
-                    {/* Summary */}
-                    {generatedQuote.summary && (
-                      <EstimateSummary
-                        subtotal={generatedQuote.summary.totalBeforeVAT || 0}
-                        workCost={generatedQuote.summary.workCost}
-                        materialCost={generatedQuote.summary.materialCost}
-                        vat={generatedQuote.summary.vat}
-                        totalWithVAT={generatedQuote.summary.totalWithVAT}
-                        rotRutDeduction={generatedQuote.summary.deductionType !== 'none' ? {
-                          type: generatedQuote.summary.deductionType?.toUpperCase() as 'ROT' | 'RUT',
-                          laborCost: generatedQuote.summary.workCost || 0,
-                          deductionAmount: generatedQuote.summary.deductionAmount || 0,
-                          priceAfterDeduction: generatedQuote.summary.customerPays || 0,
-                          deductionRate: generatedQuote.summary.deductionRate || 0.50
-                        } : undefined}
-                        total={generatedQuote.summary.customerPays || generatedQuote.summary.totalWithVAT || 0}
-                      />
-                    )}
-
-                    {/* Notes */}
-                    {generatedQuote.notes && (
-                      <div className="bg-muted/50 rounded-lg p-4">
-                        <p className="text-sm text-muted-foreground">{generatedQuote.notes}</p>
-                      </div>
-                    )}
-
-                    {/* Action Buttons */}
-                    <div className="flex flex-wrap gap-3 pt-4 border-t">
-                      <Button 
-                        onClick={handleSendQuote}
-                        className="flex items-center gap-2"
-                      >
-                        <Send className="h-4 w-4" />
-                        Skicka till kund
-                      </Button>
-                      <Button 
-                        onClick={handleSaveAsDraft}
-                        variant="outline"
-                        className="flex items-center gap-2"
-                      >
-                        <Save className="h-4 w-4" />
-                        Spara som utkast
-                      </Button>
-                      <Button 
-                        onClick={handleEditQuote}
-                        variant="outline"
-                        className="flex items-center gap-2"
-                      >
-                        <Edit3 className="h-4 w-4" />
-                        Redigera
-                      </Button>
-                    </div>
-
-                    {/* Smart Suggestions (Fas 6E) */}
-                    {getSmartSuggestions().length > 0 && (
-                      <div className="border-t pt-4">
-                        <p className="text-sm font-medium text-muted-foreground mb-3">
-                          💡 Kanske intressant att lägga till?
-                        </p>
-                        <div className="flex flex-wrap gap-2">
-                          {getSmartSuggestions().map((suggestion, idx) => (
-                            <Button
-                              key={idx}
-                              variant="outline"
-                              size="sm"
-                              onClick={() => handleSendMessage(suggestion.text)}
-                              className="text-xs"
-                            >
-                              {suggestion.text}
-                            </Button>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              )}
-
+              
               <div ref={messagesEndRef} />
             </>
           )}
         </div>
-
-        {/* Quick Replies för motfrågor */}
-        {needsClarification && clarificationQuestions.length > 0 && (
-          <div className="border-t bg-muted/20 px-4 py-3">
-            <p className="text-sm text-muted-foreground mb-2">Snabba svar:</p>
-            <div className="flex flex-wrap gap-2">
-              <Button 
-                variant="outline" 
-                size="sm" 
-                onClick={() => handleSendMessage("Budget-nivå material")}
-              >
-                💰 Budget
-              </Button>
-              <Button 
-                variant="outline" 
-                size="sm" 
-                onClick={() => handleSendMessage("Mellan-nivå material")}
-              >
-                ⭐ Mellan
-              </Button>
-              <Button 
-                variant="outline" 
-                size="sm" 
-                onClick={() => handleSendMessage("Premium material")}
-              >
-                💎 Premium
-              </Button>
-            </div>
-          </div>
-        )}
-
-        {/* Context Pills - visar vad AI:n förstått */}
-        <ContextPills 
-          messages={messages}
-        />
-
-        {/* Input Area */}
-        <div className="bg-muted/30 p-4">
-          <ChatInput 
-            onSendMessage={handleSendMessage}
-            disabled={isGenerating || isTyping}
-          />
+        
+        {/* Input Area - Sticky Bottom */}
+        <div className="sticky bottom-0 border-t bg-background/95 backdrop-blur-sm px-4 py-4 z-10">
+          <ChatInput onSendMessage={handleSendMessage} disabled={isTyping} />
         </div>
       </div>
     </Card>
+
+    {/* Quote Sheet Modal */}
+    <QuoteSheet
+      open={showQuoteSheet}
+      onOpenChange={setShowQuoteSheet}
+      quote={generatedQuote}
+      onSend={handleSendQuote}
+      onSaveAsDraft={handleSaveAsDraft}
+      onEdit={handleEditQuote}
+    />
+  </>
   );
 };
