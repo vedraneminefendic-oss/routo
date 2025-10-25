@@ -323,6 +323,16 @@ export const ChatInterface = ({ onQuoteGenerated, isGenerating }: ChatInterfaceP
 
           const elapsedTime = ((Date.now() - startTime) / 1000).toFixed(1);
           
+          // SPRINT 1: Visa antaganden om de finns
+          if (data.assumptions && data.assumptions.length > 0) {
+            console.log('🧠 AI gjorde följande antaganden:', data.assumptions);
+            toast({
+              title: "⚠️ Antaganden gjorda",
+              description: `AI:n gjorde ${data.assumptions.length} antagande${data.assumptions.length > 1 ? 'n' : ''} i offerten. Se offerten för detaljer.`,
+              variant: "default"
+            });
+          }
+          
           // Show success with timing
           toast({
             title: "✅ Offert genererad!",

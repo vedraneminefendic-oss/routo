@@ -242,14 +242,14 @@ function determineQuoteReadiness(
   // Använd också feedback confidence
   const adjustedScore = Math.round((score + conversationFeedback.confidence) / 2);
   
-  // ÅTGÄRD #3: Justerade thresholds
-  // >= 85%: Kan generera direkt (hög kvalitet)
-  // 70-84%: Proactive signal (fråga användaren)
+  // ÅTGÄRD #3: SPRINT 1 - Skärpta thresholds
+  // >= 90%: Kan generera direkt (hög kvalitet, inga kritiska saknas)
+  // 70-89%: Proactive signal (fråga användaren)
   // < 70%: Ställ frågor
-  const canGenerate = adjustedScore >= 85 && critical.length === 0;
+  const canGenerate = adjustedScore >= 90 && critical.length === 0;
   
   let reasoning = '';
-  if (adjustedScore >= 85 && critical.length === 0) {
+  if (adjustedScore >= 90 && critical.length === 0) {
     reasoning = 'Mycket bra underlag, kan generera exakt offert direkt';
   } else if (adjustedScore >= 70) {
     reasoning = 'Tillräckligt underlag för offert, kan förbättras med mer detaljer';
@@ -951,6 +951,55 @@ function calculateROTRUT(quote: any, deductionType: string, recipients: number, 
 }
 
 // ============================================
+// SPRINT 1: EXCLUSION PARSING
+// ============================================
+
+interface Exclusion {
+  item: string;
+  reason: string;
+}
+
+function parseExclusions(conversationHistory: ConversationMessage[]): Exclusion[] {
+  const exclusions: Exclusion[] = [];
+  const allText = conversationHistory.map(m => m.content).join('\n');
+  
+  // Regex-mönster för olika sätt att säga "jag tar hand om X"
+  const patterns = [
+    /(?:jag|vi)\s+(?:tar hand om|sköter|ordnar|har redan|har)\s+([^.!?\n]+)/gi,
+    /(?:kunden|kund)\s+(?:tar hand om|sköter|ordnar|har redan|har)\s+([^.!?\n]+)/gi,
+    /([^.!?\n]+)\s+(?:är redan|redan)\s+(?:gjort|klart|ordnat)/gi,
+    /(?:behövs inte|behöver inte|nej tack|nej)\s+(?:med|för|till)?\s*([^.!?\n]*)/gi,
+    /(?:ingår inte|ska inte ingå|exkludera)\s+([^.!?\n]+)/gi,
+  ];
+  
+  for (const pattern of patterns) {
+    let match;
+    while ((match = pattern.exec(allText)) !== null) {
+      const item = match[1]?.trim();
+      if (item && item.length > 2 && item.length < 100) {
+        exclusions.push({
+          item: item,
+          reason: match[0].includes('jag') || match[0].includes('vi') ? 'Hantverkaren gör själv' :
+                  match[0].includes('kunden') || match[0].includes('kund') ? 'Kunden ordnar själv' :
+                  match[0].includes('redan') ? 'Redan utfört' :
+                  match[0].includes('behövs inte') || match[0].includes('nej') ? 'Behövs inte' :
+                  'Ska inte ingå'
+        });
+      }
+    }
+  }
+  
+  // Deduplicate
+  const uniqueExclusions = exclusions.filter((excl, index, self) =>
+    index === self.findIndex(e => e.item.toLowerCase() === excl.item.toLowerCase())
+  );
+  
+  console.log(`📋 Parsed ${uniqueExclusions.length} exclusions:`, uniqueExclusions);
+  
+  return uniqueExclusions;
+}
+
+// ============================================
 // BASIC VALIDATION
 // ============================================
 
@@ -1247,7 +1296,8 @@ async function generateQuoteWithAI(
   similarQuotes: any[],
   learningContext: LearningContext,
   deductionType: string,
-  apiKey: string
+  apiKey: string,
+  exclusions: Exclusion[] = []
 ): Promise<any> {
   
   const historyText = conversationHistory
@@ -1385,6 +1435,45 @@ Användare: "Ja, bortforsling ingår"
 
 **ANVÄND DENNA REGEL:**
 Om ordet "jag", "vi", "kunden", "redan" förekommer + arbetsmoment → EXKLUDERA det momentet
+
+${exclusions.length > 0 ? `
+**🚫 SPRINT 1: EXPLICIT EXKLUDERADE POSTER (VIKTIGT!):**
+
+Följande poster har EXPLICIT exkluderats i konversationen och får INTE inkluderas i offerten:
+
+${exclusions.map(excl => `❌ ${excl.item} - (Anledning: ${excl.reason})`).join('\n')}
+
+**DUBBELKOLLA att ingen av dessa poster finns med i offerten!**
+` : ''}
+
+**🧠 SPRINT 1: ASSUMPTION BUDGET (MAX 2 ANTAGANDEN):**
+
+Du får göra MAXIMALT 2 antaganden i denna offert. Ett "antagande" är något du inkluderar som:
+- INTE explicit nämnts i konversationen
+- Kostar mer än 500 kr
+- Inte är en standardpost
+
+**EXEMPEL PÅ ANTAGANDEN:**
+- "Antog att rivning behövs" (ej nämnt)
+- "Antog standardkvalitet på kakel" (ej specificerat)
+- "Antog att el-installation behövs" (ej nämnt)
+
+**INTE ANTAGANDEN (standardposter <500 kr):**
+- Slutstädning (standardpost)
+- Bortforsling (standardpost om relevant)
+- Skyddsutrustning (standardpost)
+
+**OM DU BEHÖVER GÖRA FLER ÄN 2 ANTAGANDEN:**
+→ Inkludera INTE den posten! Det betyder att du behöver mer information.
+
+**LOGGA ANTAGANDEN:**
+För varje antagande du gör, lägg till ett "assumptions"-fält i response:
+{
+  "assumptions": [
+    "Antog standardkvalitet på kakel (ca 800 kr/kvm) eftersom ingen kvalitetsnivå angavs",
+    "Antog att befintlig blandare ska återanvändas eftersom inget nämndes om byte"
+  ]
+}
 
 **🚨 BESLUTSPROCESS (FÖLJ STRIKT I ORDNING) - FÖRBÄTTRING #3:**
 
@@ -1655,7 +1744,10 @@ ALLA texter i offerten MÅSTE vara på SVENSKA:
     "vatAmount": 5237.5,         // ✅ VIKTIGT: Heter "vatAmount" (INTE "vat")
     "totalWithVAT": 26187.5,     // ✅ Number
     "customerPays": 26187.5      // ✅ Number
-  }
+  },
+  "assumptions": [
+    "Antagande 1 om du gjorde ett (eller tom array [])"
+  ]
 }
 
 **🚨 KRITISKT - summary-fältet:**
@@ -1843,6 +1935,30 @@ Returnera JSON med ALLA material från original-offerten men med bättre specifi
     console.error('Error retrying material specification:', error);
     return quote; // Return original if retry fails
   }
+}
+
+// ============================================
+// SPRINT 1: VALIDATE ASSUMPTIONS
+// ============================================
+
+function validateAssumptions(quote: any): { valid: boolean; warnings: string[] } {
+  const assumptions = quote.assumptions || [];
+  const warnings: string[] = [];
+  
+  console.log(`🧠 Assumptions made: ${assumptions.length}`);
+  
+  if (assumptions.length > 0) {
+    assumptions.forEach((assumption: string, index: number) => {
+      console.log(`  ${index + 1}. ${assumption}`);
+    });
+  }
+  
+  if (assumptions.length > 2) {
+    warnings.push(`⚠️ För många antaganden (${assumptions.length}/2). Detta indikerar att mer information behövs.`);
+    return { valid: false, warnings };
+  }
+  
+  return { valid: true, warnings };
 }
 
 // ============================================
@@ -2182,6 +2298,10 @@ Vad föredrar du?`;
 
     console.log('🎯 Generating complete quote...');
     
+    // SPRINT 1: Parse exclusions från konversation
+    const exclusions = parseExclusions(actualConversationHistory);
+    console.log(`📋 Exclusions parsed: ${exclusions.length}`);
+    
     // ÅTGÄRD 4C: Använd faktisk historik från DB även här
     let quote = await generateQuoteWithAI(
       completeDescription,
@@ -2191,7 +2311,8 @@ Vad föredrar du?`;
       similarQuotes,
       learningContext,
       finalDeductionType,
-      LOVABLE_API_KEY
+      LOVABLE_API_KEY,
+      exclusions
     );
 
     // ============================================
@@ -2318,6 +2439,17 @@ Vad föredrar du?`;
     if (realismWarnings.length > 0) {
       console.log(`⚠️ Realism warnings: ${realismWarnings.join(', ')}`);
     }
+    
+    // ============================================
+    // SPRINT 1: VALIDATE ASSUMPTIONS
+    // ============================================
+    
+    console.log('🧠 Validating assumptions...');
+    const assumptionsValidation = validateAssumptions(quote);
+    
+    if (!assumptionsValidation.valid) {
+      console.warn(assumptionsValidation.warnings.join('\n'));
+    }
 
     // ============================================
     // STEP 7: BASIC VALIDATION & MATERIAL RETRY IF NEEDED
@@ -2381,6 +2513,7 @@ Vad föredrar du?`;
         conversationFeedback,
         readiness,
         realismWarnings: realismWarnings.length > 0 ? realismWarnings : undefined,
+        assumptions: quote.assumptions || [],
         validation: validation.issues.length > 0 ? {
           warnings: validation.issues
         } : undefined,
