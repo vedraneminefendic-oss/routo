@@ -34,12 +34,19 @@ export const MessageBubble = ({ message }: MessageBubbleProps) => {
         isUser ? "items-end" : "items-start"
       )}>
         <div className={cn(
-          "rounded-2xl px-4 py-2.5 text-sm leading-relaxed",
+          "rounded-2xl px-4 py-3 text-sm leading-relaxed shadow-sm transition-all hover:shadow-md",
           isUser 
             ? "bg-primary text-primary-foreground rounded-tr-sm" 
-            : "bg-muted text-foreground rounded-tl-sm"
+            : "bg-gradient-to-br from-muted via-muted/90 to-muted/80 text-foreground rounded-tl-sm border border-border/50"
         )}>
-          {message.content}
+          <div 
+            dangerouslySetInnerHTML={{
+              __html: message.content
+                .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+                .replace(/^- (.+)$/gm, '• $1')
+                .replace(/\n/g, '<br/>')
+            }}
+          />
         </div>
         <span className="text-xs text-muted-foreground px-2">
           {message.timestamp.toLocaleTimeString('sv-SE', { 

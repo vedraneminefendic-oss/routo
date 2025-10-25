@@ -1,6 +1,6 @@
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
-import { Send, Save, Edit3 } from "lucide-react";
+import { Send, Save, Edit3, Sparkles } from "lucide-react";
 import { EstimateSection } from "@/components/estimate/EstimateSection";
 import { EstimateSummary } from "@/components/estimate/EstimateSummary";
 import { LineItemData } from "@/components/estimate/LineItem";
@@ -28,10 +28,17 @@ export const QuoteSheet = ({
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent side="right" className="w-full sm:max-w-2xl overflow-y-auto">
         <SheetHeader>
-          <SheetTitle>Din genererade offert</SheetTitle>
-          <SheetDescription>
-            Granska offerten och välj vad du vill göra härnäst
-          </SheetDescription>
+          <div className="flex items-center gap-3 mb-2">
+            <div className="w-12 h-12 rounded-full bg-gradient-to-br from-green-500 to-emerald-600 flex items-center justify-center shadow-lg animate-in zoom-in-50 duration-500">
+              <Sparkles className="h-6 w-6 text-white" />
+            </div>
+            <div>
+              <SheetTitle className="text-2xl">🎉 Din offert är klar!</SheetTitle>
+              <SheetDescription>
+                Granska och skicka till kund
+              </SheetDescription>
+            </div>
+          </div>
         </SheetHeader>
 
         <div className="mt-6 space-y-6">

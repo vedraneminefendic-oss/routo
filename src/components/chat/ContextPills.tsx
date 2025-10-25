@@ -149,39 +149,36 @@ export const ContextPills = ({ messages }: ContextPillsProps) => {
   if (!hasAnyValue) return null;
 
   return (
-    <div className="flex items-center gap-2 px-4 py-3 bg-gradient-to-r from-primary/5 to-transparent border-t">
-      <Sparkles className="h-4 w-4 text-primary shrink-0 animate-pulse" />
-      <span className="text-xs font-medium text-muted-foreground mr-2">AI förstod:</span>
+    <div className="flex flex-col gap-2 px-4 py-3 bg-gradient-to-r from-primary/5 via-blue-500/5 to-transparent border-t">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <Sparkles className="h-4 w-4 text-primary animate-pulse" />
+          <span className="text-xs font-semibold text-foreground">Projektöversikt</span>
+        </div>
+        <span className="text-xs text-muted-foreground">
+          {pills.filter(p => p.value).length} / {pills.length} detaljer
+        </span>
+      </div>
+      
       <div className="flex flex-wrap items-center gap-2">
-        {pills.map(pill => {
-          const Icon = pill.icon;
-          const hasMissingValue = !pill.value;
-
-          return (
-            <Badge
-              key={pill.key}
-              variant="outline"
-              className={cn(
-                "h-8 px-3 gap-1.5 text-xs font-medium rounded-full border",
-                hasMissingValue 
-                  ? "border-dashed border-muted-foreground/30 text-muted-foreground" 
-                  : cn(pill.bgColor, pill.borderColor, pill.color)
-              )}
-            >
-              {hasMissingValue ? (
-                <>
-                  <HelpCircle className="h-3.5 w-3.5" />
-                  <span>{pill.label} saknas</span>
-                </>
-              ) : (
-                <>
-                  <Icon className="h-3.5 w-3.5" />
-                  <span>{pill.value}</span>
-                </>
-              )}
-            </Badge>
-          );
-        })}
+        {pills
+          .filter(p => p.value) // ✅ Visa BARA funna värden
+          .map(pill => {
+            const Icon = pill.icon;
+            return (
+              <Badge
+                key={pill.key}
+                variant="outline"
+                className={cn(
+                  "h-7 px-2.5 gap-1.5 text-xs font-medium rounded-full",
+                  pill.bgColor, pill.borderColor, pill.color
+                )}
+              >
+                <Icon className="h-3.5 w-3.5" />
+                <span>{pill.value}</span>
+              </Badge>
+            );
+          })}
       </div>
     </div>
   );

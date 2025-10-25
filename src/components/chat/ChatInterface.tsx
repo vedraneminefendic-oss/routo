@@ -449,6 +449,22 @@ export const ChatInterface = ({ onQuoteGenerated, isGenerating }: ChatInterfaceP
           ref={chatContainerRef}
           className="flex flex-col h-[600px] bg-background relative"
         >
+          {/* AI Processing Banner - ÅTG 5 */}
+          {isTyping && (
+            <div className="sticky top-0 z-10 bg-gradient-to-r from-primary/10 via-blue-500/10 to-purple-500/10 border-b border-primary/20 px-4 py-2.5 backdrop-blur-sm">
+              <div className="flex items-center gap-3">
+                <div className="flex gap-1">
+                  <span className="w-1.5 h-1.5 bg-primary rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+                  <span className="w-1.5 h-1.5 bg-primary rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+                  <span className="w-1.5 h-1.5 bg-primary rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+                </div>
+                <p className="text-sm font-medium text-foreground">
+                  AI:n analyserar ditt projekt...
+                </p>
+              </div>
+            </div>
+          )}
+
           {/* Proactive Ready Banner - Sticky at top */}
           {showProactivePrompt && readiness && readiness.readiness_score >= 85 && (
             <div className="sticky top-0 z-10 bg-gradient-to-r from-green-500/10 via-primary/10 to-blue-500/10 border-b border-primary/20 px-4 py-3 backdrop-blur-sm">
@@ -488,53 +504,61 @@ export const ChatInterface = ({ onQuoteGenerated, isGenerating }: ChatInterfaceP
             </div>
           )}
 
-          {/* Minimalist Progress Bar - Only when readiness < 85% */}
+          {/* Enhanced Progress Bar - ÅTG 1 */}
           {readiness && readiness.readiness_score < 85 && !generatedQuote && messages.length > 0 && (
-            <div className="sticky top-0 z-10 bg-background border-b px-4 py-2">
-              <div className="flex items-center justify-between gap-3 mb-1">
-                <div className="flex items-center gap-2 flex-1">
-                  <p className="text-xs font-medium text-muted-foreground">
-                    Konversationsstatus
+            <div className="sticky top-0 z-10 bg-gradient-to-b from-background via-background to-transparent border-b px-4 py-3">
+              <div className="flex items-center justify-between gap-3 mb-2">
+                <div className="flex items-center gap-2">
+                  <Sparkles className="h-4 w-4 text-primary" />
+                  <p className="text-sm font-semibold text-foreground">
+                    {readiness.readiness_score < 30 && "🔍 Samlar information..."}
+                    {readiness.readiness_score >= 30 && readiness.readiness_score < 60 && "📝 Förstår projektet..."}
+                    {readiness.readiness_score >= 60 && readiness.readiness_score < 85 && "✨ Nästan klar!"}
                   </p>
-                  <Badge variant="outline" className="text-xs">
-                    {readiness.readiness_score}%
-                  </Badge>
                 </div>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setFeedbackExpanded(!feedbackExpanded)}
-                  className="h-6 px-2 text-xs"
-                >
-                  {feedbackExpanded ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
-                </Button>
+                <span className="text-sm font-bold tabular-nums">
+                  {readiness.readiness_score}%
+                </span>
               </div>
-              <Progress value={readiness.readiness_score} className="h-1.5" />
               
-              {/* Expandable Details */}
-              {feedbackExpanded && conversationFeedback && (
-                <div className="mt-3 pt-3 border-t text-xs space-y-2">
-                  {conversationFeedback.understood && conversationFeedback.understood.length > 0 && (
-                    <div>
-                      <p className="font-medium text-muted-foreground mb-1">✓ Förstått:</p>
-                      <ul className="space-y-0.5 text-muted-foreground pl-4">
-                        {conversationFeedback.understood.slice(0, 3).map((item: string, i: number) => (
-                          <li key={i}>• {item}</li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
-                  {conversationFeedback.missing && conversationFeedback.missing.length > 0 && (
-                    <div>
-                      <p className="font-medium text-muted-foreground mb-1">? Saknas:</p>
-                      <ul className="space-y-0.5 text-muted-foreground pl-4">
-                        {conversationFeedback.missing.slice(0, 2).map((item: string, i: number) => (
-                          <li key={i}>• {item}</li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
+              {/* Gradient Progress med milestones */}
+              <div className="relative">
+                <div className="h-3 w-full overflow-hidden rounded-full bg-secondary">
+                  <div 
+                    className="h-full transition-all duration-500 ease-out"
+                    style={{
+                      width: `${readiness.readiness_score}%`,
+                      background: readiness.readiness_score < 30 
+                        ? 'linear-gradient(to right, #ef4444, #f59e0b)'
+                        : readiness.readiness_score < 60
+                        ? 'linear-gradient(to right, #f59e0b, #eab308)'
+                        : 'linear-gradient(to right, #eab308, #22c55e)'
+                    }}
+                  />
                 </div>
+                
+                {/* Milestones */}
+                {[25, 50, 75, 85].map((milestone) => (
+                  <div 
+                    key={milestone}
+                    className="absolute top-1/2 -translate-y-1/2 w-6 h-6 rounded-full border-2 border-background flex items-center justify-center text-[10px] font-bold transition-all duration-300"
+                    style={{ 
+                      left: `${milestone}%`,
+                      transform: 'translate(-50%, -50%)',
+                      backgroundColor: readiness.readiness_score >= milestone ? '#22c55e' : 'hsl(var(--secondary))',
+                      color: readiness.readiness_score >= milestone ? '#fff' : 'hsl(var(--muted-foreground))'
+                    }}
+                  >
+                    {readiness.readiness_score >= milestone ? '✓' : milestone === 85 ? '🎯' : ''}
+                  </div>
+                ))}
+              </div>
+              
+              {/* Nästa steg-indikator */}
+              {conversationFeedback?.missing?.[0] && (
+                <p className="text-xs text-muted-foreground mt-2">
+                  Nästa: {conversationFeedback.missing[0]}
+                </p>
               )}
             </div>
           )}
@@ -599,10 +623,16 @@ export const ChatInterface = ({ onQuoteGenerated, isGenerating }: ChatInterfaceP
               )}
 
               {isTyping && (
-                <div className="flex justify-start">
-                  <div className="bg-muted rounded-lg px-4 py-3 flex items-center gap-2">
+                <div className="flex gap-3">
+                  <div className="flex-shrink-0 w-8 h-8 rounded-full bg-accent text-accent-foreground flex items-center justify-center">
                     <Loader2 className="h-4 w-4 animate-spin" />
-                    <span className="text-sm text-muted-foreground">AI:n tänker...</span>
+                  </div>
+                  <div className="bg-gradient-to-br from-muted to-muted/80 rounded-2xl rounded-tl-sm px-4 py-3 shadow-sm border border-border/50">
+                    <div className="flex gap-1">
+                      <span className="w-2 h-2 bg-primary/60 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+                      <span className="w-2 h-2 bg-primary/60 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+                      <span className="w-2 h-2 bg-primary/60 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+                    </div>
                   </div>
                 </div>
               )}
