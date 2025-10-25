@@ -242,18 +242,19 @@ function determineQuoteReadiness(
   // Använd också feedback confidence
   const adjustedScore = Math.round((score + conversationFeedback.confidence) / 2);
   
-  // Kan generera om score >= 60% OCH inga critical saknas
-  const canGenerate = adjustedScore >= 60 && critical.length === 0;
+  // ÅTGÄRD #3: Justerade thresholds
+  // >= 85%: Kan generera direkt (hög kvalitet)
+  // 70-84%: Proactive signal (fråga användaren)
+  // < 70%: Ställ frågor
+  const canGenerate = adjustedScore >= 85 && critical.length === 0;
   
   let reasoning = '';
-  if (canGenerate) {
-    if (adjustedScore >= 85) {
-      reasoning = 'Mycket bra underlag, kan generera exakt offert';
-    } else if (adjustedScore >= 70) {
-      reasoning = 'Tillräckligt underlag, kan generera med några rimliga antaganden';
-    } else {
-      reasoning = 'Grundläggande info finns, kan generera med flera antaganden';
-    }
+  if (adjustedScore >= 85 && critical.length === 0) {
+    reasoning = 'Mycket bra underlag, kan generera exakt offert direkt';
+  } else if (adjustedScore >= 70) {
+    reasoning = 'Tillräckligt underlag för offert, kan förbättras med mer detaljer';
+  } else if (adjustedScore >= 50) {
+    reasoning = 'Grundläggande info finns, men behöver mer för exakthet';
   } else {
     reasoning = 'Behöver mer info för att generera korrekt offert';
   }
@@ -1718,7 +1719,7 @@ Deno.serve(async (req) => {
     // STEP 5: CHECK IF CLARIFICATION NEEDED
     // ============================================
 
-    // Endast fråga om critical info saknas ELLER om readiness är låg (<60%)
+    // ÅTGÄRD #3: Endast fråga om readiness < 85% OCH critical info saknas
     if (!readiness.can_generate && conversation_history.length <= 4) {
       console.log('🤔 Checking if clarification needed...');
       
@@ -1747,9 +1748,9 @@ Deno.serve(async (req) => {
       }
     }
 
-    // PROBLEM #6: PROACTIVE SIGNALING
-    // Om readiness är 75-85%, fråga användaren om de vill generera nu eller lägga till mer
-    if (readiness.readiness_score >= 75 && readiness.readiness_score < 95 && conversation_history.length > 0) {
+    // ÅTGÄRD #3: PROACTIVE SIGNALING
+    // Om readiness är 70-84%, fråga användaren om de vill generera nu eller lägga till mer
+    if (readiness.readiness_score >= 70 && readiness.readiness_score < 85 && conversation_history.length > 0) {
       console.log('💡 Proactive readiness signal triggered');
       
       const understoodList = Object.entries(conversationFeedback.understood)
