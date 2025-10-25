@@ -145,6 +145,55 @@ ${uniqueScope.length > 0 ? uniqueScope.map(s => `- ${s}`).join('\n') : '❌ Inge
 // VALIDATE QUOTE AGAINST CONVERSATION (FÖRBÄTTRING #2)
 // ============================================
 
+// Helper: Hitta relevant timtaxa baserat på arbetstyp
+function findRelevantHourlyRate(itemName: string, userRates: any[], existingWorkItems: any[]): number {
+  const name = itemName.toLowerCase();
+  
+  // Map keywords to work types
+  const workTypeMap: Record<string, string> = {
+    'arborist': 'Arborist',
+    'fäll': 'Arborist',
+    'träd': 'Arborist',
+    'elektriker': 'Elektriker',
+    'el-': 'Elektriker',
+    'vvs': 'VVS',
+    'rör': 'VVS',
+    'snickare': 'Snickare',
+    'målare': 'Målare',
+    'måla': 'Målare',
+    'murare': 'Murare',
+    'mura': 'Murare',
+    'städ': 'Städare',
+    'trädgård': 'Trädgårdsskötare',
+    'fönster': 'Fönsterputsare',
+    'tak': 'Takläggare'
+  };
+  
+  // Försök matcha keyword
+  for (const [keyword, workType] of Object.entries(workTypeMap)) {
+    if (name.includes(keyword)) {
+      const userRate = userRates.find((r: any) => r.work_type === workType);
+      if (userRate) {
+        console.log(`✅ Found rate for ${workType}: ${userRate.rate} kr/h`);
+        return userRate.rate;
+      }
+    }
+  }
+  
+  // Fallback 1: Beräkna medel från befintliga workItems
+  if (existingWorkItems.length > 0) {
+    const avgRate = Math.round(
+      existingWorkItems.reduce((sum: number, item: any) => sum + item.hourlyRate, 0) / existingWorkItems.length
+    );
+    console.log(`✅ Using average rate from existing workItems: ${avgRate} kr/h`);
+    return avgRate;
+  }
+  
+  // Fallback 2: Standard hantverkare
+  console.log(`⚠️ No specific rate found, using default: 700 kr/h`);
+  return 700;
+}
+
 function validateQuoteAgainstConversation(
   quote: any,
   conversationHistory: ConversationMessage[],
@@ -163,6 +212,26 @@ function validateQuoteAgainstConversation(
   const validWorkItems: any[] = [];
   
   for (const item of originalWorkItems) {
+    // Validera att workItems ALDRIG har hours: 0 OCH subtotal > 0
+    if (item.hours === 0 && item.subtotal > 0) {
+      console.log(`⚠️ Invalid workItem structure: "${item.name}" har hours:0 men subtotal:${item.subtotal}`);
+      console.log(`   → Flyttar till materials som engångspost`);
+      
+      // Flytta till materials
+      quote.materials = quote.materials || [];
+      quote.materials.push({
+        name: item.name,
+        description: item.description + ' (engångspost)',
+        quantity: 1,
+        unit: 'st',
+        pricePerUnit: item.subtotal,
+        subtotal: item.subtotal
+      });
+      
+      unmentioned.push(`${item.name} (felaktig struktur - flyttad till materials)`);
+      continue;
+    }
+    
     // Om item kostar >5000 kr → kräver omnämnande
     if (item.subtotal > 5000) {
       // Extrahera nyckelord från item name (minst 4 tecken)
@@ -184,6 +253,39 @@ function validateQuoteAgainstConversation(
       // Små poster (<5000 kr) behåller vi (standardposter)
       validWorkItems.push(item);
     }
+  }
+  
+  // Validera att materials INTE innehåller "tjänst" eller "arbete"
+  const materialsToMove: any[] = [];
+  for (const mat of quote.materials || []) {
+    const name = mat.name?.toLowerCase() || '';
+    if (name.includes('tjänst') || name.includes('arbete') || name.includes('arborist') || name.includes('installation')) {
+      console.log(`⚠️ Material contains work: "${mat.name}" → Should be in workItems!`);
+      
+      // Hitta relevant timtaxa
+      const hourlyRate = findRelevantHourlyRate(mat.name, [], validWorkItems);
+      const estimatedHours = Math.max(1, Math.round(mat.subtotal / hourlyRate));
+      
+      console.log(`   → Flyttar till workItems med ${estimatedHours}h × ${hourlyRate} kr/h`);
+      
+      validWorkItems.push({
+        name: mat.name.replace(/tjänst|arbete/gi, '').trim(),
+        description: mat.description || '',
+        hours: estimatedHours,
+        hourlyRate: hourlyRate,
+        subtotal: estimatedHours * hourlyRate
+      });
+      
+      materialsToMove.push(mat);
+      unmentioned.push(`${mat.name} (flyttad från materials till workItems)`);
+    }
+  }
+  
+  // Ta bort flyttade materials
+  if (materialsToMove.length > 0) {
+    quote.materials = quote.materials?.filter((mat: any) => 
+      !materialsToMove.some(m => m.name === mat.name)
+    );
   }
   
   // Uppdatera quote om något togs bort
@@ -917,6 +1019,51 @@ När du överväger att inkludera ett arbetsmoment eller material i offerten, F�
 - Standardpost (<2000 kr) + relevant = INKLUDERA
 - Nämnt i konversation = INKLUDERA
 
+**🔧 STRUKTUR-REGLER (KRITISKT):**
+
+**workItems = ARBETE MED TIMMAR:**
+- Allt som UTFÖRS av hantverkaren
+- MÅSTE ha: hours (antal timmar), hourlyRate (kr/h), subtotal (hours × hourlyRate)
+- Exempel: "Fällning av träd", "Kakelläggning", "Målning av väggar"
+- ❌ ALDRIG: hours: 0 eller hourlyRate: 0
+
+**materials = KÖPT MATERIAL:**
+- Allt som KÖPS för projektet (kakel, färg, blandare, cement)
+- MÅSTE ha: quantity (antal), unit (kvm/st/liter), pricePerUnit (kr/enhet), subtotal (quantity × pricePerUnit)
+- ❌ ALDRIG: "Arboristtjänst", "VVS-arbete", "Elektriker-tjänst" → det är ARBETE, inte material!
+
+**equipment = MASKINER/UTRUSTNING:**
+- Maskiner som hyrs eller ägs
+- Exempel: "Grävmaskin", "Motorsåg", "Bygghiss"
+- MÅSTE ha: quantity (dagar eller timmar), pricePerUnit, subtotal
+
+**STANDARDPOSTER - HANTERING:**
+Små fasta kostnader (<2000 kr) som inte är direkta timmar:
+
+**OM STANDARDPOST ÄR DIREKT ARBETE:**
+→ Lägg i workItems med UPPSKATTADE timmar
+Exempel: "Slutstädning" → 2h × 650 kr/h = 1300 kr
+
+**OM STANDARDPOST ÄR ENGÅNGSKOSTNAD (inte direkt timmar):**
+→ Lägg i materials som "Engångspost"
+Exempel: 
+{
+  "name": "Bortforsling av byggavfall",
+  "description": "Bortforsling av ris och stammar (fast pris)",
+  "quantity": 1,
+  "unit": "st",
+  "pricePerUnit": 1500,
+  "subtotal": 1500
+}
+
+**❌ ALDRIG GÖR SÅ HÄR:**
+{
+  "name": "Bortforsling",
+  "hours": 0,        ← FEL! Antingen timmar ELLER engångspost
+  "hourlyRate": 0,   ← FEL!
+  "subtotal": 1500
+}
+
 **KRITISKT - MATERIAL-SPECIFIKATION:**
 VARJE material MÅSTE specificeras enligt: **Märke + Modell + Storlek/Färg + Mängd + Enhet**
 
@@ -939,6 +1086,78 @@ VARJE material MÅSTE specificeras enligt: **Märke + Modell + Storlek/Färg + M
 5. Var realistisk med tider och endast inkludera vad som diskuterats
 6. Inkludera standardposter från listan ovan om relevanta
 7. Inkludera INTE stora arbetsmoment som inte diskuterats (se lista ovan)
+
+**EXEMPEL PÅ KORREKT STRUKTUR:**
+
+**Scenario: Fälla 3 stora granar (15m höga)**
+
+✅ **RÄTT:**
+{
+  "workItems": [
+    {
+      "name": "Fällning av granar",
+      "description": "Fällning av 3 stora granar (15m höga, 5m diameter)",
+      "hours": 12,
+      "hourlyRate": 800,
+      "subtotal": 9600
+    },
+    {
+      "name": "Slutstädning",
+      "description": "Städning av arbetsområdet",
+      "hours": 2,
+      "hourlyRate": 650,
+      "subtotal": 1300
+    }
+  ],
+  "materials": [
+    {
+      "name": "Bortforsling av byggavfall",
+      "description": "Bortforsling av ris och stammar (fast pris)",
+      "quantity": 1,
+      "unit": "st",
+      "pricePerUnit": 1500,
+      "subtotal": 1500
+    },
+    {
+      "name": "Motorsågsolja och kedja",
+      "description": "Förbrukningsmaterial för motorsåg",
+      "quantity": 1,
+      "unit": "set",
+      "pricePerUnit": 400,
+      "subtotal": 400
+    }
+  ],
+  "equipment": [
+    {
+      "name": "Motorsåg",
+      "description": "Hyrd motorsåg för fällning",
+      "quantity": 2,
+      "unit": "dagar",
+      "pricePerUnit": 600,
+      "subtotal": 1200
+    }
+  ]
+}
+
+❌ **FEL:**
+{
+  "workItems": [
+    {
+      "name": "Bortforsling",
+      "hours": 0,          ← FEL! Antingen timmar eller flytta till materials
+      "hourlyRate": 0,     ← FEL!
+      "subtotal": 1500
+    }
+  ],
+  "materials": [
+    {
+      "name": "Arboristtjänst",  ← FEL! Tjänst = arbete, ska vara i workItems
+      "quantity": 1,
+      "pricePerUnit": 15000,
+      "subtotal": 15000
+    }
+  ]
+}
 
 **RETURNERA JSON:**
 {
