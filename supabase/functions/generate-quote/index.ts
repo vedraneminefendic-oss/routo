@@ -988,11 +988,12 @@ function basicValidation(quote: any): { valid: boolean; issues: string[] } {
 }
 
 // ============================================
-// ÅTGÄRD 1A: EXTRACT ANSWERED QUESTIONS
+// ÅTGÄRD 1A: EXTRACT ANSWERED QUESTIONS (FÖRBÄTTRAD)
 // ============================================
 
-function extractAnsweredQuestions(conversation: Array<{role: string, content: string}>): string[] {
+function extractAnsweredQuestions(conversation: Array<{role: string, content: string}>): {topics: string[], exactQuestions: string[]} {
   const answeredTopics: string[] = [];
+  const exactQuestions: string[] = [];
   
   for (let i = 0; i < conversation.length - 1; i++) {
     const currentMsg = conversation[i];
@@ -1000,7 +1001,15 @@ function extractAnsweredQuestions(conversation: Array<{role: string, content: st
     
     // Om AI frågade något och användaren svarade
     if (currentMsg.role === 'assistant' && nextMsg.role === 'user') {
-      // Extrahera ämnet från frågan och svaret
+      // Extrahera EXAKTA frågor som AI:n ställde (alla frågetecken)
+      const questionMatches = currentMsg.content.match(/[^.!?]*\?/g);
+      if (questionMatches) {
+        questionMatches.forEach(q => {
+          exactQuestions.push(q.trim());
+        });
+      }
+      
+      // Extrahera ämnen (behålls för bakåtkompatibilitet)
       const topics = [
         'framkomst', 'specialutrustning', 'maskiner', 'tillgänglighet',
         'stubb', 'fräs', 'bortforsling', 'transport', 'forsling',
@@ -1022,7 +1031,10 @@ function extractAnsweredQuestions(conversation: Array<{role: string, content: st
     }
   }
   
-  return [...new Set(answeredTopics)]; // Ta bort dubbletter
+  return {
+    topics: [...new Set(answeredTopics)],
+    exactQuestions: [...new Set(exactQuestions)]
+  };
 }
 
 // ============================================
@@ -1036,8 +1048,8 @@ async function askClarificationQuestions(
   apiKey: string
 ): Promise<string[]> {
   
-  // ÅTGÄRD 1B: Extrahera redan besvarade frågor
-  const answeredQuestions = extractAnsweredQuestions(conversationHistory);
+  // ÅTGÄRD 1B: Extrahera redan besvarade frågor (förbättrad)
+  const answeredData = extractAnsweredQuestions(conversationHistory);
   
   const historyText = conversationHistory
     .map(m => `${m.role === 'user' ? 'Användare' : 'AI'}: ${m.content}`)
@@ -1062,10 +1074,15 @@ ${historyText || 'Ingen tidigare konversation'}
 
 ${similarQuotesText}
 
-**🚨 KRITISKT: Följande frågor har REDAN besvarats i konversationen:**
-${answeredQuestions.length > 0 
-  ? answeredQuestions.map(q => `- ${q} (FRÅGA INTE OM DETTA IGEN!)`).join('\n')
-  : '(Inga frågor besvarade än)'}
+**🚨 KRITISKT - DESSA EXAKTA FRÅGOR HAR REDAN STÄLLTS:**
+${answeredData.exactQuestions.length > 0 
+  ? answeredData.exactQuestions.map(q => `"${q}" <-- STÄLL ALDRIG DENNA FRÅGA IGEN!`).join('\n')
+  : '(Inga frågor ställda än)'}
+
+**Ämnen som redan diskuterats:**
+${answeredData.topics.length > 0 
+  ? answeredData.topics.map(t => `- ${t} (FRÅGA INTE OM DETTA!)`).join('\n')
+  : '(Inga ämnen besvarade än)'}
 
 **EXEMPEL PÅ BRA OCH DÅLIGT BETEENDE:**
 
@@ -1333,6 +1350,42 @@ ${similarQuotesText}
 
 ${industryDataText}
 
+**🚨 KRITISKT - TOLKNING AV VEM SOM TAR HAND OM VAD (ÅTGÄRD #2):**
+
+När hantverkaren säger följande, betyder det att posten ska **EXKLUDERAS** från offerten:
+
+❌ **EXKLUDERA DESSA:**
+- "Jag tar hand om bortforsling" → Hantverkaren gör det själv utanför offerten = EXKLUDERA
+- "Kunden tar hand om materialet" → Kunden köper själv = EXKLUDERA
+- "Vi har redan stubbfräsen" → Hantverkaren har redan = EXKLUDERA
+- "Det är redan gjort" → Redan utfört = EXKLUDERA
+- "Behövs inte" / "Nej tack" → EXKLUDERA
+
+✅ **INKLUDERA DESSA:**
+- "Bortforsling ingår" → Ska inkluderas i offerten
+- "Vi sköter rivningen" → Hantverkaren utför = INKLUDERA i offerten
+- "Ja, det behövs" → INKLUDERA
+- "Stubbfräsning ska göras" → INKLUDERA
+
+**EXEMPEL PÅ KORREKT TOLKNING:**
+
+Konversation:
+AI: "Tar du hand om bortforsling eller ska det ingå?"
+Användare: "Jag tar hand om bortforsling"
+
+✅ RÄTT offert: INGEN bortforsling i offerten (användaren gör det själv)
+❌ FEL offert: Inkluderar "Bortforsling - 1500 kr"
+
+Konversation:
+AI: "Ingår bortforsling?"
+Användare: "Ja, bortforsling ingår"
+
+✅ RÄTT offert: "Bortforsling av byggavfall - 1500 kr"
+❌ FEL offert: Ingen bortforsling
+
+**ANVÄND DENNA REGEL:**
+Om ordet "jag", "vi", "kunden", "redan" förekommer + arbetsmoment → EXKLUDERA det momentet
+
 **🚨 BESLUTSPROCESS (FÖLJ STRIKT I ORDNING) - FÖRBÄTTRING #3:**
 
 När du överväger att inkludera ett arbetsmoment eller material i offerten, FÖLJ DENNA TRAPPA:
@@ -1553,12 +1606,22 @@ VARJE material MÅSTE specificeras enligt: **Märke + Modell + Storlek/Färg + M
   ]
 }
 
+**🔤 SPRÅK-KRAV (KRITISKT - ÅTGÄRD #3):**
+
+ALLA texter i offerten MÅSTE vara på SVENSKA:
+- ✅ workItems[].name: "Fällning av träd" (INTE "Tree removal")
+- ✅ materials[].name: "Motorsågsolja" (INTE "Chainsaw oil")
+- ✅ equipment[].name: "Grävmaskin" (INTE "Excavator")
+- ✅ description: Svenska beskrivningar
+
+❌ ALDRIG använda engelska termer i offerten!
+
 **RETURNERA JSON:**
 {
   "workItems": [
     {
-      "name": "Arbetsbeskrivning",
-      "description": "Detaljerad beskrivning",
+      "name": "Arbetsbeskrivning (PÅ SVENSKA)",
+      "description": "Detaljerad beskrivning (PÅ SVENSKA)",
       "hours": 8,
       "hourlyRate": 850,
       "subtotal": 6800
@@ -1566,8 +1629,8 @@ VARJE material MÅSTE specificeras enligt: **Märke + Modell + Storlek/Färg + M
   ],
   "materials": [
     {
-      "name": "Märke + Modell + Storlek/Färg",
-      "description": "Kort beskrivning",
+      "name": "Märke + Modell + Storlek/Färg (PÅ SVENSKA)",
+      "description": "Kort beskrivning (PÅ SVENSKA)",
       "quantity": 16,
       "unit": "kvm",
       "pricePerUnit": 800,
@@ -1576,8 +1639,8 @@ VARJE material MÅSTE specificeras enligt: **Märke + Modell + Storlek/Färg + M
   ],
   "equipment": [
     {
-      "name": "Maskinnamn",
-      "description": "Beskrivning",
+      "name": "Maskinnamn (PÅ SVENSKA)",
+      "description": "Beskrivning (PÅ SVENSKA)",
       "quantity": 3,
       "unit": "dagar",
       "pricePerUnit": 450,
@@ -1585,15 +1648,21 @@ VARJE material MÅSTE specificeras enligt: **Märke + Modell + Storlek/Färg + M
     }
   ],
   "summary": {
-    "workCost": 6800,
-    "materialCost": 12800,
-    "equipmentCost": 1350,
-    "totalBeforeVAT": 20950,
-    "vat": 5237.5,
-    "totalWithVAT": 26187.5,
-    "customerPays": 26187.5
+    "workCost": 6800,           // ✅ Number, inte string
+    "materialCost": 12800,       // ✅ Number
+    "equipmentCost": 1350,       // ✅ Number
+    "totalBeforeVAT": 20950,     // ✅ Number
+    "vatAmount": 5237.5,         // ✅ VIKTIGT: Heter "vatAmount" (INTE "vat")
+    "totalWithVAT": 26187.5,     // ✅ Number
+    "customerPays": 26187.5      // ✅ Number
   }
-}`;
+}
+
+**🚨 KRITISKT - summary-fältet:**
+- ALLA värden MÅSTE vara Number (inte string, inte object)
+- "vatAmount" (INTE "vat")
+- Inga tomma fält eller null-värden
+- Inga "[object Object]"-strängar`;
 
   try {
     console.log('🤖 Generating quote with AI...');
@@ -1641,6 +1710,48 @@ VARJE material MÅSTE specificeras enligt: **Märke + Modell + Storlek/Färg + M
     if (!quote.workItems && !quote.materials && !quote.equipment) {
       console.error('❌ AI returned quote with no items!');
       throw new Error('Quote has no workItems, materials, or equipment');
+    }
+    
+    // ÅTGÄRD #3: Validera summary-struktur och svenska språket
+    if (quote.summary) {
+      const requiredFields = ['workCost', 'materialCost', 'equipmentCost', 'totalBeforeVAT', 'vatAmount', 'totalWithVAT', 'customerPays'];
+      const missingFields = requiredFields.filter(field => typeof quote.summary[field] !== 'number');
+      
+      if (missingFields.length > 0) {
+        console.error('❌ Quote summary validation failed - missing fields:', missingFields);
+      }
+      
+      // Kontrollera att inga "[object Object]" finns
+      const summaryStr = JSON.stringify(quote.summary);
+      if (summaryStr.includes('[object Object]') || summaryStr.includes('object Object')) {
+        console.error('❌ Summary contains [object Object] strings!');
+      }
+    }
+    
+    // ÅTGÄRD #3: Validera svenska språket
+    const englishPattern = /\b(tree|removal|excavator|chainsaw|oil|demolition|painting|renovation|stump|grinding)\b/i;
+    const englishWarnings: string[] = [];
+    
+    quote.workItems?.forEach((item: any) => {
+      if (englishPattern.test(item.name) || englishPattern.test(item.description || '')) {
+        englishWarnings.push(`⚠️ Engelska termer i workItem: "${item.name}"`);
+      }
+    });
+    
+    quote.materials?.forEach((item: any) => {
+      if (englishPattern.test(item.name) || englishPattern.test(item.description || '')) {
+        englishWarnings.push(`⚠️ Engelska termer i material: "${item.name}"`);
+      }
+    });
+    
+    quote.equipment?.forEach((item: any) => {
+      if (englishPattern.test(item.name) || englishPattern.test(item.description || '')) {
+        englishWarnings.push(`⚠️ Engelska termer i equipment: "${item.name}"`);
+      }
+    });
+    
+    if (englishWarnings.length > 0) {
+      console.warn('⚠️ Svenska-validering misslyckades:', englishWarnings);
     }
     
     console.log('✅ Quote generated successfully');
