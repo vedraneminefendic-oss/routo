@@ -420,10 +420,34 @@ export const ChatInterface = ({ onQuoteGenerated, isGenerating }: ChatInterfaceP
               message: { role: 'assistant', content: aiMessage.content }
             }
           });
+        } else if (data.type === 'edit_prompt') {
+          // Handle edit prompt (legacy support)
+          const aiMessage: Message = {
+            id: (Date.now() + 1).toString(),
+            role: 'assistant',
+            content: data.message || 'Vad vill du ändra?',
+            timestamp: new Date(),
+            quickReplies: data.quickReplies
+          };
+          setMessages(prev => [...prev, aiMessage]);
+          
+          setConversationFeedback(data.conversationFeedback);
+          setReadiness(data.readiness);
+          
+          await supabase.functions.invoke('manage-conversation', {
+            body: {
+              action: 'save_message',
+              sessionId,
+              message: { role: 'assistant', content: aiMessage.content }
+            }
+          });
+        } else if (data.type === 'error') {
+          // Handle error response
+          throw new Error(data.message || 'Ett fel uppstod på servern');
         } else {
           // Okänd response-typ eller fel struktur
           console.error('Unexpected response format:', data);
-          throw new Error('Oväntat response-format från server');
+          throw new Error(data.message || 'Oväntat response-format från servern');
         }
       } catch (invokeError: any) {
         clearTimeout(timeoutId);

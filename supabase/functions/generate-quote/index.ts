@@ -21,6 +21,28 @@ const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY')!;
 
 const TEXT_MODEL = 'google/gemini-2.5-flash';
 
+// Brand dictionary and synonyms for better language understanding
+const KEYWORD_SYNONYMS: Record<string, string[]> = {
+  'renovera': ['rusta upp', 'totalrenovera', 'bygga om'],
+  'måla': ['måla om', 'målning', 'färga', 'lacka'],
+  'färg': ['målarfärg', 'väggfärg', 'takfärg'],
+  'kakel': ['klinker', 'plattor', 'keramik'],
+  'badrum': ['våtrum', 'dusch', 'toalett'],
+  'kök': ['köksutrymme', 'kokyta'],
+};
+
+const BRAND_DICTIONARY: Record<string, { quality: string; category: string }> = {
+  'rusta': { quality: 'budget', category: 'färg' },
+  'biltema': { quality: 'budget', category: 'diverse' },
+  'jula': { quality: 'budget', category: 'diverse' },
+  'alcro': { quality: 'premium', category: 'färg' },
+  'beckers': { quality: 'premium', category: 'färg' },
+  'flügger': { quality: 'premium', category: 'färg' },
+  'bauhaus': { quality: 'standard', category: 'diverse' },
+  'jem & fix': { quality: 'standard', category: 'diverse' },
+  'hornbach': { quality: 'standard', category: 'diverse' },
+};
+
 // ============================================
 // TYPES & VALIDATION
 // ============================================
@@ -55,6 +77,30 @@ interface LearningContext {
 // HELPER FUNCTIONS
 // ============================================
 
+// Helper: Normalize text with synonyms and brand recognition
+function normalizeText(text: string): { normalized: string; brandHints: Array<{ brand: string; quality: string; category: string }> } {
+  let normalized = text.toLowerCase();
+  const brandHints: Array<{ brand: string; quality: string; category: string }> = [];
+  
+  // Detect brands and extract hints
+  for (const [brand, info] of Object.entries(BRAND_DICTIONARY)) {
+    const regex = new RegExp(`\\b${brand}\\b`, 'gi');
+    if (regex.test(normalized)) {
+      brandHints.push({ brand, ...info });
+    }
+  }
+  
+  // Replace synonyms with canonical terms
+  for (const [canonical, synonyms] of Object.entries(KEYWORD_SYNONYMS)) {
+    for (const synonym of synonyms) {
+      const regex = new RegExp(`\\b${synonym}\\b`, 'gi');
+      normalized = normalized.replace(regex, canonical);
+    }
+  }
+  
+  return { normalized, brandHints };
+}
+
 // ÅTGÄRD 1: Bygg komplett beskrivning från första meddelandet + konversation
 function buildCompleteDescription(history: ConversationMessage[], currentDescription: string): string {
   if (!history || history.length === 0) return currentDescription;
@@ -80,7 +126,7 @@ function buildCompleteDescription(history: ConversationMessage[], currentDescrip
   return `${baseDescription}\n\n**Ytterligare detaljer:**\n${userMessages.join('\n')}`.trim();
 }
 
-// ÅTGÄRD 2: Detektera tvetydiga fraser som "bara", "endast", "inte"
+// ÅTGÄRD 2: Detektera tvetydiga fraser som "bara", "endast", "inte", och "rusta"
 function detectAmbiguousPhrase(message: string): {
   isAmbiguous: boolean;
   clarificationNeeded: string;
@@ -103,7 +149,15 @@ function detectAmbiguousPhrase(message: string): {
     };
   }
   
-  // Pattern 3: "inte X" eller "nej X" - kan vara förnekelse eller korrigering
+  // Pattern 3: "rusta" utan kontext - kan betyda varumärket eller renovera
+  if (lowerMessage.match(/\brusta\b(?!\s+(färg|målarfärg|väggfärg|upp))/i)) {
+    return {
+      isAmbiguous: true,
+      clarificationNeeded: `Syftar du på varumärket Rusta (t.ex. färg från Rusta) eller att rusta upp/renovera?`
+    };
+  }
+  
+  // Pattern 4: "inte X" eller "nej X" - kan vara förnekelse eller korrigering
   if (lowerMessage.match(/^(inte|nej|ta bort)/i) && lowerMessage.length < 50) {
     return {
       isAmbiguous: true,
@@ -1079,6 +1133,123 @@ async function fetchLearningContext(
   }
   
   return context;
+}
+
+// ============================================
+// DETERMINISTIC PRICING
+// ============================================
+
+// Helper: Map work item to hourly rate
+function mapWorkItemToRate(
+  itemName: string,
+  itemDescription: string,
+  hourlyRates: Array<{ work_type: string; rate: number }>
+): number {
+  const text = `${itemName} ${itemDescription}`.toLowerCase();
+  
+  // Category matching with priority
+  const categories: Array<{ keywords: string[]; workType: string }> = [
+    { keywords: ['vvs', 'rör', 'avlopp', 'kranar', 'toalett', 'dusch'], workType: 'VVS' },
+    { keywords: ['el', 'elektr', 'belysning', 'uttag', 'kabel'], workType: 'Elektriker' },
+    { keywords: ['kakel', 'klinker', 'plattor', 'platta'], workType: 'Plattsättare' },
+    { keywords: ['tak', 'taktäckning', 'takpannor'], workType: 'Takläggare' },
+    { keywords: ['träd', 'fäll', 'arborist', 'beskärning'], workType: 'Arborist' },
+    { keywords: ['fönster', 'fönsterputsning', 'putsa'], workType: 'Fönsterputsare' },
+    { keywords: ['måla', 'målning', 'färg', 'spackel'], workType: 'Snickare' },
+    { keywords: ['snickeri', 'byggnad', 'montera', 'dörr'], workType: 'Snickare' },
+  ];
+  
+  for (const { keywords, workType } of categories) {
+    if (keywords.some(kw => text.includes(kw))) {
+      const rate = hourlyRates.find(r => r.work_type === workType);
+      if (rate) return rate.rate;
+    }
+  }
+  
+  // Fallback to generic rate (use Snickare as default)
+  const fallback = hourlyRates.find(r => r.work_type === 'Snickare');
+  return fallback?.rate || 700;
+}
+
+// Helper: Compute deterministic quote totals
+function computeQuoteTotals(
+  quote: any,
+  hourlyRates: Array<{ work_type: string; rate: number }>,
+  equipmentRates: Array<{ name: string; price_per_day: number | null; price_per_hour: number | null }>
+): any {
+  let workCost = 0;
+  let materialCost = 0;
+  let equipmentCost = 0;
+  
+  // Calculate work items with mapped rates
+  const updatedWorkItems = (quote.workItems || []).map((item: any) => {
+    const mappedRate = mapWorkItemToRate(item.name, item.description || '', hourlyRates);
+    const hours = parseFloat(item.hours) || 0;
+    const subtotal = Math.round(hours * mappedRate);
+    workCost += subtotal;
+    
+    return {
+      ...item,
+      hourlyRate: mappedRate,
+      subtotal
+    };
+  });
+  
+  // Calculate materials
+  const updatedMaterials = (quote.materials || []).map((mat: any) => {
+    const quantity = parseFloat(mat.quantity) || 0;
+    const pricePerUnit = parseFloat(mat.pricePerUnit) || 0;
+    const subtotal = Math.round(quantity * pricePerUnit);
+    materialCost += subtotal;
+    
+    return {
+      ...mat,
+      subtotal
+    };
+  });
+  
+  // Calculate equipment
+  const updatedEquipment = (quote.equipment || []).map((eq: any) => {
+    const equipRate = equipmentRates.find(er => er.name === eq.name);
+    const quantity = parseFloat(eq.quantity) || 0;
+    const days = parseFloat(eq.days) || 0;
+    
+    let pricePerDay = 0;
+    if (equipRate) {
+      pricePerDay = equipRate.price_per_day || (equipRate.price_per_hour ? equipRate.price_per_hour * 8 : 0);
+    } else {
+      pricePerDay = parseFloat(eq.pricePerDay) || 0;
+    }
+    
+    const subtotal = Math.round(quantity * days * pricePerDay);
+    equipmentCost += subtotal;
+    
+    return {
+      ...eq,
+      pricePerDay,
+      subtotal
+    };
+  });
+  
+  const totalBeforeVAT = workCost + materialCost + equipmentCost;
+  const vatAmount = Math.round(totalBeforeVAT * 0.25);
+  const totalWithVAT = totalBeforeVAT + vatAmount;
+  
+  return {
+    ...quote,
+    workItems: updatedWorkItems,
+    materials: updatedMaterials,
+    equipment: updatedEquipment,
+    summary: {
+      workCost,
+      materialCost,
+      equipmentCost,
+      totalBeforeVAT,
+      vatAmount,
+      totalWithVAT,
+      customerPays: totalWithVAT // Will be adjusted for ROT/RUT later
+    }
+  };
 }
 
 // ============================================
@@ -2487,23 +2658,19 @@ Deno.serve(async (req) => {
       } else if (intent === 'edit') {
         console.log('✏️ User wants to edit via button');
         
-        const editMessage = `✏️ **Vad vill du ändra?**
-
-Välj vad du vill justera:`;
-
         return new Response(
           JSON.stringify({
-            type: 'edit_prompt',
-            message: editMessage,
+            type: 'clarification',
+            questions: ['Vad vill du ändra i offerten?'],
             conversationFeedback,
             readiness,
             quickReplies: [
-              { label: '📏 Mått och storlek', action: 'edit_measurements' },
-              { label: '🔨 Omfattning', action: 'edit_scope' },
-              { label: '🎨 Materialkvalitet', action: 'edit_materials' },
-              { label: '✅ Vad som ingår', action: 'edit_inclusions' },
-              { label: '❌ Vad som inte ingår', action: 'edit_exclusions' },
-              { label: '💰 Budget', action: 'edit_budget' }
+              { label: '📏 Mått', action: 'edit_measurements' },
+              { label: '🔧 Omfattning', action: 'edit_scope' },
+              { label: '🏗️ Material', action: 'edit_materials' },
+              { label: '✅ Inkludera', action: 'edit_inclusions' },
+              { label: '❌ Exkludera', action: 'edit_exclusions' },
+              { label: '💰 Budget', action: 'edit_budget' },
             ]
           }),
           {
@@ -3037,6 +3204,10 @@ Svara med **1**, **2** eller **3** (eller "granska", "generera", "mer info")`;
     // STEP 6.6: VALIDATE REALISM (FÖRBÄTTRING #9)
     // ============================================
     
+    // Apply deterministic pricing
+    console.log('💰 Computing deterministic totals...');
+    quote = computeQuoteTotals(quote, hourlyRates || [], equipmentRates || []);
+
     console.log('🔬 Validating realism...');
     const realismWarnings = validateRealism(
       quote,
