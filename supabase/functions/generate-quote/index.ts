@@ -118,6 +118,7 @@ function buildProjectSummary(
   description: string,
   conversationHistory: ConversationMessage[],
   exclusions: any[],
+  inclusions: string[], // NY PARAMETER
   conversationFeedback: any
 ): string {
   const allText = [description, ...conversationHistory.map(m => m.content)].join(' ').toLowerCase();
@@ -131,24 +132,51 @@ function buildProjectSummary(
     ? measurements.join(', ') 
     : 'Inga specifika mått angivna';
   
-  // Identifiera inkluderade arbetsmoment (från scope och materials)
+  // STEG 1: Bygg inkluderade baserat på explicit bekräftade + detekterade
   const includedItems: string[] = [];
   
-  if (allText.includes('riv')) includedItems.push('Rivning');
-  if (allText.includes('kakel') || allText.includes('kakling')) includedItems.push('Kakel/plattsättning');
-  if (allText.includes('vvs') || allText.includes('rör')) includedItems.push('VVS-arbeten');
-  if (allText.includes('el') || allText.includes('elektriker')) includedItems.push('Elarbeten');
-  if (allText.includes('målning') || allText.includes('måla')) includedItems.push('Målning');
-  if (allText.includes('golv') || allText.includes('laminat') || allText.includes('parkett')) includedItems.push('Golvarbeten');
-  if (allText.includes('snickeri') || allText.includes('snickare')) includedItems.push('Snickeriarbeten');
+  // Lägg till explicit bekräftade först
+  inclusions.forEach(inc => {
+    const normalized = inc.charAt(0).toUpperCase() + inc.slice(1);
+    if (!includedItems.includes(normalized)) {
+      includedItems.push(normalized);
+    }
+  });
+  
+  // Lägg till detekterade från text (om de inte redan finns)
+  if (allText.includes('riv') && !includedItems.some(i => i.toLowerCase().includes('riv'))) {
+    includedItems.push('Rivning');
+  }
+  if ((allText.includes('kakel') || allText.includes('kakling')) && !includedItems.some(i => i.toLowerCase().includes('kakel'))) {
+    includedItems.push('Kakel/plattsättning');
+  }
+  if ((allText.includes('vvs') || allText.includes('rör')) && !includedItems.some(i => i.toLowerCase().includes('vvs'))) {
+    includedItems.push('VVS-arbeten');
+  }
+  if ((allText.includes('el') || allText.includes('elektriker')) && !includedItems.some(i => i.toLowerCase().includes('el'))) {
+    includedItems.push('Elarbeten');
+  }
+  if ((allText.includes('målning') || allText.includes('måla')) && !includedItems.some(i => i.toLowerCase().includes('målning'))) {
+    includedItems.push('Målning');
+  }
+  if ((allText.includes('golv') || allText.includes('laminat') || allText.includes('parkett')) && !includedItems.some(i => i.toLowerCase().includes('golv'))) {
+    includedItems.push('Golvarbeten');
+  }
+  if ((allText.includes('snickeri') || allText.includes('snickare')) && !includedItems.some(i => i.toLowerCase().includes('snickeri'))) {
+    includedItems.push('Snickeriarbeten');
+  }
   
   const includedStr = includedItems.length > 0 
     ? includedItems.map(i => `✅ ${i}`).join('\n') 
     : '✅ Basarbeten enligt beskrivning';
   
-  // Exkluderade arbetsmoment
-  const excludedStr = exclusions.length > 0
-    ? exclusions.map(e => `❌ ${e.item} (${e.reason})`).join('\n')
+  // STEG 1: Filtrera bort exkluderingar som också är inkluderade
+  const filteredExclusions = exclusions.filter(e => 
+    !inclusions.some(inc => e.item.toLowerCase().includes(inc.toLowerCase()))
+  );
+  
+  const excludedStr = filteredExclusions.length > 0
+    ? filteredExclusions.map(e => `❌ ${e.item} (${e.reason})`).join('\n')
     : '❌ Inga specifika exkluderingar';
   
   // Prisintervall (rough estimate baserat på projekttyp)
@@ -167,13 +195,15 @@ function buildProjectSummary(
 📋 **Projekttyp:** ${projectType}
 📏 **Storlek:** ${measurementStr}
 
-**Inkluderade arbetsmoment:**
+**✅ Inkluderat i offerten:**
 ${includedStr}
 
-**Exkluderat från offerten:**
+**❌ Exkluderat från offerten:**
 ${excludedStr}
 
 💰 **Uppskattat prisintervall:** ${priceRange} (innan ROT/RUT-avdrag)
+
+⚠️ **Om något står fel under "Exkluderat", skriv: "inkludera [ämne]"**
   `.trim();
 }
 
@@ -1102,28 +1132,36 @@ interface Exclusion {
 
 function parseExclusions(conversationHistory: ConversationMessage[]): Exclusion[] {
   const exclusions: Exclusion[] = [];
-  const allText = conversationHistory.map(m => m.content).join('\n');
+  
+  // STEG 1 FIX: Filtrera bort AI:ns meddelanden - KOlla BARA användarens svar
+  const userMessages = conversationHistory
+    .filter(m => m.role === 'user')
+    .map(m => m.content)
+    .join('\n');
   
   // Regex-mönster för olika sätt att säga "jag tar hand om X"
   const patterns = [
-    /(?:jag|vi)\s+(?:tar hand om|sköter|ordnar|har redan|har)\s+([^.!?\n]+)/gi,
-    /(?:kunden|kund)\s+(?:tar hand om|sköter|ordnar|har redan|har)\s+([^.!?\n]+)/gi,
-    /([^.!?\n]+)\s+(?:är redan|redan)\s+(?:gjort|klart|ordnat)/gi,
-    /(?:behövs inte|behöver inte|nej tack|nej)\s+(?:med|för|till)?\s*([^.!?\n]*)/gi,
-    /(?:ingår inte|ska inte ingå|exkludera)\s+([^.!?\n]+)/gi,
+    /(?:jag|vi)\s+(?:tar hand om|sköter|ordnar)\s+([^.!?\n]+)/gi,
+    /(?:kunden|kund)\s+(?:står för|tar hand om|sköter|ordnar)\s+([^.!?\n]+)/gi,
+    /([^.!?\n]+)\s+(?:är redan gjort|redan är gjort|redan klart|redan ordnat)/gi, // Kräv "är redan GJORT"
+    /(?:behövs inte|behöver inte)\s+([^.!?\n]+)/gi,
+    /(?:ska inte ingå|exkludera)\s+([^.!?\n]+)/gi,
   ];
   
   for (const pattern of patterns) {
     let match;
-    while ((match = pattern.exec(allText)) !== null) {
+    while ((match = pattern.exec(userMessages)) !== null) { // ← Använd userMessages istället
       const item = match[1]?.trim();
       if (item && item.length > 2 && item.length < 100) {
+        // Extra validering: Skippa om det ser ut som en fråga
+        if (item.includes('?') || item.toLowerCase().includes('ingår')) {
+          continue;
+        }
+        
         exclusions.push({
           item: item,
-          reason: match[0].includes('jag') || match[0].includes('vi') ? 'Hantverkaren gör själv' :
-                  match[0].includes('kunden') || match[0].includes('kund') ? 'Kunden ordnar själv' :
+          reason: match[0].includes('kunden') || match[0].includes('kund') ? 'Kunden ordnar själv' :
                   match[0].includes('redan') ? 'Redan utfört' :
-                  match[0].includes('behövs inte') || match[0].includes('nej') ? 'Behövs inte' :
                   'Ska inte ingå'
         });
       }
@@ -1138,6 +1176,43 @@ function parseExclusions(conversationHistory: ConversationMessage[]): Exclusion[
   console.log(`📋 Parsed ${uniqueExclusions.length} exclusions:`, uniqueExclusions);
   
   return uniqueExclusions;
+}
+
+// ============================================
+// STEG 1: DETECT POSITIVE INCLUSIONS
+// ============================================
+
+function detectInclusions(conversationHistory: ConversationMessage[]): string[] {
+  const inclusions: string[] = [];
+  
+  for (let i = 0; i < conversationHistory.length - 1; i++) {
+    const aiMsg = conversationHistory[i];
+    const userMsg = conversationHistory[i + 1];
+    
+    // Kolla om AI frågade och användaren bekräftade
+    if (aiMsg.role === 'assistant' && userMsg.role === 'user') {
+      const aiAsked = aiMsg.content.toLowerCase();
+      const userSaid = userMsg.content.toLowerCase();
+      
+      // Positiva bekräftelser
+      const isPositive = userSaid.match(/^(ja|det ingår|ja det ingår|ingår|yes|stämmer|korrekt|exakt)/i);
+      
+      if (isPositive) {
+        // Extrahera ämnen från AI:ns fråga
+        const topics = ['rivning', 'riv', 'vvs', 'el', 'elektriker', 'kakel', 'kakling', 'plattsättning', 'målning', 'måla', 'golv', 'golvarbeten', 'snickeri', 'tak'];
+        topics.forEach(topic => {
+          if (aiAsked.includes(topic)) {
+            inclusions.push(topic);
+          }
+        });
+      }
+    }
+  }
+  
+  const uniqueInclusions = [...new Set(inclusions)];
+  console.log(`✅ Detected ${uniqueInclusions.length} inclusions:`, uniqueInclusions);
+  
+  return uniqueInclusions;
 }
 
 // ============================================
@@ -2014,6 +2089,7 @@ async function retryMaterialSpecification(
            (name.split(' ').length < 3);
   }) || [];
 
+  // STEG 3: Förbättrad prompt för bättre material-specifikation
   const prompt = `Du genererade en offert men några material är för generiska.
 
 **PROJEKT:** ${description}
@@ -2022,12 +2098,27 @@ async function retryMaterialSpecification(
 ${genericMaterials.map((m: any) => `- ${m.name}: ${m.quantity} ${m.unit} × ${m.pricePerUnit} kr`).join('\n')}
 
 **UPPGIFT:**
-Specificera dessa material bättre enligt formatet: **Märke + Modell + Storlek/Färg + Mängd + Enhet**
+Specificera dessa material enligt: **Märke + Modell + Storlek/Färg**
 
-Exempel:
-- "Kakel" → "Marazzi Oficina 30x60cm vit matt"
-- "VVS-material" → "Duschblandare Oras Safira termostat krom + Duschslang Hansa 1.5m krom"
-- "Färg" → "Alcro Tidevärv kulär Moln matt"
+**VIKTIGA REGLER:**
+1. ALLTID inkludera märke (Oras, Gustavsberg, IFÖ, Marazzi, Alcro, etc.)
+2. ALLTID inkludera modell/serie
+3. ALLTID inkludera storlek/dimension där relevant
+4. Använd verkliga märken från svenska marknaden
+5. Priset MÅSTE vara realistiskt för det specifika märket
+
+**Exempel på RÄTT specifikation:**
+❌ "VVS-material" (för generiskt)
+✅ "Duschblandare Oras Safira termostat krom" (specifikt)
+
+❌ "Kakel" (för generiskt)
+✅ "Kakel Marazzi Oficina 30x60cm vit matt" (specifikt)
+
+❌ "Färg" (för generiskt)
+✅ "Väggfärg Alcro Tidevärv kulär Moln matt 10L" (specifikt)
+
+❌ "Golv" (för generiskt)
+✅ "Laminatgolv Pergo Domestic 8mm ek grå" (specifikt)
 
 Returnera JSON med ALLA material från original-offerten men med bättre specifikation:
 {
@@ -2418,6 +2509,10 @@ Deno.serve(async (req) => {
       }
     }
 
+    // STEG 1: Detektera inkluderingar och exkluderingar
+    const exclusions = parseExclusions(actualConversationHistory);
+    const inclusions = detectInclusions(actualConversationHistory);
+    
     // ÅTGÄRD 1: CONTEXT CONFIRMATION (80-90% readiness)
     // Visa sammanfattning och be om bekräftelse innan offertgenerering
     if (readiness.readiness_score >= 80 && readiness.readiness_score < 92 && actualConversationHistory.length > 0) {
@@ -2426,7 +2521,8 @@ Deno.serve(async (req) => {
       const summary = buildProjectSummary(
         completeDescription,
         actualConversationHistory,
-        parseExclusions(actualConversationHistory),
+        exclusions,
+        inclusions,
         conversationFeedback
       );
       
@@ -2523,9 +2619,10 @@ Svara med **1**, **2** eller **3** (eller "granska", "generera", "mer info")`;
 
     console.log('🎯 Generating complete quote...');
     
-    // SPRINT 1: Parse exclusions från konversation
-    const exclusions = parseExclusions(actualConversationHistory);
-    console.log(`📋 Exclusions parsed: ${exclusions.length}`);
+    // SPRINT 1: Parse exclusions och inclusions från konversation
+    const exclusionsForQuote = parseExclusions(actualConversationHistory);
+    const inclusionsForQuote = detectInclusions(actualConversationHistory);
+    console.log(`📋 Exclusions parsed: ${exclusionsForQuote.length}`);
     
     // ÅTGÄRD 4C: Använd faktisk historik från DB även här
     let quote = await generateQuoteWithAI(
@@ -2537,7 +2634,7 @@ Svara med **1**, **2** eller **3** (eller "granska", "generera", "mer info")`;
       learningContext,
       finalDeductionType,
       LOVABLE_API_KEY,
-      exclusions
+      exclusionsForQuote
     );
 
     // ============================================
@@ -2682,13 +2779,14 @@ Svara med **1**, **2** eller **3** (eller "granska", "generera", "mer info")`;
 
     const validation = basicValidation(quote);
     
+    // STEG 3: ALLTID kör material-specifikation om generiska material finns
+    if (validation.issues.some(issue => issue.includes('Generiska material'))) {
+      console.log('⚠️ Generic materials detected, retrying specification...');
+      quote = await retryMaterialSpecification(quote, completeDescription, LOVABLE_API_KEY);
+    }
+    
     if (!validation.valid) {
       console.log('⚠️ Validation issues:', validation.issues);
-      
-      // If materials are too generic, retry once
-      if (validation.issues.some(issue => issue.includes('Generiska material'))) {
-        quote = await retryMaterialSpecification(quote, completeDescription, LOVABLE_API_KEY);
-      }
     }
 
     // ============================================
@@ -2697,6 +2795,45 @@ Svara med **1**, **2** eller **3** (eller "granska", "generera", "mer info")`;
 
     if (finalDeductionType !== 'none') {
       calculateROTRUT(quote, finalDeductionType, recipients, new Date());
+    }
+
+    // ============================================
+    // STEG 4: TIDSMÄTNING - Uppdatera session med completion time
+    // ============================================
+    
+    let timeSaved = null;
+    if (sessionId) {
+      try {
+        // Uppdatera session som completed
+        await supabaseClient
+          .from('conversation_sessions')
+          .update({
+            completed_at: new Date().toISOString(),
+            conversation_stage: 'quote_generated'
+          })
+          .eq('id', sessionId);
+        
+        // Hämta session för att beräkna tid
+        const { data: session } = await supabaseClient
+          .from('conversation_sessions')
+          .select('created_at')
+          .eq('id', sessionId)
+          .single();
+        
+        if (session) {
+          const startTime = new Date(session.created_at);
+          const endTime = new Date();
+          const actualMinutes = Math.round((endTime.getTime() - startTime.getTime()) / 60000);
+          
+          // Antag att manuell offert tar 15-30 min (använd 20 som medel)
+          const manualEstimate = 20;
+          timeSaved = Math.max(0, manualEstimate - actualMinutes);
+          
+          console.log(`⏱️ Time saved: ${timeSaved} minutes (actual: ${actualMinutes}min vs manual estimate: ${manualEstimate}min)`);
+        }
+      } catch (error) {
+        console.error('Error calculating time saved:', error);
+      }
     }
 
     // ============================================
@@ -2746,6 +2883,7 @@ Svara med **1**, **2** eller **3** (eller "granska", "generera", "mer info")`;
           removedItems: conversationValidation.unmentionedItems,
           removedValue: Math.round(conversationValidation.removedValue)
         } : undefined,
+        timeSaved: timeSaved, // STEG 4: Inkludera tidsbesparing
         debug: debugInfo,
       }),
       {

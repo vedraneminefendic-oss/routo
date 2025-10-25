@@ -347,6 +347,14 @@ export const ChatInterface = ({ onQuoteGenerated, isGenerating }: ChatInterfaceP
             });
             return;
           }
+          
+          // STEG 4: Visa tidsbesparing om tillgänglig
+          if (data.timeSaved && data.timeSaved > 0) {
+            toast({
+              title: "Offert klar!",
+              description: `⏱️ Du sparade ~${data.timeSaved} minuter jämfört med manuell offert`,
+            });
+          }
 
           // Validera att alla kritiska fält finns och är giltiga nummer
           const hasValidSummary = 

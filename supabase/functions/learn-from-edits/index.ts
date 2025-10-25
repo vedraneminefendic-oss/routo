@@ -75,11 +75,16 @@ Deno.serve(async (req) => {
 
     console.log('✅ Learned from edits successfully');
 
+    // STEG 5: Bygg learning feedback för användaren
+    const learningFeedback = buildLearningFeedback(changes.edits, existingPatterns, newPatterns);
+
     return new Response(
       JSON.stringify({
         success: true,
         changes_detected: changes.edits.length,
         patterns_updated: true,
+        learned: learningFeedback, // STEG 5: Inkludera vad AI:n lärde sig
+        message: learningFeedback.message
       }),
       {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -213,4 +218,77 @@ function calculateMaterialRatio(quote: any): number {
 
   if (workCost === 0) return 0;
   return Math.round((materialCost / workCost) * 100) / 100;
+}
+
+// ============================================
+// STEG 5: BUILD LEARNING FEEDBACK
+// ============================================
+
+function buildLearningFeedback(edits: any[], oldPatterns: any, newPatterns: any): any {
+  const feedback: any = {
+    priceAdjustment: null,
+    materialChanges: 0,
+    workItemChanges: 0,
+    hourlyRateChange: null,
+    timeEstimateChange: null,
+    message: ''
+  };
+  
+  // Analysera prisändring
+  const priceEdit = edits.find(e => e.type === 'total_price_adjusted');
+  if (priceEdit) {
+    feedback.priceAdjustment = {
+      percentage: priceEdit.percentage_change,
+      direction: priceEdit.percentage_change > 0 ? 'higher' : 'lower'
+    };
+  }
+  
+  // Räkna material- och work item-ändringar
+  feedback.materialChanges = edits.filter(e => e.type === 'materials_modified').length;
+  feedback.workItemChanges = edits.filter(e => e.type === 'work_items_added' || e.type === 'work_items_removed').length;
+  
+  // Timlön-ändring
+  const hourlyEdit = edits.find(e => e.type === 'hourly_rate_adjusted');
+  if (hourlyEdit) {
+    feedback.hourlyRateChange = {
+      oldAvg: hourlyEdit.original_avg,
+      newAvg: hourlyEdit.edited_avg,
+      difference: hourlyEdit.difference
+    };
+  }
+  
+  // Tidsestimat-ändring
+  const timeEdit = edits.find(e => e.type === 'time_estimate_adjusted');
+  if (timeEdit) {
+    feedback.timeEstimateChange = {
+      oldHours: timeEdit.original_hours,
+      newHours: timeEdit.edited_hours,
+      difference: timeEdit.difference
+    };
+  }
+  
+  // Bygg användarvänligt meddelande
+  const messages: string[] = [];
+  
+  if (feedback.priceAdjustment) {
+    const direction = feedback.priceAdjustment.direction === 'higher' ? 'högre' : 'lägre';
+    messages.push(`📊 AI:n har lärt sig att du prissätter ${Math.abs(feedback.priceAdjustment.percentage)}% ${direction} än ursprungligt förslag`);
+  }
+  
+  if (feedback.hourlyRateChange) {
+    const direction = feedback.hourlyRateChange.difference > 0 ? 'högre' : 'lägre';
+    messages.push(`💰 AI:n har justerat timkostnad till ${feedback.hourlyRateChange.newAvg} kr/h (${Math.abs(feedback.hourlyRateChange.difference)} kr ${direction})`);
+  }
+  
+  if (feedback.timeEstimateChange) {
+    messages.push(`⏱️ AI:n har justerat tidsestimat med ${feedback.timeEstimateChange.difference > 0 ? '+' : ''}${feedback.timeEstimateChange.difference} timmar`);
+  }
+  
+  if (messages.length === 0) {
+    messages.push('✅ AI:n har sparat dina preferenser och kommer använda dem i framtida offerter');
+  }
+  
+  feedback.message = messages.join('\n');
+  
+  return feedback;
 }
