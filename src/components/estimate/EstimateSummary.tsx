@@ -67,14 +67,14 @@ export const EstimateSummary = ({ subtotal, workCost, materialCost, vat, totalWi
             </>
           )}
 
-          {/* ROT/RUT Avdrag */}
+          {/* ROT/RUT Avdrag - ÅTGÄRD #5: Detaljerad visning */}
           {rotRutDeduction && (
             <>
               <Separator />
-              <div className="space-y-2">
+              <div className="space-y-3 p-4 bg-secondary/10 rounded-lg">
                 <div className="flex items-center gap-2">
-                  <Badge variant="secondary" className="text-xs">
-                    {rotRutDeduction.type}-avdrag
+                  <Badge variant="secondary" className="text-xs font-semibold">
+                    {rotRutDeduction.type}-avdrag ({((rotRutDeduction.deductionRate ?? 0.50) * 100)}%)
                   </Badge>
                   <TooltipProvider>
                     <Tooltip>
@@ -84,8 +84,8 @@ export const EstimateSummary = ({ subtotal, workCost, materialCost, vat, totalWi
                       <TooltipContent className="max-w-xs">
                         <p className="text-sm">
                           {rotRutDeduction.type === 'ROT' 
-                            ? `ROT-avdrag för renovering, ombyggnad och tillbyggnad. Du får ${((rotRutDeduction.deductionRate ?? 0.50) * 100)}% rabatt på arbetskostnaden (t.o.m. 31 dec 2025: 50%, fr.o.m. 1 jan 2026: 30%), max 50 000 kr/år per person.`
-                            : `RUT-avdrag för hushållsnära tjänster. Du får ${((rotRutDeduction.deductionRate ?? 0.50) * 100)}% rabatt på arbetskostnaden (t.o.m. 31 dec 2025: 50%, fr.o.m. 1 jan 2026: 30%), max 75 000 kr/år per person.`
+                            ? `ROT-avdrag för renovering, ombyggnad och tillbyggnad. Du får ${((rotRutDeduction.deductionRate ?? 0.50) * 100)}% rabatt på arbetskostnaden inkl. moms (t.o.m. 31 dec 2025: 50%, fr.o.m. 1 jan 2026: 30%), max 50 000 kr/år per person.`
+                            : `RUT-avdrag för hushållsnära tjänster. Du får ${((rotRutDeduction.deductionRate ?? 0.50) * 100)}% rabatt på arbetskostnaden inkl. moms (t.o.m. 31 dec 2025: 50%, fr.o.m. 1 jan 2026: 30%), max 75 000 kr/år per person.`
                           }
                         </p>
                       </TooltipContent>
@@ -93,19 +93,37 @@ export const EstimateSummary = ({ subtotal, workCost, materialCost, vat, totalWi
                   </TooltipProvider>
                 </div>
                 
-                <div className="pl-4 space-y-1 text-sm">
+                <div className="space-y-2 text-sm">
                   <div className="flex items-center justify-between text-muted-foreground">
-                    <span>Arbetskostnad</span>
+                    <span>Arbetskostnad (exkl. moms)</span>
                     <span>{rotRutDeduction.laborCost.toLocaleString('sv-SE')} kr</span>
                   </div>
-                  <div className="flex items-center justify-between text-secondary">
-                    <span>Avdrag ({((rotRutDeduction.deductionRate ?? 0.50) * 100)}%)</span>
+                  <div className="flex items-center justify-between text-muted-foreground">
+                    <span>Arbetskostnad (inkl. moms)</span>
+                    <span className="font-medium">{Math.round(rotRutDeduction.laborCost * 1.25).toLocaleString('sv-SE')} kr</span>
+                  </div>
+                  <Separator className="my-2" />
+                  <div className="flex items-center justify-between text-primary">
+                    <span>Beräknat avdrag ({((rotRutDeduction.deductionRate ?? 0.50) * 100)}%)</span>
                     <span className="font-medium">
+                      -{Math.round(rotRutDeduction.laborCost * 1.25 * (rotRutDeduction.deductionRate ?? 0.50)).toLocaleString('sv-SE')} kr
+                    </span>
+                  </div>
+                  {(Math.round(rotRutDeduction.laborCost * 1.25 * (rotRutDeduction.deductionRate ?? 0.50)) > rotRutDeduction.deductionAmount) && (
+                    <div className="flex items-center justify-between text-amber-600 text-xs italic">
+                      <span>Max-tak nått ({rotRutDeduction.type === 'ROT' ? '50' : '75'} 000 kr × {Math.round(rotRutDeduction.deductionAmount / (rotRutDeduction.type === 'ROT' ? 50000 : 75000))} pers)</span>
+                      <span>-{(Math.round(rotRutDeduction.laborCost * 1.25 * (rotRutDeduction.deductionRate ?? 0.50)) - rotRutDeduction.deductionAmount).toLocaleString('sv-SE')} kr</span>
+                    </div>
+                  )}
+                  <Separator className="my-2" />
+                  <div className="flex items-center justify-between font-bold text-secondary">
+                    <span>Faktiskt avdrag</span>
+                    <span className="text-base">
                       -{rotRutDeduction.deductionAmount.toLocaleString('sv-SE')} kr
                     </span>
                   </div>
                   <div className="flex items-center justify-between text-muted-foreground">
-                    <span>Efter avdrag</span>
+                    <span>Kunden betalar (efter avdrag)</span>
                     <span className="font-medium">
                       {rotRutDeduction.priceAfterDeduction.toLocaleString('sv-SE')} kr
                     </span>

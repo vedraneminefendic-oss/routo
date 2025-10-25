@@ -726,21 +726,43 @@ function validateRealism(
 // DEDUCTION TYPE DETECTION
 // ============================================
 
+// ✅ ÅTGÄRD #4: Förbättrade nyckelord för RUT/ROT-detektion
 function detectDeductionByRules(description: string): 'rot' | 'rut' | null {
   const descLower = description.toLowerCase();
   
   // RUT keywords (cleaning/maintenance/garden) - CHECK FIRST!
-  const rutKeywords = ['städ', 'storstäd', 'flyttstäd', 'fönsterputsning', 'fönsterputs',
-    'trädgård', 'gräsklippning', 'häck', 'snöröjning', 'löv', 'ogräs', 'plantering', 'fäll', 'träd'];
+  const rutKeywords = [
+    // Städning
+    'städ', 'storstäd', 'flyttstäd', 'hemstäd', 'fönsterputsning', 'fönsterputs', 'putsa fönster',
+    // Trädgård
+    'trädgård', 'gräsklippning', 'gräsmatta', 'häck', 'häckklippning', 'snöröjning', 'snö', 
+    'löv', 'lövrensning', 'ogräs', 'plantering', 'plantera', 'fäll', 'fällning', 'träd', 
+    'trädfällning', 'buskar', 'rabatt', 'beskärning', 'beskära',
+    // Övrigt RUT
+    'tvätt', 'klädvård', 'matlagning', 'barnvakt', 'seniortjänster',
+    'rengöring', 'underhåll av trädgård'
+  ];
   
   // ROT keywords (renovation/construction/repair) - CHECK AFTER
-  const rotKeywords = ['badrum', 'kök', 'renovera', 'renovering', 'ombyggnad', 'bygg', 
-    'måla', 'målning', 'golv', 'golvlägg', 'tak', 'fasad', 'altan', 'balkong', 
-    'fönster', 'dörr', 'kakel', 'klinker', 'tapet', 'spackel', 'puts'];
+  const rotKeywords = [
+    // Renovering
+    'badrum', 'badrumsr', 'kök', 'köksr', 'renovera', 'renovering', 'ombyggnad', 
+    'tillbyggnad', 'bygg', 'ombygge',
+    // Målning & golv
+    'måla', 'målning', 'målar', 'spackling', 'spackla', 'golv', 'golvlägg', 
+    'parkett', 'kakel', 'klinker', 'tapet', 'tapetsera',
+    // VVS & El
+    'vvs', 'elektriker', 'el-', 'elarbete', 'rör', 'rörmokare', 'värmesystem', 
+    'ventilation', 'luftbehandling',
+    // Konstruktion & exteriör
+    'tak', 'fasad', 'altan', 'balkong', 'fönster', 'fönsterbyte', 'dörr', 
+    'trappa', 'vägg', 'puts', 'stuckatur', 'isolering'
+  ];
   
   const hasRut = rutKeywords.some(kw => descLower.includes(kw));
   const hasRot = rotKeywords.some(kw => descLower.includes(kw));
   
+  // RUT har prioritet vid konflikt (t.ex. "fälla träd" = RUT, inte ROT)
   if (hasRut && !hasRot) {
     console.log('🎯 Rule-based deduction: RUT');
     return 'rut';
@@ -750,18 +772,32 @@ function detectDeductionByRules(description: string): 'rot' | 'rut' | null {
     return 'rot';
   }
   
-  return null; // Ambiguous
+  return null; // Ambiguous, använd AI
 }
 
+// ✅ ÅTGÄRD #4: Förbättrad AI-prompt för ROT/RUT-detektion
 async function detectDeductionWithAI(description: string, apiKey: string): Promise<'rot' | 'rut' | 'none'> {
   console.log('🤖 Using AI to detect deduction type...');
   
   const prompt = `Analysera denna jobbeskrivning och avgör om det är ROT, RUT eller inget avdrag:
 
-ROT = Renovering, Ombyggnad, Tillbyggnad (fastighetsarbete)
-RUT = Rengöring, Underhåll, Trädgård (hushållsnära tjänster)
+**ROT-avdrag** = Renovering, Ombyggnad, Tillbyggnad av BEFINTLIG FASTIGHET
+Exempel: Badrumsrenovering, köksbyte, målning, golvläggning, el-installation, VVS-arbete, 
+         fönsterbyte, fasadarbete, takbyte, altanbygge, kakelläggning
+
+**RUT-avdrag** = Rengöring, Underhåll, Trädgård (HUSHÅLLSNÄRA TJÄNSTER)
+Exempel: Städning, fönsterputsning, trädgårdsarbete, trädfällning, gräsklippning, 
+         snöröjning, häckklippning, lövrensning, mindre hemreparationer
+
+**Inget avdrag** = Nyproduktion, nybyggnation, företagslokaler, verkstadsarbete, industriarbete
 
 Beskrivning: "${description}"
+
+**VIKTIGT:**
+- Trädfällning, trädgårdsarbete, beskärning = RUT (inte ROT)
+- Renovering av BEFINTLIG bostad = ROT
+- Nybygge av ny bostad = INGET avdrag
+- Arbete på företagslokaler = INGET avdrag
 
 Returnera JSON: {"type": "rot"} eller {"type": "rut"} eller {"type": "none"}`;
 
@@ -865,36 +901,48 @@ function calculateROTRUT(quote: any, deductionType: string, recipients: number, 
   if (deductionType === 'none') return;
 
   const year = quoteDate.getFullYear();
-  const deductionRate = year >= 2025 ? 0.5 : 0.3;
+  const month = quoteDate.getMonth();
   
-  // Max amounts per recipient
+  // ✅ ÅTGÄRD #1: Korrekt deduction rate baserat på datum
+  // 50% t.o.m. 2025-12-31, sedan 30%
+  const deductionRate = (year < 2026) ? 0.5 : 0.3;
+  
+  // Max amounts per recipient per year
   const maxROT = 50000;
   const maxRUT = 75000;
   const maxDeduction = deductionType === 'rot' ? maxROT : maxRUT;
   const totalMaxDeduction = maxDeduction * recipients;
 
-  // Calculate work cost (labor only, 50% of work if ROT, 100% if RUT)
+  // ✅ ÅTGÄRD #1: FIX - 100% av arbetskostnad (inkl. moms) är berättigad för BÅDE ROT och RUT
   const workCost = quote.summary?.workCost || 0;
-  const eligibleAmount = deductionType === 'rot' ? workCost * 0.5 : workCost;
+  const workCostWithVAT = workCost * 1.25; // Lägg till 25% moms på arbetskostnaden
+  const eligibleAmount = workCostWithVAT; // 100% av arbetskostnad inkl. moms är underlag
   
   // Apply deduction rate and cap
   const calculatedDeduction = eligibleAmount * deductionRate;
   const actualDeduction = Math.min(calculatedDeduction, totalMaxDeduction);
 
-  // Update quote
+  // Customer pays: Total WITH VAT minus actual deduction
+  const customerPays = quote.summary.totalWithVAT - actualDeduction;
+
+  // Update quote with detailed deduction breakdown
   quote.summary.deduction = {
     type: deductionType.toUpperCase(),
     deductionRate,
     maxPerPerson: maxDeduction,
     numberOfRecipients: recipients,
     totalMaxDeduction,
-    eligibleAmount,
-    calculatedDeduction,
-    actualDeduction,
-    customerPays: quote.summary.totalWithVAT - actualDeduction,
+    workCost, // Arbetskostnad före moms
+    workCostWithVAT, // Arbetskostnad inkl. moms (underlag för avdrag)
+    eligibleAmount, // = workCostWithVAT (100% är berättigad)
+    calculatedDeduction, // = eligibleAmount × deductionRate
+    actualDeduction, // = min(calculatedDeduction, totalMaxDeduction)
+    customerPays,
   };
 
-  console.log(`💰 ${deductionType.toUpperCase()}-avdrag: ${Math.round(actualDeduction)} kr (${recipients} mottagare)`);
+  quote.summary.customerPays = customerPays;
+
+  console.log(`💰 ${deductionType.toUpperCase()}-avdrag: ${Math.round(actualDeduction)} kr av ${Math.round(eligibleAmount)} kr arbetskostnad (${recipients} mottagare, max ${totalMaxDeduction} kr)`);
 }
 
 // ============================================
@@ -1151,6 +1199,37 @@ ${description}
 ${historyText || 'Ingen tidigare konversation'}
 
 **AVDRAGSTYP:** ${deductionType.toUpperCase()} ${deductionType !== 'none' ? '(inkludera i offerten)' : ''}
+
+${deductionType !== 'none' ? `
+**💰 ROT/RUT-AVDRAG (KRITISKT VIKTIGT - ÅTGÄRD #2):**
+
+Denna offert ska ha **${deductionType.toUpperCase()}-avdrag**.
+
+**${deductionType.toUpperCase()}-regler (gäller t.o.m. 2025-12-31):**
+- Avdragssats: **50%** av arbetskostnaden inkl. moms
+- Maximalt avdrag per person: **${deductionType === 'rot' ? '50 000' : '75 000'} kr** per år
+- Max totalt avdrag beror på antal mottagare (konfigureras separat)
+
+**VIKTIGT - Vad är avdragsgillt:**
+- ✅ **Endast ARBETSKOSTNAD** (workItems) är avdragsgill
+- ✅ Avdraget beräknas på arbetskostnad **INKL. 25% MOMS**
+- ❌ Material och utrustning ger **INGET** avdrag
+
+**Beräkningsexempel:**
+Om arbetskostnad = 100 000 kr (exkl. moms):
+1. Underlag = 100 000 kr × 1.25 (moms) = **125 000 kr**
+2. Beräknat avdrag (50%) = 125 000 × 0.5 = **62 500 kr**
+3. Faktiskt avdrag begränsas av max-tak (50 000 kr för ROT, 75 000 kr för RUT)
+4. Kunden betalar = Totalt inkl. moms - faktiskt avdrag
+
+**Du behöver INTE räkna avdraget själv** - systemet gör det automatiskt baserat på workCost.
+Din uppgift är att **skilja på arbete och material korrekt**:
+- workItems = Allt arbete som utförs (timmar × timkostnad)
+- materials = Allt material som köps in
+- equipment = Maskiner och utrustning som används
+
+**Från 2026-01-01 sänks avdraget till 30%** (men det gäller inte denna offert).
+` : ''}
 
 ${ratesText}
 
