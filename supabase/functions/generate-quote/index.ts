@@ -323,6 +323,101 @@ function calculateConfidenceScore(
 }
 
 // ============================================
+// REALISM VALIDATION (FÖRBÄTTRING #9)
+// ============================================
+
+function validateRealism(
+  quote: any,
+  userPatterns: any,
+  industryData: any[]
+): string[] {
+  const warnings: string[] = [];
+  
+  // 1. Check hourly rates consistency
+  const workItems = quote.workItems || [];
+  if (workItems.length > 0) {
+    const hourlyRates = workItems
+      .map((w: any) => w.hourlyRate)
+      .filter((rate: number) => rate > 0);
+    
+    if (hourlyRates.length > 0) {
+      const avgRate = hourlyRates.reduce((a: number, b: number) => a + b, 0) / hourlyRates.length;
+      
+      // Compare with user patterns
+      if (userPatterns?.average_hourly_rate && Math.abs(avgRate - userPatterns.average_hourly_rate) > 200) {
+        warnings.push(`⚠️ Timpris (${Math.round(avgRate)} kr/h) avviker från ditt snitt (${Math.round(userPatterns.average_hourly_rate)} kr/h)`);
+      }
+      
+      // Check against industry data if available
+      if (industryData && industryData.length > 0) {
+        const industryAvg = industryData
+          .filter((d: any) => d.metric_type === 'hourly_rate')
+          .map((d: any) => d.median_value)
+          .reduce((a: number, b: number) => a + b, 0) / Math.max(industryData.length, 1);
+        
+        if (industryAvg > 0 && Math.abs(avgRate - industryAvg) > 300) {
+          warnings.push(`⚠️ Timpris (${Math.round(avgRate)} kr/h) avviker kraftigt från branschsnittet (${Math.round(industryAvg)} kr/h)`);
+        }
+      }
+    }
+  }
+  
+  // 2. Check material to work cost ratio
+  const materialCost = quote.summary?.materialCost || 0;
+  const workCost = quote.summary?.workCost || 0;
+  
+  if (workCost > 0 && materialCost > 0) {
+    const materialRatio = materialCost / workCost;
+    
+    // If material cost is more than 2x work cost, that's unusual
+    if (materialRatio > 2) {
+      warnings.push(`⚠️ Material (${Math.round(materialCost)} kr) är över 2x arbetskostnad (${Math.round(workCost)} kr) - är det rimligt?`);
+    }
+    
+    // Compare with user patterns if available
+    if (userPatterns?.average_material_ratio) {
+      const expectedRatio = userPatterns.average_material_ratio;
+      if (Math.abs(materialRatio - expectedRatio) > 1) {
+        warnings.push(`⚠️ Material/arbete-förhållande (${materialRatio.toFixed(1)}) avviker från ditt vanliga (${expectedRatio.toFixed(1)})`);
+      }
+    }
+  }
+  
+  // 3. Check total time estimates
+  const totalHours = workItems.reduce((sum: number, item: any) => sum + (item.hours || 0), 0);
+  if (totalHours > 0) {
+    const totalCost = quote.summary?.totalBeforeVAT || 0;
+    
+    // If total hours is suspiciously low for high cost
+    if (totalCost > 50000 && totalHours < 20) {
+      warnings.push(`⚠️ Låg tidsuppskattning (${totalHours}h) för högt pris (${Math.round(totalCost)} kr) - dubbelkolla`);
+    }
+    
+    // If total hours is suspiciously high for low cost
+    if (totalCost < 10000 && totalHours > 40) {
+      warnings.push(`⚠️ Hög tidsuppskattning (${totalHours}h) för lågt pris (${Math.round(totalCost)} kr) - dubbelkolla`);
+    }
+  }
+  
+  // 4. Check if quote value is reasonable compared to user history
+  if (userPatterns?.total_quotes > 5) {
+    const quoteValue = quote.summary?.totalBeforeVAT || 0;
+    const avgValue = userPatterns.average_quote_value || 0;
+    
+    // If this quote is 3x larger or smaller than average, flag it
+    if (avgValue > 0) {
+      if (quoteValue > avgValue * 3) {
+        warnings.push(`⚠️ Offerten (${Math.round(quoteValue)} kr) är mycket högre än ditt snitt (${Math.round(avgValue)} kr)`);
+      } else if (quoteValue < avgValue / 3 && quoteValue > 1000) {
+        warnings.push(`⚠️ Offerten (${Math.round(quoteValue)} kr) är mycket lägre än ditt snitt (${Math.round(avgValue)} kr)`);
+      }
+    }
+  }
+  
+  return warnings;
+}
+
+// ============================================
 // DEDUCTION TYPE DETECTION
 // ============================================
 
@@ -1249,6 +1344,21 @@ Deno.serve(async (req) => {
     }
 
     // ============================================
+    // STEP 6.6: VALIDATE REALISM (FÖRBÄTTRING #9)
+    // ============================================
+    
+    console.log('🔬 Validating realism...');
+    const realismWarnings = validateRealism(
+      quote,
+      learningContext.userPatterns,
+      learningContext.industryData || []
+    );
+    
+    if (realismWarnings.length > 0) {
+      console.log(`⚠️ Realism warnings: ${realismWarnings.join(', ')}`);
+    }
+
+    // ============================================
     // STEP 7: BASIC VALIDATION & MATERIAL RETRY IF NEEDED
     // ============================================
 
@@ -1277,12 +1387,37 @@ Deno.serve(async (req) => {
 
     console.log('✅ Quote generation complete');
 
+    // ============================================
+    // BUILD DEBUG INFO (FÖRBÄTTRING #10)
+    // ============================================
+    
+    const debugInfo = {
+      conversation_summary: completeDescription,
+      structured_context: extractStructuredContext(conversation_history, description),
+      detected_measurements: (completeDescription.match(/(\d+(?:[.,]\d+)?)\s*(kvm|m2|m²|meter|m|st|träd|granar|rum)/gi) || []).join(', '),
+      similar_quotes_used: similarQuotes.length,
+      similar_quotes_titles: similarQuotes.map((q: any) => q.title).join(', '),
+      hourly_rates_used: (hourlyRates?.length || 0) > 0,
+      equipment_used: (equipmentRates?.length || 0) > 0,
+      deduction_type: finalDeductionType,
+      ai_reasoning: `Baserat på: ${completeDescription.length > 0 ? 'beskrivning' : ''}${conversation_history.length > 0 ? ' + konversation' : ''}${similarQuotes.length > 0 ? ` + ${similarQuotes.length} liknande offerter` : ''}${(hourlyRates?.length || 0) > 0 ? ' + användarens timpriser' : ' + standardpriser'}${learningContext.userPatterns ? ' + användarmönster' : ''}${learningContext.industryData && learningContext.industryData.length > 0 ? ' + branschdata' : ''}`,
+      validation: {
+        conversation_validation: !conversationValidation.isValid ? {
+          removed_items: conversationValidation.unmentionedItems,
+          removed_value: Math.round(conversationValidation.removedValue)
+        } : null,
+        basic_validation: validation.issues.length > 0 ? validation.issues : null,
+        realism_warnings: realismWarnings.length > 0 ? realismWarnings : null
+      }
+    };
+
     return new Response(
       JSON.stringify({
         type: 'complete_quote',
         quote,
         deductionType: finalDeductionType,
         confidence: confidenceScore,
+        realismWarnings: realismWarnings.length > 0 ? realismWarnings : undefined,
         validation: validation.issues.length > 0 ? {
           warnings: validation.issues
         } : undefined,
@@ -1290,6 +1425,7 @@ Deno.serve(async (req) => {
           removedItems: conversationValidation.unmentionedItems,
           removedValue: Math.round(conversationValidation.removedValue)
         } : undefined,
+        debug: debugInfo,
       }),
       {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
