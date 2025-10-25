@@ -29,8 +29,6 @@ export const ChatInterface = ({ onQuoteGenerated, isGenerating }: ChatInterfaceP
   const [messages, setMessages] = useState<Message[]>([]);
   const [isTyping, setIsTyping] = useState(false);
   const [sessionId, setSessionId] = useState<string | null>(null);
-  const [needsClarification, setNeedsClarification] = useState(false);
-  const [clarificationQuestions, setClarificationQuestions] = useState<string[]>([]);
   const [generatedQuote, setGeneratedQuote] = useState<any>(null);
   const [conversationFeedback, setConversationFeedback] = useState<any>(null);
   const [readiness, setReadiness] = useState<any>(null);
@@ -231,8 +229,6 @@ export const ChatInterface = ({ onQuoteGenerated, isGenerating }: ChatInterfaceP
             readiness: data.readiness
           };
           setMessages(prev => [...prev, aiMessage]);
-          setNeedsClarification(true);
-          setClarificationQuestions(data.questions);
           setConversationFeedback(data.conversationFeedback);
           setReadiness(data.readiness);
           
@@ -309,8 +305,6 @@ export const ChatInterface = ({ onQuoteGenerated, isGenerating }: ChatInterfaceP
           });
 
           // Komplett offert genererad - visa i sheet
-          setNeedsClarification(false);
-          setClarificationQuestions([]);
           setShowProactivePrompt(false);
           setGeneratedQuote(data.quote);
           setConversationFeedback(data.conversationFeedback);
@@ -394,8 +388,6 @@ export const ChatInterface = ({ onQuoteGenerated, isGenerating }: ChatInterfaceP
       if (data?.session?.id) {
         setSessionId(data.session.id);
         setMessages([]);
-        setNeedsClarification(false);
-        setClarificationQuestions([]);
         setGeneratedQuote(null);
         setConversationFeedback(null);
         setReadiness(null);
@@ -474,14 +466,24 @@ export const ChatInterface = ({ onQuoteGenerated, isGenerating }: ChatInterfaceP
                     </p>
                   </div>
                 </div>
-                <Button 
-                  size="sm"
-                  onClick={handleGenerateQuote}
-                  className="flex-shrink-0 gap-2"
-                >
-                  <Sparkles className="h-4 w-4" />
-                  Generera offert
-                </Button>
+                <div className="flex gap-2">
+                  <Button 
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setShowProactivePrompt(false)}
+                    className="flex-shrink-0"
+                  >
+                    Fortsätt konversation
+                  </Button>
+                  <Button 
+                    size="sm"
+                    onClick={handleGenerateQuote}
+                    className="flex-shrink-0 gap-2"
+                  >
+                    <Sparkles className="h-4 w-4" />
+                    Generera offert
+                  </Button>
+                </div>
               </div>
             </div>
           )}
@@ -602,23 +604,6 @@ export const ChatInterface = ({ onQuoteGenerated, isGenerating }: ChatInterfaceP
                     <Loader2 className="h-4 w-4 animate-spin" />
                     <span className="text-sm text-muted-foreground">AI:n tänker...</span>
                   </div>
-                </div>
-              )}
-              
-              {/* Clarification quick replies */}
-              {needsClarification && clarificationQuestions.length > 0 && (
-                <div className="flex flex-wrap gap-2">
-                  {clarificationQuestions.slice(0, 3).map((question, index) => (
-                    <Button
-                      key={index}
-                      variant="outline"
-                      size="sm"
-                      onClick={() => handleSendMessage(question)}
-                      className="text-xs"
-                    >
-                      {question.substring(0, 40)}...
-                    </Button>
-                  ))}
                 </div>
               )}
               

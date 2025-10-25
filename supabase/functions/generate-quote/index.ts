@@ -1153,16 +1153,37 @@ Analysera konversationen och beskrivningen. Avgör om det finns tillräcklig inf
 ✅ "Hur många uttag/lampor handlar det om?"
 ✅ "Behöver elcentral uppdateras?"
 
+**KRITISK REGEL - EN FRÅGA I TAGET:**
+
+Du får ENDAST ställa EN (1) fråga per svar, inte flera!
+
+❌ DÅLIGT exempel:
+"Behöver stubbarna fräsas? Hur är framkomsten? Vilken typ av träd?"
+
+✅ BRA exempel:
+"Behöver stubbarna fräsas efter fällning?"
+
+När användaren svarar kommer du att få chansen att ställa nästa fråga.
+
+**Prioritera frågor enligt:**
+1. Arbetstyp och omfattning (om oklart)
+2. Tillgänglighet/framkomst
+3. Materialval (om kunden nämnt preferenser)
+4. Tidsplan
+5. Övriga detaljer
+
+Ställ ALLTID den mest kritiska obesvarade frågan först.
+
 **VIKTIGT - TON OCH STIL:**
 - Prata som till en kollega/hantverkare, inte till slutkunden
 - Använd "du" när du menar hantverkaren (t.ex. "Tar du hand om...")
 - Använd "kunden" när du refererar till slutkunden (t.ex. "...eller ska kunden stå för det?")
-- Max 2 frågor
-- Korta och tydliga
+- EN fråga per gång
+- Kort och tydlig
 - Inga A/B/C-alternativ
 
 Returnera JSON:
-{"questions": ["Fråga 1", "Fråga 2"]} eller {"questions": []}`;
+{"questions": ["Din enda fråga här"]} eller {"questions": []}`;
 
   try {
     const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
@@ -1186,7 +1207,11 @@ Returnera JSON:
     const data = await response.json();
     const result = JSON.parse(data.choices[0].message.content);
     
-    return result.questions || [];
+    // ✅ Extrahera BARA första frågan från AI:ns svar
+    const allQuestions = result.questions || [];
+    const firstQuestion = allQuestions[0];
+    
+    return firstQuestion ? [firstQuestion] : [];
   } catch (error) {
     console.error('Error asking clarification questions:', error);
     return [];
