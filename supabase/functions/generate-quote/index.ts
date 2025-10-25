@@ -66,6 +66,208 @@ function buildConversationSummary(history: ConversationMessage[], currentDescrip
 }
 
 // ============================================
+// PROBLEM #1: CONVERSATION FEEDBACK SYSTEM
+// ============================================
+
+interface ConversationFeedback {
+  understood: {
+    project_type?: string;
+    measurements?: string[];
+    materials?: string[];
+    scope?: string;
+    budget?: string;
+    timeline?: string;
+  };
+  missing: string[];
+  suggestions: string[];
+  confidence: number;
+}
+
+async function analyzeConversationProgress(
+  description: string,
+  conversationHistory: ConversationMessage[],
+  apiKey: string
+): Promise<ConversationFeedback> {
+  const historyText = conversationHistory
+    .map(m => `${m.role === 'user' ? 'Användare' : 'AI'}: ${m.content}`)
+    .join('\n');
+
+  const prompt = `Analysera konversationen och ge feedback på vad som är förstått och vad som saknas.
+
+**BESKRIVNING:**
+${description}
+
+**KONVERSATION:**
+${historyText || 'Ingen tidigare konversation'}
+
+**UPPGIFT:**
+Analysera och returnera JSON med:
+1. "understood": Objekt med förstådda detaljer (project_type, measurements, materials, scope, budget, timeline)
+2. "missing": Array med vad som saknas (specifika frågor användaren bör besvara)
+3. "suggestions": Array med förslag på nästa steg (max 2 förslag)
+4. "confidence": 0-100, hur säker du är på att kunna generera en korrekt offert
+
+**EXEMPEL:**
+{
+  "understood": {
+    "project_type": "Badrumsrenovering",
+    "measurements": ["8 kvm"],
+    "materials": ["Standard-kakel"],
+    "scope": "Med rivning"
+  },
+  "missing": ["Bortforsling inkluderad?", "Tidsram?"],
+  "suggestions": ["Kan generera offert nu med rimliga antaganden", "Förtydliga bortforsling för exaktare pris"],
+  "confidence": 85
+}
+
+Returnera bara JSON.`;
+
+  try {
+    const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model: TEXT_MODEL,
+        messages: [{ role: 'user', content: prompt }],
+        response_format: { type: 'json_object' },
+      }),
+    });
+
+    if (!response.ok) {
+      console.error('AI feedback request failed:', response.statusText);
+      return {
+        understood: {},
+        missing: [],
+        suggestions: [],
+        confidence: 50
+      };
+    }
+
+    const data = await response.json();
+    const result = JSON.parse(data.choices[0].message.content);
+    
+    return {
+      understood: result.understood || {},
+      missing: result.missing || [],
+      suggestions: result.suggestions || [],
+      confidence: result.confidence || 50
+    };
+  } catch (error) {
+    console.error('Error analyzing conversation progress:', error);
+    return {
+      understood: {},
+      missing: [],
+      suggestions: [],
+      confidence: 50
+    };
+  }
+}
+
+// ============================================
+// PROBLEM #3: QUOTE READINESS DETECTION
+// ============================================
+
+interface QuoteReadiness {
+  readiness_score: number;
+  can_generate: boolean;
+  critical_missing: string[];
+  optional_missing: string[];
+  reasoning: string;
+}
+
+function determineQuoteReadiness(
+  description: string,
+  conversationHistory: ConversationMessage[],
+  conversationFeedback: ConversationFeedback
+): QuoteReadiness {
+  const allText = [description, ...conversationHistory.map(m => m.content)].join(' ').toLowerCase();
+  
+  let score = 0;
+  const critical: string[] = [];
+  const optional: string[] = [];
+  
+  // 1. Har vi projekttyp? (20 poäng)
+  const hasProjectType = conversationFeedback.understood.project_type || 
+    allText.match(/badrum|kök|målning|altan|träd|fälla|el|vvs|renovera|bygga/i);
+  if (hasProjectType) {
+    score += 20;
+  } else {
+    critical.push('Projekttyp oklar');
+  }
+  
+  // 2. Har vi mått/omfattning? (30 poäng)
+  const hasMeasurements = conversationFeedback.understood.measurements?.length || 
+    allText.match(/\d+\s*(kvm|m2|m²|meter|m|st|rum|träd|granar)/i);
+  if (hasMeasurements) {
+    score += 30;
+  } else {
+    // Vissa projekt behöver inte exakta mått
+    if (allText.match(/fälla|stubb|träd|el|vvs/i)) {
+      score += 20; // Delpoäng
+      optional.push('Exakta mått förbättrar precision');
+    } else {
+      critical.push('Storlek/omfattning saknas');
+    }
+  }
+  
+  // 3. Har vi scope/detaljer? (25 poäng)
+  const hasScope = conversationFeedback.understood.scope || 
+    allText.match(/rivning|spackling|målning|kakel|installation|byte|reparation/i) ||
+    conversationHistory.length >= 2;
+  if (hasScope) {
+    score += 25;
+  } else {
+    optional.push('Omfattning kan förtydligas');
+  }
+  
+  // 4. Har vi material/kvalitetsnivå? (15 poäng)
+  const hasMaterials = conversationFeedback.understood.materials?.length ||
+    allText.match(/standard|premium|budget|kakel|färg|trä|material/i);
+  if (hasMaterials) {
+    score += 15;
+  } else {
+    optional.push('Materialkvalitet kan anges');
+  }
+  
+  // 5. Tidsram/deadline? (10 poäng - bonus)
+  const hasTimeline = conversationFeedback.understood.timeline ||
+    allText.match(/snabbt|inom|vecka|månad|brådskande/i);
+  if (hasTimeline) {
+    score += 10;
+  }
+  
+  // Använd också feedback confidence
+  const adjustedScore = Math.round((score + conversationFeedback.confidence) / 2);
+  
+  // Kan generera om score >= 60% OCH inga critical saknas
+  const canGenerate = adjustedScore >= 60 && critical.length === 0;
+  
+  let reasoning = '';
+  if (canGenerate) {
+    if (adjustedScore >= 85) {
+      reasoning = 'Mycket bra underlag, kan generera exakt offert';
+    } else if (adjustedScore >= 70) {
+      reasoning = 'Tillräckligt underlag, kan generera med några rimliga antaganden';
+    } else {
+      reasoning = 'Grundläggande info finns, kan generera med flera antaganden';
+    }
+  } else {
+    reasoning = 'Behöver mer info för att generera korrekt offert';
+  }
+  
+  return {
+    readiness_score: adjustedScore,
+    can_generate: canGenerate,
+    critical_missing: critical,
+    optional_missing: optional,
+    reasoning
+  };
+}
+
+// ============================================
 // STRUCTURED CONTEXT EXTRACTION (FÖRBÄTTRING #1)
 // ============================================
 
@@ -1477,14 +1679,47 @@ Deno.serve(async (req) => {
     console.log(`📊 Recipients: ${recipients} → Max ROT: ${50000 * recipients} kr, Max RUT: ${75000 * recipients} kr`);
 
     // ============================================
-    // STEP 4: CHECK IF CLARIFICATION NEEDED
+    // STEP 4: ANALYZE CONVERSATION & READINESS (FÖRBÄTTRING #1 & #3)
     // ============================================
 
-    // Only ask clarification on first message or if very unclear
-    const shouldAskClarification = conversation_history.length === 0 || 
-      (conversation_history.length === 2 && conversation_history[conversation_history.length - 1].role === 'user');
+    console.log('🔍 Analyzing conversation progress...');
+    const conversationFeedback = await analyzeConversationProgress(
+      completeDescription,
+      conversation_history,
+      LOVABLE_API_KEY
+    );
 
-    if (shouldAskClarification) {
+    console.log(`📊 Conversation feedback: ${conversationFeedback.confidence}% confidence`);
+    console.log(`  ✅ Förstått: ${Object.keys(conversationFeedback.understood).length} detaljer`);
+    console.log(`  ❓ Saknas: ${conversationFeedback.missing.length} saker`);
+
+    const readiness = determineQuoteReadiness(
+      completeDescription,
+      conversation_history,
+      conversationFeedback
+    );
+
+    console.log(`🎯 Readiness: ${readiness.readiness_score}% (kan generera: ${readiness.can_generate})`);
+    console.log(`  ⚠️ Kritiskt: ${readiness.critical_missing.length}, Valfritt: ${readiness.optional_missing.length}`);
+
+    // Update session with readiness score and stage
+    if (sessionId) {
+      const stage = readiness.can_generate ? 'ready_to_quote' : 'gathering_details';
+      await supabaseClient
+        .from('conversation_sessions')
+        .update({
+          readiness_score: readiness.readiness_score,
+          conversation_stage: stage
+        })
+        .eq('id', sessionId);
+    }
+
+    // ============================================
+    // STEP 5: CHECK IF CLARIFICATION NEEDED
+    // ============================================
+
+    // Endast fråga om critical info saknas ELLER om readiness är låg (<60%)
+    if (!readiness.can_generate && conversation_history.length <= 4) {
       console.log('🤔 Checking if clarification needed...');
       
       const questions = await askClarificationQuestions(
@@ -1501,6 +1736,8 @@ Deno.serve(async (req) => {
           JSON.stringify({
             type: 'clarification',
             questions,
+            conversationFeedback,
+            readiness
           }),
           {
             headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -1508,6 +1745,47 @@ Deno.serve(async (req) => {
           }
         );
       }
+    }
+
+    // PROBLEM #6: PROACTIVE SIGNALING
+    // Om readiness är 75-85%, fråga användaren om de vill generera nu eller lägga till mer
+    if (readiness.readiness_score >= 75 && readiness.readiness_score < 95 && conversation_history.length > 0) {
+      console.log('💡 Proactive readiness signal triggered');
+      
+      const understoodList = Object.entries(conversationFeedback.understood)
+        .filter(([_, value]) => value)
+        .map(([key, value]) => {
+          if (Array.isArray(value)) return value.join(', ');
+          return value;
+        })
+        .join('\n- ');
+
+      const proactiveMessage = `✅ Jag har nu tillräckligt med information för att skapa en offert!
+
+**Förstått:**
+${understoodList ? '- ' + understoodList : 'Grundläggande projektinfo'}
+
+🎯 **Readiness: ${readiness.readiness_score}%** - ${readiness.reasoning}
+
+${readiness.optional_missing.length > 0 ? `💡 **Kan förbättras:**\n${readiness.optional_missing.map(m => `- ${m}`).join('\n')}\n\n` : ''}Vill du:
+1. 📋 **Generera offerten nu** (säg "generera" eller "ja")
+2. ➕ **Lägga till mer info först** för högre precision
+
+Vad föredrar du?`;
+
+      return new Response(
+        JSON.stringify({
+          type: 'proactive_ready',
+          message: proactiveMessage,
+          conversationFeedback,
+          readiness,
+          can_generate_now: true
+        }),
+        {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          status: 200,
+        }
+      );
     }
 
     // ============================================
@@ -1636,6 +1914,8 @@ Deno.serve(async (req) => {
         quote,
         deductionType: finalDeductionType,
         confidence: confidenceScore,
+        conversationFeedback,
+        readiness,
         realismWarnings: realismWarnings.length > 0 ? realismWarnings : undefined,
         validation: validation.issues.length > 0 ? {
           warnings: validation.issues

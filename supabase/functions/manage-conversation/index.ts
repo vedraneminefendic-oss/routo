@@ -101,10 +101,37 @@ serve(async (req) => {
         );
       }
 
-      // Uppdatera last_message_at
+      // Uppdatera last_message_at och answered_questions om det är ett user-meddelande
+      const updateData: any = { last_message_at: new Date().toISOString() };
+      
+      if (message.role === 'user') {
+        // Extrahera svar från meddelandet för answered_questions tracking
+        const content = message.content.toLowerCase();
+        const currentAnswers = session.answered_questions || {};
+        
+        // Spara svar baserat på nyckelord
+        if (content.match(/\d+\s*(kvm|m2|m²|kvadratmeter)/i)) {
+          const match = content.match(/(\d+(?:[.,]\d+)?)\s*(kvm|m2|m²)/i);
+          if (match) currentAnswers.area = `${match[1]} ${match[2]}`;
+        }
+        if (content.match(/rivning/i)) {
+          currentAnswers.demolition = content.match(/ja|ingår|med/i) ? 'ja' : 'nej';
+        }
+        if (content.match(/kakel|material/i)) {
+          if (content.match(/standard/i)) currentAnswers.material_quality = 'standard';
+          if (content.match(/premium|hög/i)) currentAnswers.material_quality = 'premium';
+          if (content.match(/budget|enkel/i)) currentAnswers.material_quality = 'budget';
+        }
+        if (content.match(/bortforsling/i)) {
+          currentAnswers.disposal = content.match(/ja|ingår|med/i) ? 'ingår' : 'ej ingår';
+        }
+        
+        updateData.answered_questions = currentAnswers;
+      }
+
       await supabaseClient
         .from('conversation_sessions')
-        .update({ last_message_at: new Date().toISOString() })
+        .update(updateData)
         .eq('id', sessionId);
 
       return new Response(

@@ -17,6 +17,8 @@ export interface Message {
   role: 'user' | 'assistant';
   content: string;
   timestamp: Date;
+  conversationFeedback?: any;
+  readiness?: any;
 }
 
 interface ChatInterfaceProps {
@@ -31,6 +33,9 @@ export const ChatInterface = ({ onQuoteGenerated, isGenerating }: ChatInterfaceP
   const [needsClarification, setNeedsClarification] = useState(false);
   const [clarificationQuestions, setClarificationQuestions] = useState<string[]>([]);
   const [generatedQuote, setGeneratedQuote] = useState<any>(null);
+  const [conversationFeedback, setConversationFeedback] = useState<any>(null);
+  const [readiness, setReadiness] = useState<any>(null);
+  const [showProactivePrompt, setShowProactivePrompt] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const chatContainerRef = useRef<HTMLDivElement>(null);
   const { toast } = useToast();
@@ -215,26 +220,54 @@ export const ChatInterface = ({ onQuoteGenerated, isGenerating }: ChatInterfaceP
 
         // Hantera olika response-typer
         if (data?.type === 'clarification') {
-        // AI:n behöver mer info
-        const aiMessage: Message = {
-          id: (Date.now() + 1).toString(),
-          role: 'assistant',
-          content: data.questions.join('\n\n'),
-          timestamp: new Date()
-        };
-        setMessages(prev => [...prev, aiMessage]);
-        setNeedsClarification(true);
-        setClarificationQuestions(data.questions);
-        
-        // Spara AI-svar i DB
-        await supabase.functions.invoke('manage-conversation', {
-          body: {
-            action: 'save_message',
-            sessionId,
-            message: { role: 'assistant', content: aiMessage.content }
-          }
-        });
-        
+          // AI:n behöver mer info
+          const aiMessage: Message = {
+            id: (Date.now() + 1).toString(),
+            role: 'assistant',
+            content: data.questions.join('\n\n'),
+            timestamp: new Date(),
+            conversationFeedback: data.conversationFeedback,
+            readiness: data.readiness
+          };
+          setMessages(prev => [...prev, aiMessage]);
+          setNeedsClarification(true);
+          setClarificationQuestions(data.questions);
+          setConversationFeedback(data.conversationFeedback);
+          setReadiness(data.readiness);
+          
+          // Spara AI-svar i DB
+          await supabase.functions.invoke('manage-conversation', {
+            body: {
+              action: 'save_message',
+              sessionId,
+              message: { role: 'assistant', content: aiMessage.content }
+            }
+          });
+          
+        } else if (data?.type === 'proactive_ready') {
+          // PROBLEM #6: PROACTIVE SIGNALING
+          const aiMessage: Message = {
+            id: (Date.now() + 1).toString(),
+            role: 'assistant',
+            content: data.message,
+            timestamp: new Date(),
+            conversationFeedback: data.conversationFeedback,
+            readiness: data.readiness
+          };
+          setMessages(prev => [...prev, aiMessage]);
+          setShowProactivePrompt(true);
+          setConversationFeedback(data.conversationFeedback);
+          setReadiness(data.readiness);
+          
+          // Spara AI-svar
+          await supabase.functions.invoke('manage-conversation', {
+            body: {
+              action: 'save_message',
+              sessionId,
+              message: { role: 'assistant', content: aiMessage.content }
+            }
+          });
+          
         } else if (data?.type === 'complete_quote') {
           const elapsedTime = ((Date.now() - startTime) / 1000).toFixed(1);
           
@@ -247,7 +280,10 @@ export const ChatInterface = ({ onQuoteGenerated, isGenerating }: ChatInterfaceP
           // Komplett offert genererad - visa inline
           setNeedsClarification(false);
           setClarificationQuestions([]);
+          setShowProactivePrompt(false);
           setGeneratedQuote(data.quote);
+          setConversationFeedback(data.conversationFeedback);
+          setReadiness(data.readiness);
           
           const aiMessage: Message = {
             id: (Date.now() + 1).toString(),
@@ -329,6 +365,9 @@ export const ChatInterface = ({ onQuoteGenerated, isGenerating }: ChatInterfaceP
         setNeedsClarification(false);
         setClarificationQuestions([]);
         setGeneratedQuote(null);
+        setConversationFeedback(null);
+        setReadiness(null);
+        setShowProactivePrompt(false);
         toast({
           title: "Ny konversation",
           description: "Börja om med en ny offertförfrågan."
@@ -432,6 +471,83 @@ export const ChatInterface = ({ onQuoteGenerated, isGenerating }: ChatInterfaceP
               {messages.map((message) => (
                 <MessageBubble key={message.id} message={message} />
               ))}
+              
+              {/* PROBLEM #1: CONVERSATION FEEDBACK DISPLAY */}
+              {conversationFeedback && !generatedQuote && (
+                <div className="bg-muted/50 border border-border rounded-lg p-4 space-y-3 animate-in fade-in-50">
+                  <div className="flex items-center justify-between">
+                    <h4 className="text-sm font-semibold text-foreground">
+                      📊 AI:ns förståelse
+                    </h4>
+                    {readiness && (
+                      <div className="flex items-center gap-2">
+                        <div className="text-xs text-muted-foreground">
+                          Readiness:
+                        </div>
+                        <div className={`text-xs font-bold ${
+                          readiness.readiness_score >= 85 ? 'text-green-600' :
+                          readiness.readiness_score >= 70 ? 'text-yellow-600' :
+                          'text-orange-600'
+                        }`}>
+                          {readiness.readiness_score}%
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                  
+                  {/* Förstått */}
+                  {Object.keys(conversationFeedback.understood).length > 0 && (
+                    <div className="space-y-1">
+                      <div className="text-xs font-medium text-muted-foreground">✅ Förstått:</div>
+                      <div className="text-sm space-y-1">
+                        {Object.entries(conversationFeedback.understood).map(([key, value]: [string, any]) => (
+                          value && (
+                            <div key={key} className="text-foreground/80">
+                              • {key === 'project_type' ? 'Projekttyp' : 
+                                 key === 'measurements' ? 'Mått' :
+                                 key === 'materials' ? 'Material' :
+                                 key === 'scope' ? 'Omfattning' :
+                                 key === 'budget' ? 'Budget' :
+                                 key === 'timeline' ? 'Tidsram' : key}: {
+                                Array.isArray(value) ? value.join(', ') : value
+                              }
+                            </div>
+                          )
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  
+                  {/* Saknas */}
+                  {conversationFeedback.missing && conversationFeedback.missing.length > 0 && (
+                    <div className="space-y-1">
+                      <div className="text-xs font-medium text-muted-foreground">❓ Kan förbättras:</div>
+                      <div className="text-sm space-y-1">
+                        {conversationFeedback.missing.map((item: string, idx: number) => (
+                          <div key={idx} className="text-foreground/80">
+                            • {item}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  
+                  {/* Förslag */}
+                  {conversationFeedback.suggestions && conversationFeedback.suggestions.length > 0 && (
+                    <div className="space-y-1">
+                      <div className="text-xs font-medium text-muted-foreground">💡 Förslag:</div>
+                      <div className="text-sm space-y-1">
+                        {conversationFeedback.suggestions.map((suggestion: string, idx: number) => (
+                          <div key={idx} className="text-foreground/80 italic">
+                            • {suggestion}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+              
               {isTyping && (
                 <div className="flex items-center gap-2 text-muted-foreground">
                   <Loader2 className="h-4 w-4 animate-spin" />

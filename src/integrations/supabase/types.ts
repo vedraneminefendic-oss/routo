@@ -96,29 +96,38 @@ export type Database = {
       }
       conversation_sessions: {
         Row: {
+          answered_questions: Json | null
+          conversation_stage: string | null
           created_at: string | null
           id: string
           last_message_at: string | null
           learned_preferences: Json | null
           quote_id: string | null
+          readiness_score: number | null
           status: string | null
           user_id: string
         }
         Insert: {
+          answered_questions?: Json | null
+          conversation_stage?: string | null
           created_at?: string | null
           id?: string
           last_message_at?: string | null
           learned_preferences?: Json | null
           quote_id?: string | null
+          readiness_score?: number | null
           status?: string | null
           user_id: string
         }
         Update: {
+          answered_questions?: Json | null
+          conversation_stage?: string | null
           created_at?: string | null
           id?: string
           last_message_at?: string | null
           learned_preferences?: Json | null
           quote_id?: string | null
+          readiness_score?: number | null
           status?: string | null
           user_id?: string
         }
