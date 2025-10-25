@@ -2387,42 +2387,6 @@ Deno.serve(async (req) => {
     console.log(`📊 Recipients: ${recipients} → Max ROT: ${50000 * recipients} kr, Max RUT: ${75000 * recipients} kr`);
 
     // ============================================
-    // STEP 4: ANALYZE CONVERSATION & READINESS (FÖRBÄTTRING #1 & #3)
-    // ============================================
-
-    console.log('🔍 Analyzing conversation progress...');
-    const conversationFeedback = await analyzeConversationProgress(
-      completeDescription,
-      conversation_history,
-      LOVABLE_API_KEY
-    );
-
-    console.log(`📊 Conversation feedback: ${conversationFeedback.confidence}% confidence`);
-    console.log(`  ✅ Förstått: ${Object.keys(conversationFeedback.understood).length} detaljer`);
-    console.log(`  ❓ Saknas: ${conversationFeedback.missing.length} saker`);
-
-    const readiness = determineQuoteReadiness(
-      completeDescription,
-      conversation_history,
-      conversationFeedback
-    );
-
-    console.log(`🎯 Readiness: ${readiness.readiness_score}% (kan generera: ${readiness.can_generate})`);
-    console.log(`  ⚠️ Kritiskt: ${readiness.critical_missing.length}, Valfritt: ${readiness.optional_missing.length}`);
-
-    // Update session with readiness score and stage
-    if (sessionId) {
-      const stage = readiness.can_generate ? 'ready_to_quote' : 'gathering_details';
-      await supabaseClient
-        .from('conversation_sessions')
-        .update({
-          readiness_score: readiness.readiness_score,
-          conversation_stage: stage
-        })
-        .eq('id', sessionId);
-    }
-
-    // ============================================
     // ÅTGÄRD 3: FETCH ACTUAL CONVERSATION FROM DB IF SESSION EXISTS
     // ============================================
     
@@ -2449,6 +2413,78 @@ Deno.serve(async (req) => {
       } catch (error) {
         console.error('Exception fetching messages:', error);
       }
+    }
+
+    // ============================================
+    // STEP 4: ANALYZE CONVERSATION & READINESS (FÖRBÄTTRING #1 & #3)
+    // ============================================
+
+    console.log('🔍 Analyzing conversation progress...');
+    
+    // Kolla om vi har cachat feedback för denna session
+    let conversationFeedback: ConversationFeedback;
+
+    if (sessionId && actualConversationHistory.length > 0) {
+      const { data: cachedSession } = await supabaseClient
+        .from('conversation_sessions')
+        .select('conversation_feedback')
+        .eq('id', sessionId)
+        .single();
+      
+      // Använd cachad feedback om vi redan analyserat exakt denna konversationslängd
+      if (cachedSession?.conversation_feedback?.message_count === actualConversationHistory.length) {
+        conversationFeedback = cachedSession.conversation_feedback.data;
+        console.log('💾 Using cached conversation feedback');
+      } else {
+        // Annars analysera på nytt
+        conversationFeedback = await analyzeConversationProgress(
+          completeDescription,
+          actualConversationHistory,
+          LOVABLE_API_KEY
+        );
+        
+        // Cacha resultatet
+        await supabaseClient
+          .from('conversation_sessions')
+          .update({
+            conversation_feedback: {
+              message_count: actualConversationHistory.length,
+              data: conversationFeedback
+            }
+          })
+          .eq('id', sessionId);
+      }
+    } else {
+      conversationFeedback = await analyzeConversationProgress(
+        completeDescription,
+        conversation_history,
+        LOVABLE_API_KEY
+      );
+    }
+
+    console.log(`📊 Conversation feedback: ${conversationFeedback.confidence}% confidence`);
+    console.log(`  ✅ Förstått: ${Object.keys(conversationFeedback.understood).length} detaljer`);
+    console.log(`  ❓ Saknas: ${conversationFeedback.missing.length} saker`);
+
+    const readiness = determineQuoteReadiness(
+      completeDescription,
+      conversation_history,
+      conversationFeedback
+    );
+
+    console.log(`🎯 Readiness: ${readiness.readiness_score}% (kan generera: ${readiness.can_generate})`);
+    console.log(`  ⚠️ Kritiskt: ${readiness.critical_missing.length}, Valfritt: ${readiness.optional_missing.length}`);
+
+    // Update session with readiness score and stage
+    if (sessionId) {
+      const stage = readiness.can_generate ? 'ready_to_quote' : 'gathering_details';
+      await supabaseClient
+        .from('conversation_sessions')
+        .update({
+          readiness_score: readiness.readiness_score,
+          conversation_stage: stage
+        })
+        .eq('id', sessionId);
     }
 
     // ============================================
@@ -2582,10 +2618,7 @@ ${summary}
 
 🎯 **Readiness: ${readiness.readiness_score}%**
 
-${readiness.optional_missing.length > 0 ? `💡 **Kan förbättras:**\n${readiness.optional_missing.map(m => `- ${m}`).join('\n')}\n\n` : ''}**Stämmer detta?**
-- ✅ **Ja, generera offert** (säg "ja", "stämmer" eller "generera")
-- ✏️ **Ändra något** (berätta vad som ska ändras)
-- ➕ **Lägg till mer info** (ange ytterligare detaljer)`;
+${readiness.optional_missing.length > 0 ? `💡 **Kan förbättras:**\n${readiness.optional_missing.map(m => `- ${m}`).join('\n')}\n\n` : ''}**Stämmer detta?**`;
 
       return new Response(
         JSON.stringify({
@@ -2594,7 +2627,12 @@ ${readiness.optional_missing.length > 0 ? `💡 **Kan förbättras:**\n${readine
           summary: summary,
           conversationFeedback,
           readiness,
-          can_generate_now: true
+          can_generate_now: true,
+          quickReplies: [
+            { label: '✅ Ja, generera offert', action: 'confirm' },
+            { label: '✏️ Ändra något', action: 'edit' },
+            { label: '➕ Lägg till mer info', action: 'add_info' }
+          ]
         }),
         {
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -2662,7 +2700,12 @@ Svara med **1**, **2** eller **3** (eller "granska", "generera", "mer info")`;
           message: reviewMessage,
           conversationFeedback,
           readiness,
-          can_generate_now: true
+          can_generate_now: true,
+          quickReplies: [
+            { label: '✅ Granska sammanfattning', action: 'review' },
+            { label: '📋 Generera direkt', action: 'generate' },
+            { label: '➕ Lägg till mer info', action: 'more_info' }
+          ]
         }),
         {
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },

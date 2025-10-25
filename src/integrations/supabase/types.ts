@@ -97,6 +97,7 @@ export type Database = {
       conversation_sessions: {
         Row: {
           answered_questions: Json | null
+          conversation_feedback: Json | null
           conversation_stage: string | null
           created_at: string | null
           id: string
@@ -109,6 +110,7 @@ export type Database = {
         }
         Insert: {
           answered_questions?: Json | null
+          conversation_feedback?: Json | null
           conversation_stage?: string | null
           created_at?: string | null
           id?: string
@@ -121,6 +123,7 @@ export type Database = {
         }
         Update: {
           answered_questions?: Json | null
+          conversation_feedback?: Json | null
           conversation_stage?: string | null
           created_at?: string | null
           id?: string

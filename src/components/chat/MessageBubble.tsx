@@ -1,13 +1,33 @@
 import { cn } from "@/lib/utils";
 import { Bot, User } from "lucide-react";
 import { Message } from "./ChatInterface";
+import { QuickReplies } from "./QuickReplies";
 
 interface MessageBubbleProps {
   message: Message;
+  onSendMessage?: (content: string) => void;
+  isTyping?: boolean;
 }
 
-export const MessageBubble = ({ message }: MessageBubbleProps) => {
+export const MessageBubble = ({ message, onSendMessage, isTyping }: MessageBubbleProps) => {
   const isUser = message.role === 'user';
+  
+  const handleQuickReplySelect = (action: string, label: string) => {
+    if (!onSendMessage) return;
+    
+    // Map action till faktiskt svar
+    const responseMap: Record<string, string> = {
+      'confirm': 'Ja, generera offert',
+      'edit': 'Jag vill ändra något',
+      'add_info': 'Jag vill lägga till mer information',
+      'review': 'Granska sammanfattning',
+      'generate': 'Generera direkt',
+      'more_info': 'Lägg till mer info'
+    };
+    
+    const response = responseMap[action] || label;
+    onSendMessage(response);
+  };
   
   return (
     <div className={cn(
@@ -54,6 +74,13 @@ export const MessageBubble = ({ message }: MessageBubbleProps) => {
             minute: '2-digit' 
           })}
         </span>
+        {!isUser && message.quickReplies && message.quickReplies.length > 0 && (
+          <QuickReplies
+            replies={message.quickReplies}
+            onSelect={handleQuickReplySelect}
+            disabled={isTyping}
+          />
+        )}
       </div>
     </div>
   );

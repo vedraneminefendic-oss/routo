@@ -19,6 +19,7 @@ export interface Message {
   timestamp: Date;
   conversationFeedback?: any;
   readiness?: any;
+  quickReplies?: Array<{ label: string; action: string }>;
 }
 
 interface ChatInterfaceProps {
@@ -274,7 +275,8 @@ export const ChatInterface = ({ onQuoteGenerated, isGenerating }: ChatInterfaceP
             content: data.message,
             timestamp: new Date(),
             conversationFeedback: data.conversationFeedback,
-            readiness: data.readiness
+            readiness: data.readiness,
+            quickReplies: data.quickReplies
           };
           setMessages(prev => [...prev, aiMessage]);
           setConversationFeedback(data.conversationFeedback);
@@ -297,7 +299,8 @@ export const ChatInterface = ({ onQuoteGenerated, isGenerating }: ChatInterfaceP
             content: data.message,
             timestamp: new Date(),
             conversationFeedback: data.conversationFeedback,
-            readiness: data.readiness
+            readiness: data.readiness,
+            quickReplies: data.quickReplies
           };
           setMessages(prev => [...prev, aiMessage]);
           setConversationFeedback(data.conversationFeedback);
@@ -743,7 +746,12 @@ export const ChatInterface = ({ onQuoteGenerated, isGenerating }: ChatInterfaceP
           ) : (
             <>
               {messages.map((message) => (
-                <MessageBubble key={message.id} message={message} />
+                <MessageBubble 
+                  key={message.id} 
+                  message={message} 
+                  onSendMessage={handleSendMessage}
+                  isTyping={isTyping}
+                />
               ))}
               
               {/* Quote generated - show button to open sheet */}
