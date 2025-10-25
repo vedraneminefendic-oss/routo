@@ -2043,41 +2043,101 @@ Deno.serve(async (req) => {
     }
 
     // ============================================
+    // ÅTGÄRD 3: FETCH ACTUAL CONVERSATION FROM DB IF SESSION EXISTS
+    // ============================================
+    
+    let actualConversationHistory = conversation_history || [];
+    
+    if (sessionId) {
+      console.log('📚 Fetching conversation history from database...');
+      try {
+        const { data: messagesData, error: messagesError } = await supabaseClient
+          .from('conversation_messages')
+          .select('role, content, created_at')
+          .eq('session_id', sessionId)
+          .order('created_at', { ascending: true });
+        
+        if (messagesError) {
+          console.error('Error fetching messages:', messagesError);
+        } else if (messagesData && messagesData.length > 0) {
+          actualConversationHistory = messagesData.map((m: any) => ({
+            role: m.role as 'user' | 'assistant',
+            content: m.content
+          }));
+          console.log(`✅ Loaded ${actualConversationHistory.length} messages from DB`);
+        }
+      } catch (error) {
+        console.error('Exception fetching messages:', error);
+      }
+    }
+
+    // ============================================
     // STEP 5: CHECK IF CLARIFICATION NEEDED
     // ============================================
 
     // ÅTGÄRD #3: Endast fråga om readiness < 85% OCH critical info saknas
-    if (!readiness.can_generate && conversation_history.length <= 4) {
+    if (!readiness.can_generate && actualConversationHistory.length <= 4) {
       console.log('🤔 Checking if clarification needed...');
       
       const questions = await askClarificationQuestions(
         completeDescription,
-        conversation_history,
+        actualConversationHistory,
         similarQuotes,
         LOVABLE_API_KEY
       );
 
       if (questions && questions.length > 0) {
-        console.log(`💬 Asking ${questions.length} clarification question(s)`);
+        // ÅTGÄRD 4B: Final deduplication innan retur
+        const lastAssistantMessage = actualConversationHistory
+          .filter(m => m.role === 'assistant')
+          .slice(-1)[0];
         
-        return new Response(
-          JSON.stringify({
-            type: 'clarification',
-            questions,
-            conversationFeedback,
-            readiness
-          }),
-          {
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-            status: 200,
-          }
-        );
+        const lastAssistantQuestion = lastAssistantMessage 
+          ? (lastAssistantMessage.content.match(/[^.!?]*\?/g) || []).map(q => q.trim())
+          : [];
+        
+        console.log('📝 Last assistant questions:', lastAssistantQuestion);
+        
+        const normalizeQuestion = (q: string) => 
+          q.trim().toLowerCase().replace(/[.!?]+$/, '');
+        
+        const lastQuestionSet = new Set(lastAssistantQuestion.map(normalizeQuestion));
+        
+        const deduplicatedQuestions = questions.filter(q => {
+          const normalized = normalizeQuestion(q);
+          return !lastQuestionSet.has(normalized);
+        });
+        
+        console.log(`💬 Questions before dedupe: ${questions.length}, after: ${deduplicatedQuestions.length}`);
+        
+        if (deduplicatedQuestions.length !== questions.length) {
+          console.log('⚠️ Removed duplicate questions:', 
+            questions.filter(q => !deduplicatedQuestions.includes(q))
+          );
+        }
+        
+        if (deduplicatedQuestions.length > 0) {
+          console.log(`💬 Asking ${deduplicatedQuestions.length} clarification question(s)`);
+          
+          return new Response(
+            JSON.stringify({
+              type: 'clarification',
+              questions: deduplicatedQuestions,
+              conversationFeedback,
+              readiness
+            }),
+            {
+              headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+              status: 200,
+            }
+          );
+        }
       }
     }
 
     // ÅTGÄRD #3: PROACTIVE SIGNALING
     // Om readiness är 70-84%, fråga användaren om de vill generera nu eller lägga till mer
-    if (readiness.readiness_score >= 70 && readiness.readiness_score < 85 && conversation_history.length > 0) {
+    if (readiness.readiness_score >= 70 && readiness.readiness_score < 85 && actualConversationHistory.length > 0) {
       console.log('💡 Proactive readiness signal triggered');
       
       const understoodList = Object.entries(conversationFeedback.understood)
@@ -2122,9 +2182,10 @@ Vad föredrar du?`;
 
     console.log('🎯 Generating complete quote...');
     
+    // ÅTGÄRD 4C: Använd faktisk historik från DB även här
     let quote = await generateQuoteWithAI(
       completeDescription,
-      conversation_history,
+      actualConversationHistory,
       hourlyRates || [],
       equipmentRates || [],
       similarQuotes,

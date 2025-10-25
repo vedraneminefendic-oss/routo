@@ -39,6 +39,7 @@ export const ChatInterface = ({ onQuoteGenerated, isGenerating }: ChatInterfaceP
   const [feedbackExpanded, setFeedbackExpanded] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const chatContainerRef = useRef<HTMLDivElement>(null);
+  const askedQuestions = useRef<Set<string>>(new Set());
   const { toast } = useToast();
 
   const scrollToBottom = () => {
@@ -172,7 +173,8 @@ export const ChatInterface = ({ onQuoteGenerated, isGenerating }: ChatInterfaceP
         description: "Analyserar projekt och kostnader"
       });
 
-      const conversationHistory = messages.map(m => ({
+      // ÅTGÄRD 1: Inkludera senaste user-meddelandet direkt i conversation_history
+      const conversationHistory = [...messages, userMessage].map(m => ({
         role: m.role,
         content: m.content
       }));
@@ -221,11 +223,32 @@ export const ChatInterface = ({ onQuoteGenerated, isGenerating }: ChatInterfaceP
 
         // Hantera olika response-typer
         if (data?.type === 'clarification') {
+          // ÅTGÄRD 2: Filtrera bort dubblettfrågor innan visning
+          const normalizeQuestion = (q: string) => 
+            q.trim().toLowerCase().replace(/[.!?]+$/, '');
+          
+          const newQuestions = data.questions.filter((q: string) => {
+            const normalized = normalizeQuestion(q);
+            return !askedQuestions.current.has(normalized);
+          });
+          
+          // Lägg till nya frågor i set
+          newQuestions.forEach((q: string) => {
+            askedQuestions.current.add(normalizeQuestion(q));
+          });
+          
+          // Om inga nya frågor, hoppa över detta steg
+          if (newQuestions.length === 0) {
+            console.log('⚠️ Alla frågor redan ställda, hoppar över');
+            setIsTyping(false);
+            return;
+          }
+          
           // AI:n behöver mer info
           const aiMessage: Message = {
             id: (Date.now() + 1).toString(),
             role: 'assistant',
-            content: data.questions.join('\n\n'),
+            content: newQuestions.join('\n\n'),
             timestamp: new Date(),
             conversationFeedback: data.conversationFeedback,
             readiness: data.readiness
@@ -394,6 +417,7 @@ export const ChatInterface = ({ onQuoteGenerated, isGenerating }: ChatInterfaceP
         setConversationFeedback(null);
         setReadiness(null);
         setShowProactivePrompt(false);
+        askedQuestions.current.clear(); // Rensa frågehistorik
         toast({
           title: "Ny konversation",
           description: "Börja om med en ny offertförfrågan."
