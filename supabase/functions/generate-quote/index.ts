@@ -66,6 +66,154 @@ function buildConversationSummary(history: ConversationMessage[], currentDescrip
 }
 
 // ============================================
+// STRUCTURED CONTEXT EXTRACTION (FÖRBÄTTRING #1)
+// ============================================
+
+function extractStructuredContext(conversationHistory: ConversationMessage[], description: string): string {
+  const measurements: string[] = [];
+  const materials: string[] = [];
+  const budget: string[] = [];
+  const timeline: string[] = [];
+  const scope: string[] = [];
+  
+  // Kombinera beskrivning med konversationshistorik
+  const allText = [description, ...conversationHistory.map(m => m.content)];
+  
+  for (const text of allText) {
+    const lower = text.toLowerCase();
+    
+    // Extrahera mått (t.ex. "8 kvm", "20 meter", "3 granar")
+    const measurementMatches = text.match(/(\d+(?:[.,]\d+)?)\s*(kvm|m2|m²|kvadratmeter|meter|m|st|träd|granar|rum)/gi);
+    if (measurementMatches) {
+      measurements.push(...measurementMatches.map(m => m.trim()));
+    }
+    
+    // Extrahera material-omnämnanden
+    if (lower.match(/kakel|klinker|färg|trä|cement|gips|tapet|parkettgolv|laminat|blandare|armatur|vvs/gi)) {
+      const materialMatch = text.match(/[\wåäöÅÄÖ\s]+(?:kakel|klinker|färg|trä|cement|gips|tapet|parkettgolv|laminat|blandare|armatur|vvs)[\wåäöÅÄÖ\s]*/gi);
+      if (materialMatch) materials.push(...materialMatch.map(m => m.trim()));
+    }
+    
+    // Extrahera budget/kostnad
+    if (lower.match(/budget|(\d+)\s*kr|kosta|pris|inom/gi)) {
+      const budgetMatch = text.match(/.*(?:budget|kosta|pris|inom).*?(?:\d+\s*kr|\d+\s*000)?/gi);
+      if (budgetMatch) budget.push(...budgetMatch.map(b => b.trim()));
+    }
+    
+    // Extrahera tidslinje
+    if (lower.match(/vecka|månad|dag|snabbt|brådskande|deadline|färdig|klart/gi)) {
+      const timeMatch = text.match(/.*(?:vecka|månad|dag|snabbt|brådskande|deadline|färdig|klart).*/gi);
+      if (timeMatch) timeline.push(...timeMatch.map(t => t.trim()));
+    }
+    
+    // Extrahera omfattning (rivning, förberedelse, etc)
+    if (lower.match(/riv|förbered|städ|bortforsl|transport|grund|fundament|mark/gi)) {
+      scope.push(text.trim());
+    }
+  }
+  
+  // Ta bort dubbletter
+  const uniqueMeasurements = [...new Set(measurements)];
+  const uniqueMaterials = [...new Set(materials)].slice(0, 5); // Max 5 för att inte överväldiga
+  const uniqueBudget = [...new Set(budget)].slice(0, 3);
+  const uniqueTimeline = [...new Set(timeline)].slice(0, 3);
+  const uniqueScope = [...new Set(scope)].slice(0, 5);
+  
+  return `
+**📊 STRUKTURERAD KONTEXT FRÅN KONVERSATIONEN:**
+
+**Mått som nämnts:**
+${uniqueMeasurements.length > 0 ? uniqueMeasurements.map(m => `- ${m}`).join('\n') : '❌ Inga specifika mått nämnda'}
+
+**Material som diskuterats:**
+${uniqueMaterials.length > 0 ? uniqueMaterials.map(m => `- ${m}`).join('\n') : '❌ Inga specifika material nämnda'}
+
+**Budget/Kostnadsförväntningar:**
+${uniqueBudget.length > 0 ? uniqueBudget.map(b => `- ${b}`).join('\n') : '❌ Ingen budget nämnd'}
+
+**Tidslinje:**
+${uniqueTimeline.length > 0 ? uniqueTimeline.map(t => `- ${t}`).join('\n') : '❌ Ingen tidslinje nämnd'}
+
+**Omfattning/Extra arbeten som diskuterats:**
+${uniqueScope.length > 0 ? uniqueScope.map(s => `- ${s}`).join('\n') : '❌ Inget extra arbete utöver huvudprojekt diskuterat'}
+
+**🚨 VIKTIGT:** Om något INTE står i listorna ovan och kostar >5000 kr → Inkludera INTE i offerten!
+  `.trim();
+}
+
+// ============================================
+// VALIDATE QUOTE AGAINST CONVERSATION (FÖRBÄTTRING #2)
+// ============================================
+
+function validateQuoteAgainstConversation(
+  quote: any,
+  conversationHistory: ConversationMessage[],
+  description: string
+): { isValid: boolean; unmentionedItems: string[]; removedValue: number } {
+  
+  const fullText = (description + ' ' + conversationHistory
+    .map(m => m.content)
+    .join(' ')).toLowerCase();
+  
+  const unmentioned: string[] = [];
+  let removedValue = 0;
+  
+  // Kolla workItems
+  const originalWorkItems = [...(quote.workItems || [])];
+  const validWorkItems: any[] = [];
+  
+  for (const item of originalWorkItems) {
+    // Om item kostar >5000 kr → kräver omnämnande
+    if (item.subtotal > 5000) {
+      // Extrahera nyckelord från item name (minst 4 tecken)
+      const keywords = item.name.toLowerCase()
+        .split(/[\s\-,\/]+/)
+        .filter((kw: string) => kw.length >= 4);
+      
+      // Kolla om NÅGOT av nyckelorden finns i konversationen
+      const mentioned = keywords.some((kw: string) => fullText.includes(kw));
+      
+      if (!mentioned) {
+        unmentioned.push(`${item.name} (${Math.round(item.subtotal)} kr) - inte nämnt i konversation`);
+        removedValue += item.subtotal;
+        console.log(`🗑️ Removing unmentioned item: ${item.name} (${item.subtotal} kr)`);
+      } else {
+        validWorkItems.push(item);
+      }
+    } else {
+      // Små poster (<5000 kr) behåller vi (standardposter)
+      validWorkItems.push(item);
+    }
+  }
+  
+  // Uppdatera quote om något togs bort
+  if (validWorkItems.length < originalWorkItems.length) {
+    quote.workItems = validWorkItems;
+    
+    // Räkna om summary
+    quote.summary.workCost = validWorkItems.reduce((sum: number, item: any) => sum + item.subtotal, 0);
+    quote.summary.totalBeforeVAT = quote.summary.workCost + (quote.summary.materialCost || 0) + (quote.summary.equipmentCost || 0);
+    quote.summary.vat = quote.summary.totalBeforeVAT * 0.25;
+    quote.summary.totalWithVAT = quote.summary.totalBeforeVAT + quote.summary.vat;
+    
+    // Om det finns deduction, räkna om customerPays
+    if (quote.summary.deduction) {
+      quote.summary.deduction.customerPays = quote.summary.totalWithVAT - quote.summary.deduction.actualDeduction;
+    } else {
+      quote.summary.customerPays = quote.summary.totalWithVAT;
+    }
+    
+    console.log(`✅ Removed ${originalWorkItems.length - validWorkItems.length} unmentioned items (total: ${Math.round(removedValue)} kr)`);
+  }
+  
+  return {
+    isValid: unmentioned.length === 0,
+    unmentionedItems: unmentioned,
+    removedValue: removedValue
+  };
+}
+
+// ============================================
 // DEDUCTION TYPE DETECTION
 // ============================================
 
@@ -456,24 +604,67 @@ ${similarQuotesText}
 
 ${industryDataText}
 
+**🚨 BESLUTSPROCESS (FÖLJ STRIKT I ORDNING) - FÖRBÄTTRING #3:**
+
+När du överväger att inkludera ett arbetsmoment eller material i offerten, FÖLJ DENNA TRAPPA:
+
+**STEG 1: Är detta EXPLICIT nämnt i konversationen ovan?**
+   ✅ JA → Gå till steg 2
+   ❌ NEJ → Gå till steg 3
+
+**STEG 2: Kostar det mer än 5000 kr?**
+   ✅ JA → Inkludera INTE (även om det verkar logiskt!)
+   ❌ NEJ (under 5000 kr) → Gå till steg 3
+
+**STEG 3: Är det en standardpost <2000 kr?**
+   ✅ JA → Inkludera om relevant för projekttypen
+   ❌ NEJ → Inkludera INTE
+
+**EXEMPEL PÅ KORREKT BESLUTSFATTANDE:**
+
+❌ **FEL:**
+- Beskrivning: "Fälla 3 stora granar"
+- AI inkluderar: "Arboristarbete - 8h × 800 kr = 6400 kr"
+- ⚠️ Problem: "Arborist" nämndes INTE → ska INTE inkluderas även om det verkar logiskt!
+
+✅ **RÄTT:**
+- Beskrivning: "Fälla 3 stora granar"
+- AI inkluderar: "Fällning av träd - 6h × 800 kr" + "Bortforsling - 1200 kr" (standardpost)
+- ✅ Korrekt: Bara det som nämnts + relevanta standardposter
+
+❌ **FEL:**
+- Beskrivning: "Renovera badrum 8 kvm"
+- AI inkluderar: "Rivning av kakel och VVS - 15h × 850 kr = 12750 kr"
+- ⚠️ Problem: "Rivning" nämndes INTE → ska INTE inkluderas!
+
+✅ **RÄTT:**
+- Beskrivning: "Renovera badrum 8 kvm, rivning ingår"
+- AI inkluderar: "Rivning - 15h" + "Kakelläggning - 20h" + "VVS-installation - 12h"
+- ✅ Korrekt: Rivning explicit nämnt
+
 **STANDARDPOSTER (inkludera ALLTID om relevanta för projektet):**
-✅ Slutstädning efter arbetet
-✅ Bortforsling av byggavfall
-✅ Skyddande av angränsande ytor
-✅ Grund- och färdigställningsarbete
-✅ Skyddsplast och maskering
+✅ Slutstädning efter arbetet (<2000 kr)
+✅ Bortforsling av byggavfall (<2000 kr)
+✅ Skyddande av angränsande ytor (<1500 kr)
+✅ Grund- och färdigställningsarbete (<2000 kr)
+✅ Skyddsplast och maskering (<1000 kr)
 ✅ Förbrukningsmaterial (skruv, spackel, etc.) - max 3-5% av material
 
-**STORA ARBETSMOMENT (kräver DISKUSSION innan inkludering):**
-❌ Rivning av konstruktioner (om inte explicit nämnt)
-❌ Nya installationer (VVS, el) utanför det diskuterade
-❌ Trädarbete eller markarbete (om inte projektet handlar om det)
-❌ Omfattande förberedande arbete (om inte diskuterat)
+**STORA ARBETSMOMENT SOM KRÄVER EXPLICIT OMNÄMNANDE (>5000 kr):**
+❌ Rivning av konstruktioner
+❌ Nya VVS-installationer
+❌ Nya el-installationer
+❌ Trädarbete med specialutrustning
+❌ Markarbete (grävning, dränering)
+❌ Omfattande förberedande arbete
 ❌ Extra hantverkare eller specialister
+❌ Stubbfräsning
+❌ Arborist-arbete
 
-**REGEL FÖR INKLUDERING:** 
-- Om något kostar >5000 kr OCH inte nämnts i konversationen → Inkludera INTE
-- Om något är en standardpost <2000 kr → Inkludera om relevant för projektet
+**SAMMANFATTNING:**
+- Stort moment (>5000 kr) + INTE nämnt = INKLUDERA INTE
+- Standardpost (<2000 kr) + relevant = INKLUDERA
+- Nämnt i konversation = INKLUDERA
 
 **KRITISKT - MATERIAL-SPECIFIKATION:**
 VARJE material MÅSTE specificeras enligt: **Märke + Modell + Storlek/Färg + Mängd + Enhet**
@@ -867,7 +1058,23 @@ Deno.serve(async (req) => {
     );
 
     // ============================================
-    // STEP 6: VALIDATE & RETRY IF NEEDED
+    // STEP 6: VALIDATE QUOTE AGAINST CONVERSATION (FÖRBÄTTRING #2)
+    // ============================================
+    
+    console.log('🔍 Validating quote against conversation...');
+    const conversationValidation = validateQuoteAgainstConversation(
+      quote,
+      conversation_history,
+      description
+    );
+    
+    if (!conversationValidation.isValid) {
+      console.log(`⚠️ Removed ${conversationValidation.unmentionedItems.length} unmentioned items:`);
+      conversationValidation.unmentionedItems.forEach(item => console.log(`  - ${item}`));
+    }
+
+    // ============================================
+    // STEP 7: BASIC VALIDATION & MATERIAL RETRY IF NEEDED
     // ============================================
 
     const validation = basicValidation(quote);
@@ -882,7 +1089,7 @@ Deno.serve(async (req) => {
     }
 
     // ============================================
-    // STEP 7: CALCULATE ROT/RUT
+    // STEP 8: CALCULATE ROT/RUT
     // ============================================
 
     if (finalDeductionType !== 'none') {
@@ -890,7 +1097,7 @@ Deno.serve(async (req) => {
     }
 
     // ============================================
-    // STEP 8: RETURN QUOTE
+    // STEP 9: RETURN QUOTE
     // ============================================
 
     console.log('✅ Quote generation complete');
@@ -902,6 +1109,10 @@ Deno.serve(async (req) => {
         deductionType: finalDeductionType,
         validation: validation.issues.length > 0 ? {
           warnings: validation.issues
+        } : undefined,
+        conversationValidation: !conversationValidation.isValid ? {
+          removedItems: conversationValidation.unmentionedItems,
+          removedValue: Math.round(conversationValidation.removedValue)
         } : undefined,
       }),
       {
