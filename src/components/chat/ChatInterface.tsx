@@ -38,6 +38,8 @@ export const ChatInterface = ({ onQuoteGenerated, isGenerating }: ChatInterfaceP
   const [showProactivePrompt, setShowProactivePrompt] = useState(false);
   const [showQuoteSheet, setShowQuoteSheet] = useState(false);
   const [feedbackExpanded, setFeedbackExpanded] = useState(false);
+  const [currentQuoteId, setCurrentQuoteId] = useState<string | null>(null);
+  const [previousQuoteTotal, setPreviousQuoteTotal] = useState<number | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const chatContainerRef = useRef<HTMLDivElement>(null);
   const askedQuestions = useRef<Set<string>>(new Set());
@@ -407,15 +409,33 @@ export const ChatInterface = ({ onQuoteGenerated, isGenerating }: ChatInterfaceP
           setGeneratedQuote(data.quote);
           setConversationFeedback(data.conversationFeedback);
           setReadiness(data.readiness);
-          setShowQuoteSheet(true); // Öppna sheet automatiskt
+          setShowQuoteSheet(true);
+          
+          // SPRINT 1.5: Track delta mode state
+          if (data.is_delta_mode) {
+            setPreviousQuoteTotal(data.previous_quote_total);
+          }
           
           const aiMessage: Message = {
             id: (Date.now() + 1).toString(),
             role: 'assistant',
-            content: 'Här är din offert! Du kan skicka den till kunden, spara som utkast eller redigera den.',
+            content: data.is_delta_mode 
+              ? '✅ Jag har uppdaterat offerten med dina ändringar!' 
+              : '✅ Här är din offert! Du kan skicka den till kunden, spara som utkast eller redigera den.',
             timestamp: new Date()
           };
           setMessages(prev => [...prev, aiMessage]);
+          
+          // SPRINT 1.5: Show warnings if consistency issues detected
+          if (data.warnings?.length > 0) {
+            const warningMessage: Message = {
+              id: (Date.now() + 2).toString(),
+              role: 'assistant',
+              content: '⚠️ Observera:\n' + data.warnings.map((w: string) => `• ${w}`).join('\n'),
+              timestamp: new Date()
+            };
+            setMessages(prev => [...prev, warningMessage]);
+          }
           
           // Spara AI-svar
           await supabase.functions.invoke('manage-conversation', {
@@ -514,7 +534,9 @@ export const ChatInterface = ({ onQuoteGenerated, isGenerating }: ChatInterfaceP
         setConversationFeedback(null);
         setReadiness(null);
         setShowProactivePrompt(false);
-        askedQuestions.current.clear(); // Rensa frågehistorik
+        setCurrentQuoteId(null);
+        setPreviousQuoteTotal(null);
+        askedQuestions.current.clear();
         toast({
           title: "Ny konversation",
           description: "Börja om med en ny offertförfrågan."
@@ -578,7 +600,7 @@ export const ChatInterface = ({ onQuoteGenerated, isGenerating }: ChatInterfaceP
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Användaren är inte inloggad');
       
-      const { error } = await supabase
+      const { data, error } = await supabase
         .from('quotes')
         .insert({
           user_id: user.id,
@@ -587,7 +609,11 @@ export const ChatInterface = ({ onQuoteGenerated, isGenerating }: ChatInterfaceP
           generated_quote: generatedQuote,
           status: 'draft',
           customer_id: null
-        });
+        })
+        .select()
+        .single();
+      
+      if (error) throw error;
       
       // Save the quote ID for delta mode
       if (data?.id) {
