@@ -1323,6 +1323,81 @@ interface Exclusion {
   reason: string;
 }
 
+// SPRINT 2: Smart auto-title generation
+function generateQuoteTitle(
+  conversationFeedback: any,
+  description: string
+): string {
+  const understood = conversationFeedback?.understood || {};
+  
+  // Extract key information
+  const projectType = understood.project_type || '';
+  const measurements = understood.measurements || {};
+  const location = understood.location || '';
+  
+  // Templates based on project type
+  const templates: Record<string, (m: any, l: string) => string> = {
+    'badrumsrenovering': (m, l) => {
+      const area = m.area || m.size || '';
+      return area ? `Badrumsrenovering ${area}` : 'Badrumsrenovering';
+    },
+    'köksrenovering': (m, l) => {
+      const area = m.area || m.size || '';
+      return area ? `Köksrenovering ${area}` : 'Köksrenovering';
+    },
+    'målning': (m, l) => {
+      const area = m.area || '';
+      const rooms = m.rooms || '';
+      if (area && rooms) return `Målning ${area}, ${rooms} rum`;
+      if (area) return `Målning ${area}`;
+      if (rooms) return `Målning ${rooms} rum`;
+      return 'Målningsarbete';
+    },
+    'trädfällning': (m, l) => {
+      const quantity = m.quantity || m.count || '';
+      const type = m.tree_type || '';
+      if (quantity && type) return `Fällning av ${quantity} ${type}`;
+      if (quantity) return `Trädfällning ${quantity} st`;
+      return 'Trädfällning';
+    },
+    'trädgårdsarbete': (m, l) => {
+      const area = m.area || '';
+      return area ? `Trädgårdsarbete ${area}` : 'Trädgårdsarbete';
+    },
+    'vvs': (m, l) => {
+      return l ? `VVS-arbete ${l}` : 'VVS-arbete';
+    },
+    'el': (m, l) => {
+      return l ? `El-arbete ${l}` : 'El-arbete';
+    },
+    'snickeri': (m, l) => {
+      return l ? `Snickeriarbete ${l}` : 'Snickeriarbete';
+    },
+    'städning': (m, l) => {
+      const area = m.area || '';
+      return area ? `Städning ${area}` : 'Städning';
+    },
+  };
+  
+  // Normalize project type for matching
+  const normalizedType = projectType.toLowerCase();
+  
+  // Find matching template
+  for (const [key, generator] of Object.entries(templates)) {
+    if (normalizedType.includes(key)) {
+      const title = generator(measurements, location);
+      return title.length > 50 ? title.substring(0, 47) + '...' : title;
+    }
+  }
+  
+  // Fallback: use first 50 chars of description
+  if (description.length > 50) {
+    return description.substring(0, 47) + '...';
+  }
+  
+  return description || 'Offert';
+}
+
 // Extract all mentioned items from conversation to prevent hallucinations
 function extractMentionedItems(conversationHistory: ConversationMessage[]): string[] {
   const mentionedItems = new Set<string>();
@@ -3320,6 +3395,12 @@ Svara med **1**, **2** eller **3** (eller "granska", "generera", "mer info")`;
       LOVABLE_API_KEY,
       exclusionsForQuote
     );
+    
+    // SPRINT 2: Generate smart auto-title
+    const smartTitle = generateQuoteTitle(conversationFeedback, description);
+    quote.title = smartTitle;
+    console.log(`📝 Generated title: "${smartTitle}"`);
+
 
     // ============================================
     // ÅTGÄRD 2B: VALIDATE QUOTE SUMMARY

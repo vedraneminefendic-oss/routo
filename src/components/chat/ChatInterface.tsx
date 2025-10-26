@@ -699,61 +699,125 @@ export const ChatInterface = ({ onQuoteGenerated, isGenerating }: ChatInterfaceP
             </div>
           )}
 
-          {/* Enhanced Progress Bar - ÅTG 1 */}
+          {/* SPRINT 2: Enhanced transparent readiness panel - Expandable */}
           {readiness && readiness.readiness_score < 85 && !generatedQuote && messages.length > 0 && (
             <div className="sticky top-0 z-10 bg-gradient-to-b from-background via-background to-transparent border-b px-4 py-3">
-              <div className="flex items-center justify-between gap-3 mb-2">
-                <div className="flex items-center gap-2">
-                  <Sparkles className="h-4 w-4 text-primary" />
-                  <p className="text-sm font-semibold text-foreground">
-                    {readiness.readiness_score < 30 && "🔍 Samlar information..."}
-                    {readiness.readiness_score >= 30 && readiness.readiness_score < 60 && "📝 Förstår projektet..."}
-                    {readiness.readiness_score >= 60 && readiness.readiness_score < 85 && "✨ Nästan klar!"}
-                  </p>
-                </div>
-                <span className="text-sm font-bold tabular-nums">
-                  {readiness.readiness_score}%
-                </span>
-              </div>
-              
-              {/* Gradient Progress med milestones */}
-              <div className="relative">
-                <div className="h-3 w-full overflow-hidden rounded-full bg-secondary">
-                  <div 
-                    className="h-full transition-all duration-500 ease-out"
-                    style={{
-                      width: `${readiness.readiness_score}%`,
-                      background: readiness.readiness_score < 30 
-                        ? 'linear-gradient(to right, #ef4444, #f59e0b)'
-                        : readiness.readiness_score < 60
-                        ? 'linear-gradient(to right, #f59e0b, #eab308)'
-                        : 'linear-gradient(to right, #eab308, #22c55e)'
-                    }}
-                  />
+              <div 
+                className="cursor-pointer select-none"
+                onClick={() => setFeedbackExpanded(!feedbackExpanded)}
+              >
+                <div className="flex items-center justify-between gap-3 mb-2">
+                  <div className="flex items-center gap-2">
+                    <Sparkles className="h-4 w-4 text-primary" />
+                    <p className="text-sm font-semibold text-foreground">
+                      {readiness.readiness_score < 30 && "🔍 Samlar information..."}
+                      {readiness.readiness_score >= 30 && readiness.readiness_score < 60 && "📝 Förstår projektet..."}
+                      {readiness.readiness_score >= 60 && readiness.readiness_score < 85 && "✨ Nästan klar!"}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-bold tabular-nums">
+                      {readiness.readiness_score}%
+                    </span>
+                    {feedbackExpanded ? (
+                      <ChevronUp className="h-4 w-4 text-muted-foreground" />
+                    ) : (
+                      <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                    )}
+                  </div>
                 </div>
                 
-                {/* Milestones */}
-                {[25, 50, 75, 85].map((milestone) => (
-                  <div 
-                    key={milestone}
-                    className="absolute top-1/2 -translate-y-1/2 w-6 h-6 rounded-full border-2 border-background flex items-center justify-center text-[10px] font-bold transition-all duration-300"
-                    style={{ 
-                      left: `${milestone}%`,
-                      transform: 'translate(-50%, -50%)',
-                      backgroundColor: readiness.readiness_score >= milestone ? '#22c55e' : 'hsl(var(--secondary))',
-                      color: readiness.readiness_score >= milestone ? '#fff' : 'hsl(var(--muted-foreground))'
-                    }}
-                  >
-                    {readiness.readiness_score >= milestone ? '✓' : milestone === 85 ? '🎯' : ''}
+                {/* Gradient Progress med milestones */}
+                <div className="relative">
+                  <div className="h-3 w-full overflow-hidden rounded-full bg-secondary">
+                    <div 
+                      className="h-full transition-all duration-500 ease-out"
+                      style={{
+                        width: `${readiness.readiness_score}%`,
+                        background: readiness.readiness_score < 30 
+                          ? 'linear-gradient(to right, #ef4444, #f59e0b)'
+                          : readiness.readiness_score < 60
+                          ? 'linear-gradient(to right, #f59e0b, #eab308)'
+                          : 'linear-gradient(to right, #eab308, #22c55e)'
+                      }}
+                    />
                   </div>
-                ))}
+                  
+                  {/* Milestones */}
+                  {[25, 50, 75, 85].map((milestone) => (
+                    <div 
+                      key={milestone}
+                      className="absolute top-1/2 -translate-y-1/2 w-6 h-6 rounded-full border-2 border-background flex items-center justify-center text-[10px] font-bold transition-all duration-300"
+                      style={{ 
+                        left: `${milestone}%`,
+                        transform: 'translate(-50%, -50%)',
+                        backgroundColor: readiness.readiness_score >= milestone ? '#22c55e' : 'hsl(var(--secondary))',
+                        color: readiness.readiness_score >= milestone ? '#fff' : 'hsl(var(--muted-foreground))'
+                      }}
+                    >
+                      {readiness.readiness_score >= milestone ? '✓' : milestone === 85 ? '🎯' : ''}
+                    </div>
+                  ))}
+                </div>
               </div>
-              
-              {/* Nästa steg-indikator */}
-              {conversationFeedback?.missing?.[0] && (
-                <p className="text-xs text-muted-foreground mt-2">
-                  Nästa: {conversationFeedback.missing[0]}
-                </p>
+
+              {/* SPRINT 2: Expandable details section */}
+              {feedbackExpanded && conversationFeedback && (
+                <div className="mt-4 space-y-3 pt-3 border-t">
+                  {/* Understood items */}
+                  {conversationFeedback.understood && Object.keys(conversationFeedback.understood).length > 0 && (
+                    <div>
+                      <p className="text-xs font-semibold text-foreground mb-2 flex items-center gap-1">
+                        ✅ Förstått
+                      </p>
+                      <div className="flex flex-wrap gap-1.5">
+                        {Object.entries(conversationFeedback.understood).map(([key, val]) => (
+                          <Badge 
+                            key={key} 
+                            variant="secondary" 
+                            className="text-xs bg-green-500/10 text-green-700 dark:text-green-400 border-green-500/20"
+                          >
+                            {key}: {typeof val === 'object' ? JSON.stringify(val) : String(val)}
+                          </Badge>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  
+                  {/* Critical missing items */}
+                  {readiness.critical_missing && readiness.critical_missing.length > 0 && (
+                    <div>
+                      <p className="text-xs font-semibold text-destructive mb-2 flex items-center gap-1">
+                        ❌ Behövs för offert
+                      </p>
+                      <div className="space-y-1">
+                        {readiness.critical_missing.map((item: string, i: number) => (
+                          <div key={i} className="flex items-start gap-2 text-xs text-muted-foreground">
+                            <span className="text-destructive">•</span>
+                            <span>{item}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  
+                  {/* Optional missing items */}
+                  {readiness.optional_missing && readiness.optional_missing.length > 0 && (
+                    <div>
+                      <p className="text-xs font-semibold text-amber-600 dark:text-amber-500 mb-2 flex items-center gap-1">
+                        💡 Kan förbättras
+                      </p>
+                      <div className="space-y-1">
+                        {readiness.optional_missing.map((item: string, i: number) => (
+                          <div key={i} className="flex items-start gap-2 text-xs text-muted-foreground">
+                            <span className="text-amber-600 dark:text-amber-500">•</span>
+                            <span>{item}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
               )}
             </div>
           )}

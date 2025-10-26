@@ -3,12 +3,14 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Wrench, LogOut, Settings as SettingsIcon, BarChart3, Users, ArrowLeft } from "lucide-react";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Wrench, LogOut, Settings as SettingsIcon, BarChart3, Users, ArrowLeft, MessageSquare, Zap } from "lucide-react";
 import { toast } from "sonner";
 import QuoteDisplay from "@/components/QuoteDisplay";
 import QuoteEditor from "@/components/QuoteEditor";
 import { AIProgressIndicator } from "@/components/AIProgressIndicator";
 import { ChatInterface } from "@/components/chat/ChatInterface";
+import { ExpressQuoteForm } from "@/components/ExpressQuoteForm";
 
 const NewQuote = () => {
   const navigate = useNavigate();
@@ -54,6 +56,62 @@ const NewQuote = () => {
 
     return () => subscription.unsubscribe();
   }, [navigate]);
+
+  // SPRINT 2: Express mode handler
+  const handleExpressGenerate = async (data: {
+    projectType: string;
+    description: string;
+    measurements: string;
+    deductionType: string;
+  }) => {
+    setIsGenerating(true);
+    setCurrentDescription(data.description);
+    
+    // Reset warnings
+    setQualityWarning(undefined);
+    setWarningMessage(undefined);
+    setRealismWarnings([]);
+    setValidationErrors([]);
+    
+    try {
+      const { data: result, error } = await supabase.functions.invoke('generate-quote', {
+        body: { 
+          description: data.description,
+          user_id: user?.id,
+          detailLevel: 'standard',
+          deductionType: data.deductionType,
+          intent: 'generate' // Force generation without questions
+        }
+      });
+
+      if (error) throw error;
+      
+      const quoteWithDeduction = {
+        ...result.quote,
+        deductionType: result.deductionType || result.quote.deductionType || 'none'
+      };
+      setCurrentQuote(quoteWithDeduction);
+      
+      if (result.realismWarnings) {
+        setRealismWarnings(result.realismWarnings);
+      }
+      if (result.validationErrors) {
+        setValidationErrors(result.validationErrors);
+      }
+      
+      toast.success("✅ Offert genererad!", {
+        description: "Nu kan du granska och redigera offerten"
+      });
+      
+    } catch (error: any) {
+      console.error('Error generating express quote:', error);
+      toast.error("Fel vid generering", {
+        description: error.message || "Kunde inte generera offert"
+      });
+    } finally {
+      setIsGenerating(false);
+    }
+  };
 
   const handleGenerateQuote = async (description: string, customerId?: string, detailLevel?: string, deductionType?: string, referenceQuoteId?: string) => {
     setIsGenerating(true);
@@ -290,11 +348,43 @@ const NewQuote = () => {
           {/* AI Progress Indicator */}
           {isGenerating && <AIProgressIndicator isGenerating={isGenerating} />}
 
-          {/* Chat Interface */}
-          <ChatInterface 
-            onQuoteGenerated={handleChatGenerateQuote}
-            isGenerating={isGenerating} 
-          />
+          {/* SPRINT 2: Tabs for AI-assisted vs Express mode */}
+          {!currentQuote && (
+            <Tabs defaultValue="ai" className="w-full">
+              <TabsList className="grid w-full grid-cols-2 mb-6">
+                <TabsTrigger value="ai" className="flex items-center gap-2">
+                  <MessageSquare className="h-4 w-4" />
+                  AI-assisterad (rekommenderas)
+                </TabsTrigger>
+                <TabsTrigger value="express" className="flex items-center gap-2">
+                  <Zap className="h-4 w-4" />
+                  Snabbläge (erfaren)
+                </TabsTrigger>
+              </TabsList>
+              
+              <TabsContent value="ai">
+                <ChatInterface 
+                  onQuoteGenerated={handleChatGenerateQuote}
+                  isGenerating={isGenerating} 
+                />
+              </TabsContent>
+              
+              <TabsContent value="express">
+                <ExpressQuoteForm 
+                  onGenerate={handleExpressGenerate}
+                  isGenerating={isGenerating}
+                />
+              </TabsContent>
+            </Tabs>
+          )}
+          
+          {/* Show chat interface during generation if quote exists */}
+          {currentQuote && (
+            <ChatInterface 
+              onQuoteGenerated={handleChatGenerateQuote}
+              isGenerating={isGenerating} 
+            />
+          )}
           
           {/* Generated Quote Display */}
           {currentQuote && !isEditing && (
