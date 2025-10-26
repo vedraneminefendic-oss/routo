@@ -1323,6 +1323,48 @@ interface Exclusion {
   reason: string;
 }
 
+// Extract all mentioned items from conversation to prevent hallucinations
+function extractMentionedItems(conversationHistory: ConversationMessage[]): string[] {
+  const mentionedItems = new Set<string>();
+  
+  conversationHistory.forEach(msg => {
+    if (msg.role === 'user') {
+      const text = msg.content.toLowerCase();
+      
+      // Common work types
+      const workTypes = [
+        'badrum', 'kök', 'målning', 'städning', 'trädgård', 'fällning', 'träd',
+        'rivning', 'kakel', 'tapet', 'golv', 'vvs', 'el', 'fönster', 'dörr',
+        'altandörr', 'ventilation', 'värmesystem', 'isolering', 'tätskikt',
+        'snickeri', 'bortforsling', 'skrot', 'avfall', 'stubbfräsning', 'stubb',
+        'arborist', 'fräs', 'ris', 'stamdelar', 'framkomst', 'maskiner'
+      ];
+      
+      workTypes.forEach(type => {
+        if (text.includes(type)) {
+          mentionedItems.add(type);
+        }
+      });
+      
+      // Extract specific mentions with numbers
+      const numberPatterns = [
+        /(\d+)\s*(?:st|styck|stycken|träd|granar|tallar)/gi,
+        /(\d+)\s*(?:kvm|kvadratmeter|m2)/gi,
+        /(\d+)\s*(?:rum|sovrum|badrum)/gi,
+      ];
+      
+      numberPatterns.forEach(pattern => {
+        const matches = text.matchAll(pattern);
+        for (const match of matches) {
+          mentionedItems.add(match[0]);
+        }
+      });
+    }
+  });
+  
+  return Array.from(mentionedItems);
+}
+
 function parseExclusions(conversationHistory: ConversationMessage[]): Exclusion[] {
   const exclusions: Exclusion[] = [];
   
@@ -1401,6 +1443,71 @@ function parseExclusions(conversationHistory: ConversationMessage[]): Exclusion[
   console.log(`📋 Parsed ${uniqueExclusions.length} exclusions (after filtering inclusions):`, uniqueExclusions);
   
   return uniqueExclusions;
+}
+
+// Validate generated quote against conversation to prevent hallucinations
+function validateGeneratedQuote(
+  quote: any,
+  mentionedItems: string[],
+  conversationHistory: ConversationMessage[]
+): { 
+  warnings: string[]; 
+  needsReview: boolean;
+  validatedQuote: any;
+} {
+  const warnings: string[] = [];
+  const conversationText = conversationHistory
+    .filter(m => m.role === 'user')
+    .map(m => m.content.toLowerCase())
+    .join(' ');
+  
+  // Check each work item
+  quote.workItems?.forEach((item: any, index: number) => {
+    const itemName = item.name.toLowerCase();
+    const itemCost = item.subtotal || 0;
+    
+    // Skip validation for very small items (< 1000 kr) - likely standard work
+    if (itemCost < 1000) {
+      return;
+    }
+    
+    // Check if this item was actually mentioned
+    const wasMentioned = mentionedItems.some(mentioned => 
+      itemName.includes(mentioned.toLowerCase()) || 
+      conversationText.includes(itemName.split(' ')[0])
+    );
+    
+    if (!wasMentioned && itemCost > 2000) {
+      warnings.push(
+        `⚠️ "${item.name}" (${itemCost} kr) nämndes inte explicit i konversationen. ` +
+        `Bekräfta att detta ska ingå eller ta bort.`
+      );
+      item.needsReview = true;
+    }
+  });
+  
+  // Check materials
+  quote.materials?.forEach((material: any) => {
+    if (material.subtotal > 3000) {
+      const materialName = material.name.toLowerCase();
+      const wasMentioned = mentionedItems.some(mentioned => 
+        materialName.includes(mentioned.toLowerCase())
+      );
+      
+      if (!wasMentioned) {
+        warnings.push(
+          `⚠️ Material "${material.name}" (${material.subtotal} kr) nämndes inte explicit. ` +
+          `Verifiera att detta är korrekt.`
+        );
+      }
+    }
+  });
+  
+  return {
+    warnings,
+    needsReview: warnings.length > 0,
+    validatedQuote: quote
+  };
 }
 
 // ============================================
@@ -2743,6 +2850,10 @@ Deno.serve(async (req) => {
     if (intent) {
       console.log(`🎯 Handling explicit intent: ${intent}`);
       
+      // Extract mentioned items to prevent hallucinations
+      const mentionedItems = extractMentionedItems(conversation_history);
+      console.log('📝 Mentioned items in conversation:', mentionedItems);
+      
       // Route baserat på intent
       if (intent === 'confirm' || intent === 'generate') {
         console.log('✅ User confirmed via button, forcing quote generation');
@@ -3286,7 +3397,16 @@ Svara med **1**, **2** eller **3** (eller "granska", "generera", "mer info")`;
     }
 
     // ============================================
-    // STEP 6: VALIDATE QUOTE AGAINST CONVERSATION (FÖRBÄTTRING #2)
+    // STEP 6: VALIDATE QUOTE AGAINST CONVERSATION (SPRINT 1: HALLUCINATION FIX)
+    // ============================================
+    
+    console.log('🔍 Validating quote for hallucinations...');
+    const mentionedItems = extractMentionedItems(conversation_history);
+    const hallucinationCheck = validateGeneratedQuote(quote, mentionedItems, conversation_history);
+    
+    if (hallucinationCheck.warnings.length > 0) {
+      console.log('⚠️ Hallucination warnings:', hallucinationCheck.warnings);
+    }
     // ============================================
     
     console.log('🔍 Validating quote against conversation...');

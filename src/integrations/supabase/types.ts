@@ -97,8 +97,11 @@ export type Database = {
       conversation_sessions: {
         Row: {
           answered_questions: Json | null
+          answered_topics: string[] | null
+          asked_questions: string[] | null
           conversation_feedback: Json | null
           conversation_stage: string | null
+          conversation_summary: Json | null
           created_at: string | null
           id: string
           last_message_at: string | null
@@ -110,8 +113,11 @@ export type Database = {
         }
         Insert: {
           answered_questions?: Json | null
+          answered_topics?: string[] | null
+          asked_questions?: string[] | null
           conversation_feedback?: Json | null
           conversation_stage?: string | null
+          conversation_summary?: Json | null
           created_at?: string | null
           id?: string
           last_message_at?: string | null
@@ -123,8 +129,11 @@ export type Database = {
         }
         Update: {
           answered_questions?: Json | null
+          answered_topics?: string[] | null
+          asked_questions?: string[] | null
           conversation_feedback?: Json | null
           conversation_stage?: string | null
+          conversation_summary?: Json | null
           created_at?: string | null
           id?: string
           last_message_at?: string | null
