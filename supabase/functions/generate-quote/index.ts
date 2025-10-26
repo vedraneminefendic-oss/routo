@@ -1934,27 +1934,13 @@ När du bygger offerten:
 **EXEMPEL PÅ KORREKT TOLKNING:**
 
 ✅ **"Vi tar hand om bortforsling"**
-→ Lägg till workItem:
-```json
-{
-  "name": "Bortforsling av ris och stamdelar",
-  "hours": 2,
-  "hourlyRate": 650,
-  "subtotal": 1300
-}
-```
+→ Lägg till workItem: { "name": "Bortforsling av ris och stamdelar", "hours": 2, "hourlyRate": 650, "subtotal": 1300 }
 
 ✅ **"Bortforsling ska finnas med på offert"**
 → Lägg till workItem: "Bortforsling av byggavfall"
 
 ❌ **"Kunden tar hand om bortforsling"**
-→ Lägg till i exclusions:
-```json
-{
-  "item": "bortforsling",
-  "reason": "Kunden ordnar själv"
-}
-```
+→ Lägg till i exclusions: { "item": "bortforsling", "reason": "Kunden ordnar själv" }
 
 ❌ **"Jag tar hand om bortforsling"**
 → EXKLUDERA (hantverkaren gör det själv utanför offerten)
