@@ -7,7 +7,9 @@ import { MessageBubble } from "./MessageBubble";
 import { ChatInput } from "./ChatInput";
 import { ConversationStarter } from "./ConversationStarter";
 import { QuoteSheet } from "./QuoteSheet";
-import { Loader2, RotateCcw, Sparkles, ChevronDown, ChevronUp } from "lucide-react";
+import { CustomerQuickSelect } from "@/components/CustomerQuickSelect";
+import { TemplateQuickAccess } from "@/components/TemplateQuickAccess";
+import { Loader2, RotateCcw, Sparkles, ChevronDown, ChevronUp, User } from "lucide-react";
 import { Progress } from "@/components/ui/progress";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
@@ -40,10 +42,21 @@ export const ChatInterface = ({ onQuoteGenerated, isGenerating }: ChatInterfaceP
   const [feedbackExpanded, setFeedbackExpanded] = useState(false);
   const [currentQuoteId, setCurrentQuoteId] = useState<string | null>(null);
   const [previousQuoteTotal, setPreviousQuoteTotal] = useState<number | null>(null);
+  const [selectedCustomer, setSelectedCustomer] = useState<any>(null);
+  const [userId, setUserId] = useState<string | null>(null);
+  const [userMessage, setUserMessage] = useState<string>("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const chatContainerRef = useRef<HTMLDivElement>(null);
   const askedQuestions = useRef<Set<string>>(new Set());
   const { toast } = useToast();
+
+  useEffect(() => {
+    const getUser = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) setUserId(user.id);
+    };
+    getUser();
+  }, []);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -880,7 +893,43 @@ export const ChatInterface = ({ onQuoteGenerated, isGenerating }: ChatInterfaceP
                   Berätta vad du vill få hjälp med, så genererar jag en professionell offert åt dig.
                 </p>
               </div>
+              
+              {/* Customer Quick Select */}
+              {userId && (
+                <div className="w-full max-w-md space-y-3">
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <User className="h-4 w-4" />
+                    <span>Välj en kund (valfritt)</span>
+                  </div>
+                  <CustomerQuickSelect
+                    onSelect={(customer) => {
+                      setSelectedCustomer(customer);
+                      toast({
+                        title: "Kund vald",
+                        description: `${customer.name} - information autofylls i offerten`
+                      });
+                    }}
+                    selectedCustomerId={selectedCustomer?.id}
+                  />
+                </div>
+              )}
+              
               <ConversationStarter onStarterClick={handleStarterClick} />
+              
+              {/* Template Quick Access */}
+              {userId && userMessage.length > 20 && (
+                <div className="w-full max-w-2xl">
+                  <TemplateQuickAccess
+                    description={userMessage}
+                    userId={userId}
+                    onSelectTemplate={(template) => {
+                      const templateText = template.template_data?.description || template.description;
+                      setUserMessage(templateText);
+                      handleSendMessage(templateText);
+                    }}
+                  />
+                </div>
+              )}
             </div>
           ) : (
             <>
@@ -938,8 +987,35 @@ export const ChatInterface = ({ onQuoteGenerated, isGenerating }: ChatInterfaceP
         </div>
         
         {/* Input Area - Sticky Bottom */}
-        <div className="sticky bottom-0 border-t bg-background/95 backdrop-blur-sm px-4 py-4 z-10">
-          <ChatInput onSendMessage={handleSendMessage} disabled={isTyping} />
+        <div className="sticky bottom-0 border-t bg-background/95 backdrop-blur-sm px-4 py-4 z-10 space-y-3">
+          {/* Show selected customer context */}
+          {selectedCustomer && (
+            <div className="flex items-center justify-between p-3 bg-primary/5 border border-primary/20 rounded-lg text-sm">
+              <div className="flex items-center gap-2">
+                <User className="h-4 w-4 text-primary" />
+                <span className="font-medium">{selectedCustomer.name}</span>
+                {selectedCustomer.property_designation && (
+                  <span className="text-muted-foreground">• {selectedCustomer.property_designation}</span>
+                )}
+              </div>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setSelectedCustomer(null)}
+                className="h-7"
+              >
+                Ta bort
+              </Button>
+            </div>
+          )}
+          
+          <ChatInput 
+            onSendMessage={(message, images, intent) => {
+              setUserMessage(message);
+              handleSendMessage(message, images, intent);
+            }} 
+            disabled={isTyping} 
+          />
         </div>
       </div>
     </Card>
