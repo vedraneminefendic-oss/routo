@@ -259,12 +259,16 @@ export const ChatInterface = ({ onQuoteGenerated, isGenerating }: ChatInterfaceP
           setConversationFeedback(data.conversationFeedback);
           setReadiness(data.readiness);
           
-          // Spara AI-svar i DB
+          // SPRINT 1: Spara AI-frågor med tracking för att förhindra repetition
           await supabase.functions.invoke('manage-conversation', {
             body: {
               action: 'save_message',
               sessionId,
-              message: { role: 'assistant', content: aiMessage.content }
+              message: { 
+                role: 'assistant', 
+                content: aiMessage.content,
+                aiQuestions: newQuestions // Track questions to prevent asking again
+              }
             }
           });
           

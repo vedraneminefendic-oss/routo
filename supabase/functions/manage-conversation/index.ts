@@ -101,11 +101,23 @@ serve(async (req) => {
         );
       }
 
-      // Uppdatera last_message_at och answered_questions om det är ett user-meddelande
+      // SPRINT 1: Track AI questions and user topics
       const updateData: any = { last_message_at: new Date().toISOString() };
       
+      // Track AI questions to prevent repetition
+      if (message.role === 'assistant' && message.aiQuestions && Array.isArray(message.aiQuestions)) {
+        const currentAskedQuestions = session.asked_questions || [];
+        const newQuestions = message.aiQuestions.filter((q: string) => !currentAskedQuestions.includes(q));
+        
+        if (newQuestions.length > 0) {
+          updateData.asked_questions = [...currentAskedQuestions, ...newQuestions];
+          console.log('📝 Tracked new AI questions:', newQuestions);
+        }
+      }
+      
+      // Track answered topics from user messages
       if (message.role === 'user') {
-        // Extrahera svar från meddelandet för answered_questions tracking
+        // Extrahera svar från meddelandet
         const content = message.content.toLowerCase();
         const currentAnswers = session.answered_questions || {};
         
@@ -127,6 +139,26 @@ serve(async (req) => {
         }
         
         updateData.answered_questions = currentAnswers;
+        
+        // Track topics
+        const answeredTopics: string[] = [];
+        const topicKeywords = [
+          { keywords: ['kvm', 'kvadratmeter', 'm2'], topic: 'area' },
+          { keywords: ['badrum', 'kök', 'rum'], topic: 'room_type' },
+          { keywords: ['budget', 'kr', 'kostar'], topic: 'budget' },
+          { keywords: ['rot', 'rut'], topic: 'deduction_type' },
+        ];
+
+        topicKeywords.forEach(({ keywords, topic }) => {
+          if (keywords.some(kw => content.includes(kw))) {
+            answeredTopics.push(topic);
+          }
+        });
+
+        if (answeredTopics.length > 0) {
+          const currentAnswered = session.answered_topics || [];
+          updateData.answered_topics = [...new Set([...currentAnswered, ...answeredTopics])];
+        }
       }
 
       await supabaseClient

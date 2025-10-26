@@ -3407,7 +3407,6 @@ Svara med **1**, **2** eller **3** (eller "granska", "generera", "mer info")`;
     if (hallucinationCheck.warnings.length > 0) {
       console.log('⚠️ Hallucination warnings:', hallucinationCheck.warnings);
     }
-    // ============================================
     
     console.log('🔍 Validating quote against conversation...');
     const conversationValidation = validateQuoteAgainstConversation(
@@ -3455,8 +3454,15 @@ Svara med **1**, **2** eller **3** (eller "granska", "generera", "mer info")`;
       learningContext.industryData || []
     );
     
-    if (realismWarnings.length > 0) {
-      console.log(`⚠️ Realism warnings: ${realismWarnings.join(', ')}`);
+    // SPRINT 1: Combine all warnings
+    const allWarnings = [
+      ...realismWarnings,
+      ...hallucinationCheck.warnings
+    ];
+    
+    if (allWarnings.length > 0) {
+      console.log(`⚠️ Total warnings: ${allWarnings.length}`);
+      allWarnings.forEach(w => console.log(`  - ${w}`));
     }
     
     // ============================================
@@ -3477,7 +3483,7 @@ Svara med **1**, **2** eller **3** (eller "granska", "generera", "mer info")`;
     const validation = basicValidation(quote);
     
     // STEG 3: ALLTID kör material-specifikation om generiska material finns
-    if (validation.issues.some(issue => issue.includes('Generiska material'))) {
+    if (validation.issues.some((issue: string) => issue.includes('Generiska material'))) {
       console.log('⚠️ Generic materials detected, retrying specification...');
       quote = await retryMaterialSpecification(quote, completeDescription, LOVABLE_API_KEY);
     }
@@ -3559,7 +3565,8 @@ Svara med **1**, **2** eller **3** (eller "granska", "generera", "mer info")`;
           removed_value: Math.round(conversationValidation.removedValue)
         } : null,
         basic_validation: validation.issues.length > 0 ? validation.issues : null,
-        realism_warnings: realismWarnings.length > 0 ? realismWarnings : null
+        realism_warnings: realismWarnings.length > 0 ? realismWarnings : null,
+        hallucination_warnings: hallucinationCheck.warnings.length > 0 ? hallucinationCheck.warnings : null
       }
     };
 
@@ -3571,11 +3578,12 @@ Svara med **1**, **2** eller **3** (eller "granska", "generera", "mer info")`;
         confidence: confidenceScore,
         conversationFeedback,
         readiness,
-        realismWarnings: realismWarnings.length > 0 ? realismWarnings : undefined,
+        realismWarnings: allWarnings.length > 0 ? allWarnings : undefined,
         assumptions: quote.assumptions || [],
         validation: validation.issues.length > 0 ? {
           warnings: validation.issues
         } : undefined,
+        needsReview: hallucinationCheck.needsReview || allWarnings.length > 0,
         conversationValidation: !conversationValidation.isValid ? {
           removedItems: conversationValidation.unmentionedItems,
           removedValue: Math.round(conversationValidation.removedValue)
