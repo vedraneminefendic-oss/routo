@@ -66,7 +66,7 @@ const RequestSchema = z.object({
   referenceQuoteId: z.string().optional(),
   imageAnalysis: z.any().optional(),
   intent: z.string().optional(),
-  previous_quote_id: z.string().optional(), // SPRINT 1.5: For delta mode
+  previous_quote_id: z.string().nullish(), // SPRINT 1.5: For delta mode (accepts null/undefined)
 });
 
 type ConversationMessage = z.infer<typeof ConversationMessageSchema>;
