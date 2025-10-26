@@ -29,3 +29,6 @@ verify_jwt = true
 
 [functions.learn-from-edits]
 verify_jwt = true
+
+[functions.send-followup-reminder]
+verify_jwt = true

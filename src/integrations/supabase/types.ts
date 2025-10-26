@@ -649,6 +649,7 @@ export type Database = {
       }
       quotes: {
         Row: {
+          auto_followup_enabled: boolean | null
           completed_at: string | null
           created_at: string
           customer_id: string | null
@@ -656,10 +657,12 @@ export type Database = {
           description: string
           detail_level: string | null
           edited_quote: Json | null
+          followup_count: number | null
           generated_quote: Json
           id: string
           is_edited: boolean | null
           locked: boolean | null
+          next_followup_at: string | null
           quote_status: Database["public"]["Enums"]["quote_status"] | null
           responded_at: string | null
           sent_at: string | null
@@ -672,6 +675,7 @@ export type Database = {
           viewed_at: string | null
         }
         Insert: {
+          auto_followup_enabled?: boolean | null
           completed_at?: string | null
           created_at?: string
           customer_id?: string | null
@@ -679,10 +683,12 @@ export type Database = {
           description: string
           detail_level?: string | null
           edited_quote?: Json | null
+          followup_count?: number | null
           generated_quote: Json
           id?: string
           is_edited?: boolean | null
           locked?: boolean | null
+          next_followup_at?: string | null
           quote_status?: Database["public"]["Enums"]["quote_status"] | null
           responded_at?: string | null
           sent_at?: string | null
@@ -695,6 +701,7 @@ export type Database = {
           viewed_at?: string | null
         }
         Update: {
+          auto_followup_enabled?: boolean | null
           completed_at?: string | null
           created_at?: string
           customer_id?: string | null
@@ -702,10 +709,12 @@ export type Database = {
           description?: string
           detail_level?: string | null
           edited_quote?: Json | null
+          followup_count?: number | null
           generated_quote?: Json
           id?: string
           is_edited?: boolean | null
           locked?: boolean | null
+          next_followup_at?: string | null
           quote_status?: Database["public"]["Enums"]["quote_status"] | null
           responded_at?: string | null
           sent_at?: string | null

@@ -7,6 +7,8 @@ import { FileText, AlertCircle, Plus, Layout } from "lucide-react";
 import { OnboardingWizard } from "@/components/OnboardingWizard";
 import { StatisticsCards } from "@/components/reports/StatisticsCards";
 import { AppHeader } from "@/components/AppHeader";
+import { ActionableInsights } from "@/components/ActionableInsights";
+import { toast } from "sonner";
 
 const Dashboard = () => {
   const navigate = useNavigate();
@@ -15,6 +17,7 @@ const Dashboard = () => {
   const [quotes, setQuotes] = useState<any[]>([]);
   const [statistics, setStatistics] = useState<any>(null);
   const [pendingQuotesCount, setPendingQuotesCount] = useState(0);
+  const [actionableInsights, setActionableInsights] = useState<any[]>([]);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -55,14 +58,14 @@ const Dashboard = () => {
 
       // Calculate pending quotes
       const now = new Date();
-      const threeDaysAgo = new Date(now.getTime() - 3 * 24 * 60 * 60 * 1000);
+      const pendingThreshold = new Date(now.getTime() - 3 * 24 * 60 * 60 * 1000);
       
       const pending = (quotesData || []).filter(q => {
         if (q.status === 'sent' && q.sent_at) {
-          return new Date(q.sent_at) < threeDaysAgo;
+          return new Date(q.sent_at) < pendingThreshold;
         }
         if (q.status === 'viewed' && q.viewed_at) {
-          return new Date(q.viewed_at) < threeDaysAgo;
+          return new Date(q.viewed_at) < pendingThreshold;
         }
         return false;
       });
@@ -99,8 +102,41 @@ const Dashboard = () => {
           accepted_count: acceptedCount,
         });
       }
+
+      // Skapa actionable insights
+      const insights: any[] = [];
+      const threeDaysAgo = new Date();
+      threeDaysAgo.setDate(threeDaysAgo.getDate() - 3);
+      
+      (quotesData || []).forEach((quote: any) => {
+        const quoteData = quote.edited_quote || quote.generated_quote;
+        const amount = quoteData?.summary?.customerPays || 0;
+        
+        if ((quote.status === 'sent' || quote.status === 'viewed') && 
+            ((quote.sent_at && new Date(quote.sent_at) < threeDaysAgo) ||
+             (quote.viewed_at && new Date(quote.viewed_at) < threeDaysAgo))) {
+          const date = new Date(quote.viewed_at || quote.sent_at);
+          const daysSince = Math.floor((Date.now() - date.getTime()) / (1000 * 60 * 60 * 24));
+          
+          insights.push({
+            id: quote.id,
+            type: 'urgent',
+            title: `Följ upp "${quote.title}"`,
+            description: `Skickad för ${daysSince} dagar sedan utan svar`,
+            quoteName: quote.title,
+            amount,
+            action: {
+              label: 'Visa offert',
+              onClick: () => navigate(`/quotes?id=${quote.id}`),
+            },
+          });
+        }
+      });
+      
+      setActionableInsights(insights.slice(0, 5));
     } catch (error) {
       console.error('Error loading dashboard data:', error);
+      toast.error("Kunde inte ladda data");
     }
   };
 
@@ -161,6 +197,13 @@ const Dashboard = () => {
             </div>
           </div>
         </div>
+
+        {/* Actionable Insights */}
+        {actionableInsights.length > 0 && (
+          <div className="mb-8">
+            <ActionableInsights insights={actionableInsights} />
+          </div>
+        )}
 
         {/* Statistics Cards */}
         <div className="mb-8">
