@@ -21,6 +21,9 @@ const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY')!;
 
 const TEXT_MODEL = 'google/gemini-2.5-flash';
 
+// Import validation helper
+import { validateQuoteConsistency } from './helpers/validateQuoteConsistency.ts';
+
 // Brand dictionary and synonyms for better language understanding
 const KEYWORD_SYNONYMS: Record<string, string[]> = {
   'renovera': ['rusta upp', 'totalrenovera', 'bygga om'],
@@ -63,6 +66,7 @@ const RequestSchema = z.object({
   referenceQuoteId: z.string().optional(),
   imageAnalysis: z.any().optional(),
   intent: z.string().optional(),
+  previous_quote_id: z.string().optional(), // SPRINT 1.5: For delta mode
 });
 
 type ConversationMessage = z.infer<typeof ConversationMessageSchema>;
@@ -1993,19 +1997,25 @@ async function generateQuoteWithAI(
   learningContext: LearningContext,
   deductionType: string,
   apiKey: string,
-  exclusions: Exclusion[] = []
+  exclusions: Exclusion[] = [],
+  previousQuote: any = null // SPRINT 1.5: For delta mode
 ): Promise<any> {
   
   const historyText = conversationHistory
     .map(m => `${m.role === 'user' ? 'Användare' : 'AI'}: ${m.content}`)
     .join('\n');
 
+  // SPRINT 1.5: Delta Mode detection
+  const isDeltaMode = !!previousQuote;
+  const previousTotal = previousQuote?.summary?.customerPays || 0;
+
   // Build rates text
   const ratesText = userRates.length > 0
     ? `**ANVÄNDARENS TIMPRISER (ANVÄND EXAKT DESSA):**\n${userRates.map(r => `- ${r.work_type}: ${r.rate} kr/h`).join('\n')}`
     : `**TIMPRISER:**\nAnvänd standardpris 650 kr/h`;
 
-  // Build equipment text
+  // ... keep existing code (equipment, similarQuotes, industryData building)
+
   const equipmentText = equipment.length > 0
     ? `\n\n**ANVÄNDARENS MASKINER/UTRUSTNING:**\n${equipment.map(e => {
         let price = '';
@@ -2016,7 +2026,6 @@ async function generateQuoteWithAI(
       }).join('\n')}`
     : '';
 
-  // Build similar quotes text with full details
   const similarQuotesText = similarQuotes.length > 0
     ? `\n\n**📚 LIKNANDE TIDIGARE OFFERTER (LÄR AV DESSA):**\n${similarQuotes.map(q => {
         const materials = q.quote_data?.materials || [];
@@ -2037,14 +2046,40 @@ ${workItems.map((w: any) => `- ${w.name}: ${w.hours}h × ${w.hourlyRate} kr/h = 
       }).join('\n---\n')}`
     : '';
 
-  // Build industry data text
   const industryDataText = learningContext.industryData && learningContext.industryData.length > 0
     ? `\n\n**📊 BRANSCHDATA (FRÅN ANDRA ANVÄNDARE):**\n${learningContext.industryData.slice(0, 5).map(b => 
         `- ${b.work_category} → ${b.metric_type}: ${b.median_value} (${b.sample_size} offerter, min: ${b.min_value}, max: ${b.max_value})`
       ).join('\n')}`
     : '';
 
-  const prompt = `Du är Handoff AI - en intelligent assistent som hjälper hantverkare skapa professionella offerter.
+  // SPRINT 1.5: Build delta mode intro (if applicable)
+  const deltaModeIntro = isDeltaMode ? `
+**🔄 DELTA MODE - UTÖKA BEFINTLIG OFFERT (KRITISKT!):**
+
+Du ska INTE skapa en ny offert från grunden. Du ska UTÖKA den befintliga offerten baserat på ny information från kunden.
+
+**BEFINTLIG OFFERT:**
+\`\`\`json
+${JSON.stringify(previousQuote, null, 2)}
+\`\`\`
+
+**FÖREGÅENDE TOTALPRIS:** ${previousTotal} SEK (kunden betalar)
+
+**REGLER FÖR DELTA MODE:**
+1. **Vid TILLÄGG av arbete:** Nytt totalpris MÅSTE vara >= ${previousTotal} SEK
+2. **Vid BORTTAGNING av arbete:** Beräkna bara de kvarvarande arbetena, priset ska minska
+3. **Vid ÄNDRING av material:** Justera bara det specifika arbetet som påverkas
+4. **Vid FÖRTYDLIGANDE:** Om kunden bara förtydligar (inte lägger till/tar bort), behåll samma pris ±5%
+
+**VIKTIG LOGIK:**
+- Om kunden säger "lägg till takmålning" → Kopiera alla befintliga workItems + lägg till ny för takmålning
+- Om kunden säger "ta bort kakling" → Kopiera alla workItems UTOM kakling
+- Om kunden säger "använd premium färg istället" → Kopiera workItems, uppdatera material i målnings-itemet
+
+**SPRÅK:**
+- Behåll SAMMA SPRÅK som den befintliga offerten (se workItems och materials ovan)
+
+` : `Du är Handoff AI - en intelligent assistent som hjälper hantverkare skapa professionella offerter.
 
 **🎯 VIKTIG KONTEXT - LÄS NOGA:**
 - Du pratar med en HANTVERKARE (arborist/elektriker/målare/rörmokare/snickare etc.)
@@ -2058,6 +2093,9 @@ ${workItems.map((w: any) => `- ${w.name}: ${w.hours}h × ${w.hourlyRate} kr/h = 
 ❌ "Kunden tar hand om bortforsling" → Lägg till i exclusions: {item: "bortforsling", reason: "Kunden ordnar själv"}
 ❌ "Bortforsling behövs inte" → Lägg inte till något
 
+`;
+
+  const prompt = deltaModeIntro + `
 **PROJEKT:**
 ${description}
 
@@ -2700,12 +2738,14 @@ Deno.serve(async (req) => {
       referenceQuoteId,
       imageAnalysis,
       intent,
+      previous_quote_id,
     } = validatedData;
 
     console.log('Description:', description);
     console.log('Deduction type requested:', deductionType);
     console.log('Conversation history length:', conversation_history.length);
     console.log('Intent:', intent);
+    console.log('Previous quote ID:', previous_quote_id || 'None (new quote)');
 
     // Get user ID from JWT
     const authHeader = req.headers.get('Authorization');
@@ -2749,6 +2789,34 @@ Deno.serve(async (req) => {
       .eq('user_id', user_id);
 
     console.log('Using equipment:', equipmentRates || []);
+
+    // ============================================
+    // SPRINT 1.5: FETCH PREVIOUS QUOTE (DELTA MODE)
+    // ============================================
+
+    let previousQuote = null;
+    let previousQuoteTotal = 0;
+    let isDeltaMode = false;
+    
+    if (previous_quote_id) {
+      console.log(`🔄 DELTA MODE: Fetching previous quote: ${previous_quote_id}`);
+      const { data: prevQuoteData, error: prevQuoteError } = await supabaseClient
+        .from('quotes')
+        .select('generated_quote, edited_quote')
+        .eq('id', previous_quote_id)
+        .eq('user_id', user_id)
+        .single();
+      
+      if (!prevQuoteError && prevQuoteData) {
+        previousQuote = prevQuoteData.edited_quote || prevQuoteData.generated_quote;
+        previousQuoteTotal = parseFloat(previousQuote?.summary?.customerPays || '0');
+        isDeltaMode = true;
+        console.log(`✅ Previous quote loaded. Total: ${previousQuoteTotal} SEK`);
+        console.log(`📝 Mode: EXTENDING existing quote (not creating new)`);
+      } else {
+        console.error('❌ Failed to fetch previous quote:', prevQuoteError);
+      }
+    }
 
     // ============================================
     // STEP 2: FIND SIMILAR QUOTES
@@ -3402,6 +3470,25 @@ Svara med **1**, **2** eller **3** (eller "granska", "generera", "mer info")`;
     console.log(`📝 Generated title: "${smartTitle}"`);
 
 
+    // SPRINT 1.5: Validate quote consistency if in delta mode
+    let consistencyWarnings: string[] = [];
+    if (isDeltaMode && previousQuoteTotal > 0) {
+      console.log('🔍 SPRINT 1.5: Validating quote consistency...');
+      const lastUserMsg = actualConversationHistory.filter(m => m.role === 'user').slice(-1)[0];
+      const consistencyValidation = validateQuoteConsistency(
+        previousQuote,
+        quote,
+        lastUserMsg?.content || description
+      );
+      
+      if (!consistencyValidation.isConsistent) {
+        console.error('❌ INCONSISTENCY DETECTED:', consistencyValidation.warnings);
+        consistencyWarnings = consistencyValidation.warnings;
+      } else {
+        console.log('✅ Quote consistency validated - price logic is correct');
+      }
+    }
+
     // ============================================
     // ÅTGÄRD 2B: VALIDATE QUOTE SUMMARY
     // ============================================
@@ -3538,7 +3625,8 @@ Svara med **1**, **2** eller **3** (eller "granska", "generera", "mer info")`;
     // SPRINT 1: Combine all warnings
     const allWarnings = [
       ...realismWarnings,
-      ...hallucinationCheck.warnings
+      ...hallucinationCheck.warnings,
+      ...consistencyWarnings // SPRINT 1.5
     ];
     
     if (allWarnings.length > 0) {
@@ -3669,7 +3757,9 @@ Svara med **1**, **2** eller **3** (eller "granska", "generera", "mer info")`;
           removedItems: conversationValidation.unmentionedItems,
           removedValue: Math.round(conversationValidation.removedValue)
         } : undefined,
-        timeSaved: timeSaved, // STEG 4: Inkludera tidsbesparing
+        timeSaved: timeSaved,
+        is_delta_mode: isDeltaMode, // SPRINT 1.5
+        previous_quote_total: previousQuoteTotal || undefined, // SPRINT 1.5
         debug: debugInfo,
       }),
       {

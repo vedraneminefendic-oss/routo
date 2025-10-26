@@ -193,7 +193,8 @@ export const ChatInterface = ({ onQuoteGenerated, isGenerating }: ChatInterfaceP
             deductionType: 'auto',
             numberOfRecipients: 1,
             imageAnalysis: imageAnalysis,
-            intent: intent
+            intent: intent,
+            previous_quote_id: currentQuoteId // SPRINT 1.5: Enable delta mode
           },
           signal: controller.signal
         });
@@ -588,7 +589,11 @@ export const ChatInterface = ({ onQuoteGenerated, isGenerating }: ChatInterfaceP
           customer_id: null
         });
       
-      if (error) throw error;
+      // Save the quote ID for delta mode
+      if (data?.id) {
+        setCurrentQuoteId(data.id);
+        setPreviousQuoteTotal(parseFloat(generatedQuote.summary?.customerPays || '0'));
+      }
       
       toast({
         title: "✅ Offert sparad!",
