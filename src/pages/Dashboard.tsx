@@ -146,10 +146,10 @@ const Dashboard = () => {
       <main className="container mx-auto px-4 py-8">
         {/* Hero Section */}
         <div className="mb-10 animate-in fade-in-0 slide-in-from-top-4 duration-700">
-          <div className="relative overflow-hidden bg-gradient-to-br from-primary/10 via-primary/5 to-accent/5 rounded-2xl p-10 border-2 border-primary/30 shadow-2xl group">
-            <div className="absolute inset-0 bg-gradient-to-r from-primary/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-700" />
+          <div className="relative overflow-hidden bg-gradient-to-br from-primary/10 via-primary/5 to-accent/5 rounded-2xl p-6 md:p-8 border-2 border-primary/30 shadow-2xl group">
+            <div className="absolute inset-0 bg-gradient-to-r from-primary/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-700 pointer-events-none" />
             <div className="relative z-10">
-              <h2 className="text-5xl font-bold mb-3 bg-gradient-to-br from-foreground via-foreground to-foreground/70 bg-clip-text text-transparent">
+              <h2 className="text-3xl md:text-4xl font-bold mb-3 bg-gradient-to-br from-foreground via-foreground to-foreground/70 bg-clip-text text-transparent">
                 Välkommen tillbaka! 👋
               </h2>
               <p className="text-lg text-muted-foreground">
@@ -167,7 +167,7 @@ const Dashboard = () => {
         {/* Pending Quotes Alert */}
         {pendingQuotesCount > 0 && (
           <Card className="mb-10 border-2 border-amber-300 dark:border-amber-700 bg-gradient-to-br from-amber-50 via-amber-50/50 to-amber-100/30 dark:from-amber-950/20 dark:via-amber-950/10 dark:to-amber-950/5 shadow-xl hover:shadow-2xl transition-all duration-500 animate-in fade-in-0 slide-in-from-top-4 overflow-hidden group">
-            <div className="absolute inset-0 bg-gradient-to-r from-amber-100/50 to-transparent dark:from-amber-900/20 opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
+            <div className="absolute inset-0 bg-gradient-to-r from-amber-100/50 to-transparent dark:from-amber-900/20 opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none" />
             <CardContent className="flex items-center gap-5 pt-6 relative">
               <div className="p-3 bg-amber-200/50 dark:bg-amber-800/30 rounded-xl group-hover:scale-110 transition-transform duration-300 shadow-md">
                 <AlertCircle className="h-8 w-8 text-amber-600 dark:text-amber-500 shrink-0 animate-pulse" />
@@ -198,7 +198,7 @@ const Dashboard = () => {
             style={{ animationDelay: '100ms' }}
             onClick={() => navigate('/quotes/new')}
           >
-            <div className="absolute inset-0 bg-gradient-to-br from-primary/10 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
+            <div className="absolute inset-0 bg-gradient-to-br from-primary/10 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none" />
             <CardHeader className="relative">
               <div className="flex items-center gap-3 mb-2">
                 <div className="p-3 bg-gradient-to-br from-primary/20 to-primary/10 rounded-xl group-hover:scale-110 transition-transform duration-300 shadow-md">
@@ -217,7 +217,7 @@ const Dashboard = () => {
             style={{ animationDelay: '200ms' }}
             onClick={() => navigate('/quotes/new?templates=true')}
           >
-            <div className="absolute inset-0 bg-gradient-to-br from-secondary/10 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
+            <div className="absolute inset-0 bg-gradient-to-br from-secondary/10 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none" />
             <CardHeader className="relative">
               <div className="flex items-center gap-3 mb-2">
                 <div className="p-3 bg-gradient-to-br from-secondary/20 to-secondary/10 rounded-xl group-hover:scale-110 transition-transform duration-300 shadow-md">
@@ -236,7 +236,7 @@ const Dashboard = () => {
             style={{ animationDelay: '300ms' }}
             onClick={() => navigate('/quotes')}
           >
-            <div className="absolute inset-0 bg-gradient-to-br from-accent/10 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
+            <div className="absolute inset-0 bg-gradient-to-br from-accent/10 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none" />
             <CardHeader className="relative">
               <div className="flex items-center gap-3 mb-2">
                 <div className="p-3 bg-gradient-to-br from-accent/20 to-accent/10 rounded-xl group-hover:scale-110 transition-transform duration-300 shadow-md">
@@ -253,7 +253,7 @@ const Dashboard = () => {
 
         {/* Recent Activity */}
         <Card className="border-2 shadow-xl hover:shadow-2xl transition-all duration-500 overflow-hidden group">
-          <div className="absolute inset-0 bg-gradient-to-br from-primary/5 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
+          <div className="absolute inset-0 bg-gradient-to-br from-primary/5 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none" />
           <CardHeader className="relative">
             <div className="flex items-center justify-between">
               <CardTitle className="text-xl font-bold">Senaste offerterna</CardTitle>
