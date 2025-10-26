@@ -34,12 +34,10 @@ export const AppHeader = ({ currentPage = 'dashboard' }: AppHeaderProps) => {
             {/* Logo */}
             <div 
               onClick={() => navigate('/dashboard')} 
-              className="flex items-center gap-2 cursor-pointer hover:opacity-80 transition-opacity"
+              className="flex items-center gap-3 cursor-pointer hover:opacity-80 transition-opacity"
             >
-              <div className="p-2 bg-primary rounded-lg shadow-md">
-                <Wrench className="h-6 w-6 text-primary-foreground" />
-              </div>
-              <span className="font-bold text-xl text-secondary">Offertverktyget</span>
+              <img src="/routo-logo.jpeg" alt="Routo" className="h-10 w-10 rounded-xl object-cover shadow-md" />
+              <span className="font-bold text-2xl text-primary">routo</span>
             </div>
 
             {/* Navigation Links */}
@@ -114,10 +112,8 @@ export const AppHeader = ({ currentPage = 'dashboard' }: AppHeaderProps) => {
           </Sheet>
 
           <div className="flex items-center gap-2">
-            <div className="p-2 bg-primary rounded-lg shadow-md">
-              <Wrench className="h-5 w-5 text-primary-foreground" />
-            </div>
-            <span className="font-bold text-secondary">Offertverktyget</span>
+            <img src="/routo-logo.jpeg" alt="Routo" className="h-8 w-8 rounded-lg object-cover shadow-md" />
+            <span className="font-bold text-lg text-primary">routo</span>
           </div>
           <div className="w-10" /> {/* Spacer för symmetri */}
         </div>

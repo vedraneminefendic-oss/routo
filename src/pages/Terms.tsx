@@ -27,7 +27,7 @@ const Terms = () => {
             <section>
               <h2 className="text-xl font-semibold mb-3">1. Allmänt</h2>
               <p className="text-muted-foreground">
-                Dessa användarvillkor ("Villkoren") reglerar din användning av Offertverktyget ("Tjänsten") som tillhandahålls av [Ditt företagsnamn] ("vi", "oss", "vår"). Genom att använda Tjänsten accepterar du dessa Villkor i sin helhet.
+                Dessa användarvillkor ("Villkoren") reglerar din användning av Routo ("Tjänsten") som tillhandahålls av [Ditt företagsnamn] ("vi", "oss", "vår"). Genom att använda Tjänsten accepterar du dessa Villkor i sin helhet.
               </p>
             </section>
 

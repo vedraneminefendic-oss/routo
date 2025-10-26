@@ -8,106 +8,106 @@ All colors MUST be HSL.
 
 @layer base {
   :root {
-    /* Neutrals - Ren, modern grå/vit bas */
-    --background: 0 0% 100%; /* Rent vit */
-    --foreground: 224 10% 10%; /* Djup mörkgrå text */
+    /* Routo Brand Colors - Varm, jordnära färgpalett */
+    --background: 36 33% 95%; /* Beige/Cream #F5EFE7 */
+    --foreground: 202 48% 22%; /* Mörkblå #1A3A52 */
 
-    --card: 0 0% 100%; /* Vit för kort */
-    --card-foreground: 224 10% 10%;
+    --card: 36 45% 98%; /* Lite ljusare beige för kort */
+    --card-foreground: 202 48% 22%;
 
-    --popover: 0 0% 100%;
-    --popover-foreground: 224 10% 10%;
+    --popover: 36 45% 98%;
+    --popover-foreground: 202 48% 22%;
 
-    /* Brand Colors - Modern SaaS */
-    --primary: 221 83% 53%; /* Stark blå - main CTA */
-    --primary-foreground: 0 0% 100%;
+    /* Routo Brand Colors */
+    --primary: 28 52% 60%; /* Terrakotta/Orange #D4925F */
+    --primary-foreground: 36 33% 95%;
 
-    --secondary: 142 76% 36%; /* Frisk grön - success/positive */
+    --secondary: 128 16% 55%; /* Sage Green #7A9B7E */
     --secondary-foreground: 0 0% 100%;
 
-    --accent: 262 83% 58%; /* Lila - special/highlighted */
-    --accent-foreground: 0 0% 100%;
+    --accent: 202 48% 30%; /* Djupare blå för accent */
+    --accent-foreground: 36 33% 95%;
 
-    --muted: 220 13% 96%; /* Ljusgrå för muted areas */
-    --muted-foreground: 220 9% 46%;
+    --muted: 36 20% 90%; /* Muted beige */
+    --muted-foreground: 202 20% 40%;
 
-    /* Status Colors - För rapporter och grafer */
-    --success: 142 76% 36%; /* Grön - accepterad/completed */
+    /* Status Colors - Anpassade till Routo-palett */
+    --success: 128 30% 50%; /* Grön från paletten */
     --success-foreground: 0 0% 100%;
     
-    --warning: 45 93% 47%; /* Gul/orange - väntande/pending */
+    --warning: 28 70% 55%; /* Orange/terrakotta för varning */
     --warning-foreground: 0 0% 100%;
     
-    --info: 199 89% 48%; /* Cyan - viewed/info */
+    --info: 202 48% 45%; /* Blå för info */
     --info-foreground: 0 0% 100%;
 
-    --destructive: 0 84% 60%; /* Röd - errors/delete/rejected */
+    --destructive: 0 65% 55%; /* Soft röd */
     --destructive-foreground: 0 0% 100%;
 
-    --border: 220 13% 91%;
-    --input: 220 13% 91%;
-    --ring: 221 83% 53%; /* Blå focus ring */
+    --border: 36 20% 85%;
+    --input: 36 20% 90%;
+    --ring: 28 52% 60%; /* Terrakotta focus ring */
 
-    --radius: 0.5rem; /* Modernare, mindre rundning */
+    --radius: 1rem; /* Större rundning för Routo-stil */
 
-    --sidebar-background: 220 13% 98%;
-    --sidebar-foreground: 224 10% 10%;
-    --sidebar-primary: 221 83% 53%;
-    --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 220 13% 93%;
-    --sidebar-accent-foreground: 224 10% 10%;
-    --sidebar-border: 220 13% 91%;
-    --sidebar-ring: 221 83% 53%;
+    --sidebar-background: 36 30% 96%;
+    --sidebar-foreground: 202 48% 22%;
+    --sidebar-primary: 28 52% 60%;
+    --sidebar-primary-foreground: 36 33% 95%;
+    --sidebar-accent: 36 20% 92%;
+    --sidebar-accent-foreground: 202 48% 22%;
+    --sidebar-border: 36 20% 85%;
+    --sidebar-ring: 28 52% 60%;
   }
 
   .dark {
-    /* Dark mode - Djup blåsvart bas */
-    --background: 224 71% 4%; /* Djupt blåsvart */
-    --foreground: 213 31% 91%;
+    /* Dark mode - Routo mörkblå bas */
+    --background: 202 45% 12%; /* Djup mörkblå */
+    --foreground: 36 33% 95%;
 
-    --card: 224 47% 8%;
-    --card-foreground: 213 31% 91%;
+    --card: 202 40% 15%;
+    --card-foreground: 36 33% 95%;
 
-    --popover: 224 47% 8%;
-    --popover-foreground: 213 31% 91%;
+    --popover: 202 40% 15%;
+    --popover-foreground: 36 33% 95%;
 
-    --primary: 217 91% 60%; /* Ljusare blå för dark mode */
-    --primary-foreground: 224 71% 4%;
+    --primary: 28 52% 65%; /* Ljusare terrakotta */
+    --primary-foreground: 202 45% 12%;
 
-    --secondary: 142 70% 45%; /* Ljusare grön */
-    --secondary-foreground: 144 61% 12%;
+    --secondary: 128 20% 60%; /* Ljusare sage */
+    --secondary-foreground: 202 45% 12%;
 
-    --accent: 263 70% 65%; /* Ljusare lila */
-    --accent-foreground: 262 60% 15%;
+    --accent: 202 48% 40%;
+    --accent-foreground: 36 33% 95%;
 
-    --muted: 223 47% 11%;
-    --muted-foreground: 215 16% 57%;
+    --muted: 202 30% 20%;
+    --muted-foreground: 202 20% 60%;
 
     /* Status Colors - Dark mode */
-    --success: 142 70% 45%; /* Ljusare grön för dark mode */
-    --success-foreground: 144 61% 12%;
+    --success: 128 30% 55%;
+    --success-foreground: 0 0% 100%;
     
-    --warning: 48 96% 53%; /* Ljusare gul för dark mode */
-    --warning-foreground: 45 95% 15%;
+    --warning: 28 70% 60%;
+    --warning-foreground: 0 0% 100%;
     
-    --info: 199 89% 58%; /* Ljusare cyan för dark mode */
-    --info-foreground: 199 80% 15%;
+    --info: 202 48% 50%;
+    --info-foreground: 0 0% 100%;
 
-    --destructive: 0 84% 60%;
+    --destructive: 0 65% 60%;
     --destructive-foreground: 0 0% 100%;
 
-    --border: 216 34% 17%;
-    --input: 216 34% 17%;
-    --ring: 217 91% 60%;
+    --border: 202 30% 25%;
+    --input: 202 30% 20%;
+    --ring: 28 52% 65%;
     
-    --sidebar-background: 224 71% 4%;
-    --sidebar-foreground: 213 31% 91%;
-    --sidebar-primary: 217 91% 60%;
-    --sidebar-primary-foreground: 224 71% 4%;
-    --sidebar-accent: 223 47% 11%;
-    --sidebar-accent-foreground: 213 31% 91%;
-    --sidebar-border: 216 34% 17%;
-    --sidebar-ring: 217 91% 60%;
+    --sidebar-background: 202 45% 12%;
+    --sidebar-foreground: 36 33% 95%;
+    --sidebar-primary: 28 52% 65%;
+    --sidebar-primary-foreground: 202 45% 12%;
+    --sidebar-accent: 202 30% 20%;
+    --sidebar-accent-foreground: 36 33% 95%;
+    --sidebar-border: 202 30% 25%;
+    --sidebar-ring: 28 52% 65%;
   }
 }
 

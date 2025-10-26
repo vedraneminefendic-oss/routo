@@ -27,7 +27,7 @@ const Privacy = () => {
             <section>
               <h2 className="text-xl font-semibold mb-3">1. Inledning</h2>
               <p className="text-muted-foreground">
-                Denna integritetspolicy beskriver hur vi samlar in, använder och skyddar dina personuppgifter när du använder Offertverktyget. Vi värnar om din integritet och är transparenta med hur vi hanterar dina uppgifter.
+                Denna integritetspolicy beskriver hur vi samlar in, använder och skyddar dina personuppgifter när du använder Routo. Vi värnar om din integritet och är transparenta med hur vi hanterar dina uppgifter.
               </p>
             </section>
 

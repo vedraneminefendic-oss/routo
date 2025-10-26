@@ -55,17 +55,16 @@ const Landing = () => {
         <div className="container mx-auto px-4 py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <div className="p-2 bg-primary rounded-lg">
-                <Wrench className="h-6 w-6 text-primary-foreground" />
-              </div>
+              <img src="/routo-logo.jpeg" alt="Routo" className="h-12 w-12 rounded-xl object-cover shadow-md" />
               <div>
-                <h1 className="text-xl font-bold text-foreground">Offertverktyget</h1>
-                <p className="text-xs text-muted-foreground">Smarta offerter på minuter</p>
+                <h1 className="text-2xl font-bold text-primary">routo</h1>
+                <p className="text-xs text-muted-foreground">Skapa offerter enkelt</p>
               </div>
             </div>
             <Button 
-              variant="ghost" 
+              variant="outline" 
               onClick={() => navigate("/auth?mode=login")}
+              className="rounded-xl"
             >
               Logga in
             </Button>
@@ -73,22 +72,27 @@ const Landing = () => {
         </div>
       </header>
 
-      {/* Hero Section */}
+      {/* Hero Section with Routo organic shapes */}
       <main className="flex-1">
-        <section className="container mx-auto px-4 py-16 md:py-24">
-          <div className="max-w-3xl mx-auto text-center space-y-6">
+        <section className="relative container mx-auto px-4 py-16 md:py-24 overflow-hidden">
+          {/* Decorative organic shapes */}
+          <div className="absolute top-20 right-10 w-64 h-64 bg-primary/15 rounded-full blur-3xl pointer-events-none" />
+          <div className="absolute bottom-10 left-10 w-48 h-48 bg-secondary/15 rounded-full blur-3xl pointer-events-none" />
+          <div className="absolute top-1/2 left-1/3 w-32 h-32 bg-accent/10 rounded-full blur-2xl pointer-events-none" />
+          
+          <div className="max-w-3xl mx-auto text-center space-y-6 relative z-10">
             <h2 className="text-4xl md:text-5xl font-bold text-foreground">
               Smarta offerter på minuter
             </h2>
             <p className="text-lg md:text-xl text-muted-foreground">
-              Skapa professionella offerter med AI-assistans, hantera kunder och följ upp dina affärer. 
+              Med Routo skapar du professionella offerter med AI-assistans, hanterar kunder och följer upp dina affärer. 
               Allt du behöver för att effektivisera din offertprocess.
             </p>
             <div className="flex flex-col sm:flex-row gap-4 justify-center pt-4">
               <Button 
                 size="lg" 
                 onClick={() => navigate("/auth?mode=signup")}
-                className="text-base"
+                className="text-base rounded-xl bg-gradient-to-br from-primary to-primary/80 hover:from-primary/90 hover:to-primary/70 shadow-lg hover:shadow-xl transition-all duration-300 hover:scale-105"
               >
                 Kom igång gratis
               </Button>
@@ -96,7 +100,7 @@ const Landing = () => {
                 size="lg" 
                 variant="outline"
                 onClick={() => navigate("/auth?mode=login")}
-                className="text-base"
+                className="text-base rounded-xl border-2 hover:bg-primary/10 hover:border-primary/50 transition-all duration-300"
               >
                 Logga in
               </Button>
@@ -104,8 +108,8 @@ const Landing = () => {
           </div>
         </section>
 
-        {/* Features Section */}
-        <section className="container mx-auto px-4 py-16 bg-muted/30">
+        {/* Features Section with Routo styling */}
+        <section className="container mx-auto px-4 py-16 bg-gradient-to-br from-muted/30 to-background">
           <div className="max-w-5xl mx-auto">
             <h3 className="text-2xl md:text-3xl font-bold text-center mb-12 text-foreground">
               Funktioner som sparar tid
@@ -114,13 +118,16 @@ const Landing = () => {
               {features.map((feature, index) => {
                 const Icon = feature.icon;
                 return (
-                  <Card key={index}>
+                  <Card 
+                    key={index}
+                    className="border-2 hover:border-primary/30 hover:shadow-xl transition-all duration-300 rounded-2xl group"
+                  >
                     <CardHeader>
                       <div className="flex items-center gap-3 mb-2">
-                        <div className="p-2 bg-primary/10 rounded-lg">
-                          <Icon className="h-5 w-5 text-primary" />
+                        <div className="p-3 bg-gradient-to-br from-primary/20 to-primary/10 rounded-xl group-hover:scale-110 transition-transform duration-300">
+                          <Icon className="h-6 w-6 text-primary" />
                         </div>
-                        <CardTitle className="text-lg">{feature.title}</CardTitle>
+                        <CardTitle className="text-lg group-hover:text-primary transition-colors duration-300">{feature.title}</CardTitle>
                       </div>
                       <CardDescription className="text-base">
                         {feature.description}
@@ -133,19 +140,23 @@ const Landing = () => {
           </div>
         </section>
 
-        {/* CTA Section */}
-        <section className="container mx-auto px-4 py-16 md:py-24">
-          <div className="max-w-3xl mx-auto text-center space-y-6">
+        {/* CTA Section with Routo warmth */}
+        <section className="relative container mx-auto px-4 py-16 md:py-24 overflow-hidden">
+          {/* Decorative shapes */}
+          <div className="absolute top-10 left-1/4 w-40 h-40 bg-secondary/15 rounded-full blur-3xl pointer-events-none" />
+          <div className="absolute bottom-10 right-1/4 w-48 h-48 bg-primary/15 rounded-full blur-3xl pointer-events-none" />
+          
+          <div className="max-w-3xl mx-auto text-center space-y-6 relative z-10">
             <h3 className="text-3xl md:text-4xl font-bold text-foreground">
               Redo att komma igång?
             </h3>
             <p className="text-lg text-muted-foreground">
-              Skapa ditt konto idag och börja skapa professionella offerter direkt.
+              Skapa ditt Routo-konto idag och börja skapa professionella offerter direkt.
             </p>
             <Button 
               size="lg"
               onClick={() => navigate("/auth?mode=signup")}
-              className="text-base"
+              className="text-base rounded-xl bg-gradient-to-br from-primary to-primary/80 hover:from-primary/90 hover:to-primary/70 shadow-lg hover:shadow-xl transition-all duration-300 hover:scale-105"
             >
               Skapa gratis konto
             </Button>

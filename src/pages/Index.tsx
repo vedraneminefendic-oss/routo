@@ -259,12 +259,10 @@ const Index = () => {
         <div className="container mx-auto px-4 py-3">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <div className="p-2 bg-primary rounded-lg shadow-md transition-transform hover:scale-105">
-                <Wrench className="h-6 w-6 text-primary-foreground" />
-              </div>
+              <img src="/routo-logo.jpeg" alt="Routo" className="h-10 w-10 rounded-xl object-cover shadow-md" />
               <div className="hidden sm:block">
-                <h1 className="text-xl md:text-2xl font-bold text-secondary">Offertverktyget</h1>
-                <p className="text-xs md:text-sm text-muted-foreground hidden md:block">Smarta offerter på minuter</p>
+                <h1 className="text-xl md:text-2xl font-bold text-primary">routo</h1>
+                <p className="text-xs md:text-sm text-muted-foreground hidden md:block">Skapa offerter enkelt</p>
               </div>
             </div>
             <nav className="flex gap-1 md:gap-2">

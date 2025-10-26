@@ -144,13 +144,16 @@ const Dashboard = () => {
 
       {/* Main Content */}
       <main className="container mx-auto px-4 py-8">
-        {/* Hero Section */}
+        {/* Hero Section with Routo organic shapes */}
         <div className="mb-10 animate-in fade-in-0 slide-in-from-top-4 duration-700">
-          <div className="relative overflow-hidden bg-gradient-to-br from-primary/10 via-primary/5 to-accent/5 rounded-2xl p-6 md:p-8 border-2 border-primary/30 shadow-2xl group">
+          <div className="relative overflow-hidden bg-gradient-to-br from-primary/10 via-secondary/5 to-background rounded-2xl p-6 md:p-8 border-2 border-primary/20 shadow-xl group">
+            {/* Decorative organic shapes */}
+            <div className="absolute top-0 right-0 w-40 h-40 bg-primary/10 rounded-full blur-3xl pointer-events-none" />
+            <div className="absolute bottom-0 left-0 w-32 h-32 bg-secondary/10 rounded-full blur-2xl pointer-events-none" />
             <div className="absolute inset-0 bg-gradient-to-r from-primary/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-700 pointer-events-none" />
             <div className="relative z-10">
-              <h2 className="text-3xl md:text-4xl font-bold mb-3 bg-gradient-to-br from-foreground via-foreground to-foreground/70 bg-clip-text text-transparent">
-                Välkommen tillbaka! 👋
+              <h2 className="text-3xl md:text-4xl font-bold mb-3 text-foreground">
+                Välkommen till Routo! 👋
               </h2>
               <p className="text-lg text-muted-foreground">
                 Här är en översikt över din verksamhet
