@@ -145,13 +145,18 @@ const Dashboard = () => {
       {/* Main Content */}
       <main className="container mx-auto px-4 py-8">
         {/* Hero Section */}
-        <div className="mb-8">
-          <h2 className="text-3xl md:text-4xl font-bold text-foreground mb-2">
-            Välkommen tillbaka! 👋
-          </h2>
-          <p className="text-muted-foreground text-lg">
-            Här är en översikt över din verksamhet
-          </p>
+        <div className="mb-10 animate-in fade-in-0 slide-in-from-top-4 duration-700">
+          <div className="relative overflow-hidden bg-gradient-to-br from-primary/10 via-primary/5 to-accent/5 rounded-2xl p-10 border-2 border-primary/30 shadow-2xl group">
+            <div className="absolute inset-0 bg-gradient-to-r from-primary/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-700" />
+            <div className="relative z-10">
+              <h2 className="text-5xl font-bold mb-3 bg-gradient-to-br from-foreground via-foreground to-foreground/70 bg-clip-text text-transparent">
+                Välkommen tillbaka! 👋
+              </h2>
+              <p className="text-lg text-muted-foreground">
+                Här är en översikt över din verksamhet
+              </p>
+            </div>
+          </div>
         </div>
 
         {/* Statistics Cards */}
@@ -161,11 +166,14 @@ const Dashboard = () => {
 
         {/* Pending Quotes Alert */}
         {pendingQuotesCount > 0 && (
-          <Card className="mb-8 border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/20">
-            <CardContent className="flex items-center gap-4 pt-6">
-              <AlertCircle className="h-8 w-8 text-amber-600 dark:text-amber-500 shrink-0" />
+          <Card className="mb-10 border-2 border-amber-300 dark:border-amber-700 bg-gradient-to-br from-amber-50 via-amber-50/50 to-amber-100/30 dark:from-amber-950/20 dark:via-amber-950/10 dark:to-amber-950/5 shadow-xl hover:shadow-2xl transition-all duration-500 animate-in fade-in-0 slide-in-from-top-4 overflow-hidden group">
+            <div className="absolute inset-0 bg-gradient-to-r from-amber-100/50 to-transparent dark:from-amber-900/20 opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
+            <CardContent className="flex items-center gap-5 pt-6 relative">
+              <div className="p-3 bg-amber-200/50 dark:bg-amber-800/30 rounded-xl group-hover:scale-110 transition-transform duration-300 shadow-md">
+                <AlertCircle className="h-8 w-8 text-amber-600 dark:text-amber-500 shrink-0 animate-pulse" />
+              </div>
               <div className="flex-1">
-                <p className="font-semibold text-base text-amber-900 dark:text-amber-100 mb-1">
+                <p className="font-bold text-lg text-amber-900 dark:text-amber-100 mb-1">
                   {pendingQuotesCount} {pendingQuotesCount === 1 ? 'offert behöver' : 'offerter behöver'} uppföljning
                 </p>
                 <p className="text-sm text-amber-700 dark:text-amber-400">
@@ -174,7 +182,7 @@ const Dashboard = () => {
               </div>
               <Button 
                 onClick={() => navigate('/quotes?filter=needs_followup')}
-                className="shrink-0"
+                className="shrink-0 bg-gradient-to-br from-amber-600 to-amber-700 hover:from-amber-700 hover:to-amber-800 text-white shadow-lg hover:shadow-xl transition-all duration-300 hover:scale-105"
                 variant="default"
               >
                 Visa offerter
@@ -184,17 +192,19 @@ const Dashboard = () => {
         )}
 
         {/* Quick Actions Grid */}
-        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
+        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6 mb-10">
           <Card 
-            className="cursor-pointer hover:shadow-lg transition-shadow border-2 hover:border-primary"
+            className="group cursor-pointer hover:shadow-2xl transition-all duration-500 border-2 hover:border-primary/50 hover:scale-105 overflow-hidden animate-in fade-in-0 slide-in-from-bottom-4"
+            style={{ animationDelay: '100ms' }}
             onClick={() => navigate('/quotes/new')}
           >
-            <CardHeader>
+            <div className="absolute inset-0 bg-gradient-to-br from-primary/10 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
+            <CardHeader className="relative">
               <div className="flex items-center gap-3 mb-2">
-                <div className="p-3 bg-primary/10 rounded-lg">
-                  <Plus className="h-6 w-6 text-primary" />
+                <div className="p-3 bg-gradient-to-br from-primary/20 to-primary/10 rounded-xl group-hover:scale-110 transition-transform duration-300 shadow-md">
+                  <Plus className="h-6 w-6 text-primary group-hover:animate-pulse" />
                 </div>
-                <CardTitle className="text-lg">Skapa ny offert</CardTitle>
+                <CardTitle className="text-lg group-hover:text-primary transition-colors duration-300">Skapa ny offert</CardTitle>
               </div>
               <CardDescription>
                 Generera en professionell offert med AI på några sekunder
@@ -203,15 +213,17 @@ const Dashboard = () => {
           </Card>
 
           <Card 
-            className="cursor-pointer hover:shadow-lg transition-shadow border-2 hover:border-secondary"
+            className="group cursor-pointer hover:shadow-2xl transition-all duration-500 border-2 hover:border-secondary/50 hover:scale-105 overflow-hidden animate-in fade-in-0 slide-in-from-bottom-4"
+            style={{ animationDelay: '200ms' }}
             onClick={() => navigate('/quotes/new?templates=true')}
           >
-            <CardHeader>
+            <div className="absolute inset-0 bg-gradient-to-br from-secondary/10 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
+            <CardHeader className="relative">
               <div className="flex items-center gap-3 mb-2">
-                <div className="p-3 bg-secondary/10 rounded-lg">
-                  <Layout className="h-6 w-6 text-secondary" />
+                <div className="p-3 bg-gradient-to-br from-secondary/20 to-secondary/10 rounded-xl group-hover:scale-110 transition-transform duration-300 shadow-md">
+                  <Layout className="h-6 w-6 text-secondary group-hover:animate-pulse" />
                 </div>
-                <CardTitle className="text-lg">Använd mall</CardTitle>
+                <CardTitle className="text-lg group-hover:text-secondary transition-colors duration-300">Använd mall</CardTitle>
               </div>
               <CardDescription>
                 Börja snabbt med färdiga mallar för vanliga ROT/RUT-jobb
@@ -220,15 +232,17 @@ const Dashboard = () => {
           </Card>
 
           <Card 
-            className="cursor-pointer hover:shadow-lg transition-shadow border-2 hover:border-accent"
+            className="group cursor-pointer hover:shadow-2xl transition-all duration-500 border-2 hover:border-accent/50 hover:scale-105 overflow-hidden animate-in fade-in-0 slide-in-from-bottom-4"
+            style={{ animationDelay: '300ms' }}
             onClick={() => navigate('/quotes')}
           >
-            <CardHeader>
+            <div className="absolute inset-0 bg-gradient-to-br from-accent/10 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
+            <CardHeader className="relative">
               <div className="flex items-center gap-3 mb-2">
-                <div className="p-3 bg-accent/10 rounded-lg">
-                  <FileText className="h-6 w-6 text-accent" />
+                <div className="p-3 bg-gradient-to-br from-accent/20 to-accent/10 rounded-xl group-hover:scale-110 transition-transform duration-300 shadow-md">
+                  <FileText className="h-6 w-6 text-accent group-hover:animate-pulse" />
                 </div>
-                <CardTitle className="text-lg">Alla offerter</CardTitle>
+                <CardTitle className="text-lg group-hover:text-accent transition-colors duration-300">Alla offerter</CardTitle>
               </div>
               <CardDescription>
                 Visa, redigera och hantera alla dina sparade offerter
@@ -238,11 +252,17 @@ const Dashboard = () => {
         </div>
 
         {/* Recent Activity */}
-        <Card>
-          <CardHeader>
+        <Card className="border-2 shadow-xl hover:shadow-2xl transition-all duration-500 overflow-hidden group">
+          <div className="absolute inset-0 bg-gradient-to-br from-primary/5 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
+          <CardHeader className="relative">
             <div className="flex items-center justify-between">
-              <CardTitle className="text-lg">Senaste offerterna</CardTitle>
-              <Button variant="ghost" size="sm" onClick={() => navigate('/quotes')}>
+              <CardTitle className="text-xl font-bold">Senaste offerterna</CardTitle>
+              <Button 
+                variant="ghost" 
+                size="sm" 
+                onClick={() => navigate('/quotes')}
+                className="hover:bg-primary/10 hover:text-primary transition-colors duration-300"
+              >
                 Visa alla
               </Button>
             </div>
@@ -250,19 +270,22 @@ const Dashboard = () => {
               De 5 senast skapade offerterna
             </CardDescription>
           </CardHeader>
-          <CardContent>
+          <CardContent className="relative">
             {quotes.length === 0 ? (
-              <div className="text-center py-8">
-                <FileText className="h-12 w-12 text-muted-foreground mx-auto mb-3" />
-                <p className="text-muted-foreground mb-4">Inga offerter ännu</p>
-                <Button onClick={() => navigate('/quotes/new')}>
+              <div className="text-center py-12 animate-in fade-in-0 zoom-in-95 duration-500">
+                <FileText className="h-16 w-16 text-muted-foreground mx-auto mb-4 opacity-50" />
+                <p className="text-muted-foreground mb-6 text-lg">Inga offerter ännu</p>
+                <Button 
+                  onClick={() => navigate('/quotes/new')}
+                  className="bg-gradient-to-br from-primary to-primary/80 hover:from-primary/90 hover:to-primary/70 shadow-lg hover:shadow-xl transition-all duration-300 hover:scale-105"
+                >
                   <Plus className="h-4 w-4 mr-2" />
                   Skapa din första offert
                 </Button>
               </div>
             ) : (
               <div className="space-y-3">
-                {quotes.map((quote) => {
+                {quotes.map((quote, index) => {
                   const quoteData = quote.edited_quote || quote.generated_quote;
                   const summary = quoteData?.summary;
                   const totalAmount = summary?.customerPays || 0;
@@ -270,11 +293,12 @@ const Dashboard = () => {
                   return (
                     <div
                       key={quote.id}
-                      className="flex items-center justify-between p-4 border rounded-lg hover:bg-muted/50 cursor-pointer transition-colors"
+                      className="group/item flex items-center justify-between p-5 border-2 rounded-xl hover:bg-gradient-to-r hover:from-muted/50 hover:to-transparent cursor-pointer transition-all duration-300 hover:shadow-md hover:scale-[1.02] hover:border-primary/30 animate-in fade-in-0 slide-in-from-left-4"
+                      style={{ animationDelay: `${index * 75}ms` }}
                       onClick={() => navigate(`/quotes?id=${quote.id}`)}
                     >
                       <div className="flex-1 min-w-0">
-                        <p className="font-semibold text-base text-foreground truncate mb-1">
+                        <p className="font-bold text-base text-foreground truncate mb-1 group-hover/item:text-primary transition-colors duration-300">
                           {quote.title}
                         </p>
                         <p className="text-sm text-muted-foreground">
@@ -282,10 +306,10 @@ const Dashboard = () => {
                         </p>
                       </div>
                       <div className="text-right ml-4">
-                        <p className="font-semibold text-foreground">
+                        <p className="font-bold text-lg text-foreground group-hover/item:text-primary transition-colors duration-300">
                           {formatCurrency(totalAmount)}
                         </p>
-                        <p className="text-xs text-muted-foreground capitalize">
+                        <p className="text-xs text-muted-foreground capitalize px-2.5 py-1 rounded-full bg-muted/50 group-hover/item:bg-primary/10 transition-colors duration-300">
                           {quote.status === 'draft' && 'Utkast'}
                           {quote.status === 'sent' && 'Skickad'}
                           {quote.status === 'viewed' && 'Visad'}

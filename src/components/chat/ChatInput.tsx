@@ -228,24 +228,24 @@ export const ChatInput = ({ onSendMessage, disabled }: ChatInputProps) => {
   };
 
   return (
-    <div className="flex flex-col gap-2">
+    <div className="flex flex-col gap-3">
       {/* Image previews */}
       {images.length > 0 && (
-        <div className="flex gap-2 flex-wrap p-2 bg-muted/30 rounded-md">
+        <div className="flex gap-3 flex-wrap p-3 bg-gradient-to-br from-muted/50 to-muted/30 rounded-lg border border-border/50 backdrop-blur-sm animate-in fade-in-0 slide-in-from-bottom-2 duration-300">
           {images.map((img, idx) => (
-            <div key={idx} className="relative group">
+            <div key={idx} className="relative group animate-in zoom-in-50 duration-300" style={{ animationDelay: `${idx * 100}ms` }}>
               <img 
                 src={img} 
                 alt={`Upload ${idx + 1}`}
-                className="h-20 w-20 object-cover rounded-md border-2 border-primary/20"
+                className="h-24 w-24 object-cover rounded-lg border-2 border-primary/30 shadow-md transition-all duration-300 group-hover:scale-105 group-hover:border-primary/50"
               />
               <Button
                 size="icon"
                 variant="destructive"
-                className="absolute -top-2 -right-2 h-6 w-6 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
+                className="absolute -top-2 -right-2 h-7 w-7 rounded-full opacity-0 group-hover:opacity-100 transition-all duration-200 shadow-lg hover:scale-110"
                 onClick={() => removeImage(idx)}
               >
-                <X className="h-3 w-3" />
+                <X className="h-4 w-4" />
               </Button>
             </div>
           ))}
@@ -254,15 +254,18 @@ export const ChatInput = ({ onSendMessage, disabled }: ChatInputProps) => {
 
       {/* Real-time transcript preview */}
       {interimTranscript && (
-        <div className="px-3 py-2 bg-primary/10 rounded-md border border-primary/20 animate-in fade-in slide-in-from-bottom-2">
-          <p className="text-sm text-muted-foreground flex items-center gap-2">
-            <span className="inline-block h-2 w-2 rounded-full bg-destructive animate-pulse" />
-            <span className="italic">{interimTranscript}</span>
+        <div className="px-4 py-3 bg-gradient-to-r from-primary/10 via-primary/5 to-primary/10 rounded-lg border border-primary/30 animate-in fade-in-0 slide-in-from-bottom-2 duration-300 shadow-sm">
+          <p className="text-sm text-muted-foreground flex items-center gap-3">
+            <span className="relative flex h-3 w-3">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-destructive opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-3 w-3 bg-destructive"></span>
+            </span>
+            <span className="italic font-medium">{interimTranscript}</span>
           </p>
         </div>
       )}
 
-      <div className="flex gap-2 items-end">
+      <div className="flex gap-3 items-end">
         <input
           ref={fileInputRef}
           type="file"
@@ -277,17 +280,17 @@ export const ChatInput = ({ onSendMessage, disabled }: ChatInputProps) => {
             value={message}
             onChange={handleInput}
             onKeyDown={handleKeyDown}
-            placeholder={isListening ? "Talar..." : images.length > 0 ? "Beskriv bilderna (valfritt)..." : "Skriv din projektbeskrivning här 📝"}
+            placeholder={isListening ? "🎤 Talar..." : images.length > 0 ? "Beskriv bilderna (valfritt)..." : "Skriv din projektbeskrivning här 📝"}
             disabled={disabled}
-            className="min-h-[52px] max-h-[200px] resize-none pr-20"
+            className="min-h-[56px] max-h-[200px] resize-none pr-24 border-2 focus:border-primary/50 transition-all duration-300 shadow-sm hover:shadow-md bg-card/50 backdrop-blur-sm"
             rows={1}
           />
-          <div className="absolute right-2 bottom-2 flex gap-1">
+          <div className="absolute right-2 bottom-2 flex gap-1.5">
             <Button
               type="button"
               size="icon"
               variant="ghost"
-              className="h-8 w-8"
+              className="h-9 w-9 hover:bg-primary/10 hover:text-primary transition-all duration-300 hover:scale-110"
               onClick={() => fileInputRef.current?.click()}
               disabled={disabled || images.length >= 3}
               title="Ladda upp bilder (max 3)"
@@ -299,14 +302,20 @@ export const ChatInput = ({ onSendMessage, disabled }: ChatInputProps) => {
               size="icon"
               variant={isListening ? "default" : "ghost"}
               className={cn(
-                "h-8 w-8 transition-all",
-                isListening && "bg-destructive hover:bg-destructive/90 text-destructive-foreground animate-pulse shadow-lg"
+                "h-9 w-9 transition-all duration-300",
+                isListening 
+                  ? "bg-destructive hover:bg-destructive/90 text-destructive-foreground shadow-lg scale-110" 
+                  : "hover:bg-primary/10 hover:text-primary hover:scale-110"
               )}
               onClick={toggleListening}
               disabled={disabled}
               title={isListening ? "Stoppa inspelning" : "Starta röstinspelning"}
             >
-              {isListening ? <MicOff className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
+              {isListening ? (
+                <MicOff className="h-4 w-4 animate-pulse" />
+              ) : (
+                <Mic className="h-4 w-4" />
+              )}
             </Button>
           </div>
         </div>
@@ -314,7 +323,7 @@ export const ChatInput = ({ onSendMessage, disabled }: ChatInputProps) => {
           onClick={handleSend}
           disabled={(!message.trim() && images.length === 0) || disabled}
           size="icon"
-          className="h-[52px] w-[52px] flex-shrink-0 touch-manipulation"
+          className="h-[56px] w-[56px] flex-shrink-0 touch-manipulation bg-gradient-to-br from-primary to-primary/80 hover:from-primary/90 hover:to-primary/70 shadow-lg hover:shadow-xl transition-all duration-300 hover:scale-105"
         >
           <Send className="h-5 w-5" />
         </Button>

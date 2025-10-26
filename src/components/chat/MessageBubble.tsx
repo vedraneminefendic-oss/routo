@@ -37,44 +37,45 @@ export const MessageBubble = ({ message, onSendMessage, isTyping }: MessageBubbl
   
   return (
     <div className={cn(
-      "flex gap-3 animate-in fade-in-50 slide-in-from-bottom-2",
+      "flex gap-3 group animate-in fade-in-0 slide-in-from-bottom-4 duration-500",
       isUser ? "flex-row-reverse" : "flex-row"
     )}>
       {/* Avatar */}
       <div className={cn(
-        "flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center",
+        "flex-shrink-0 w-10 h-10 rounded-full flex items-center justify-center shadow-lg transition-all duration-300 group-hover:scale-110",
         isUser 
-          ? "bg-primary text-primary-foreground" 
-          : "bg-accent text-accent-foreground"
+          ? "bg-gradient-to-br from-primary to-primary/80 text-primary-foreground ring-2 ring-primary/20" 
+          : "bg-gradient-to-br from-accent to-accent/80 text-accent-foreground ring-2 ring-accent/20"
       )}>
         {isUser ? (
-          <User className="h-4 w-4" />
+          <User className="h-5 w-5" />
         ) : (
-          <Bot className="h-4 w-4" />
+          <Bot className="h-5 w-5 animate-pulse" />
         )}
       </div>
 
       {/* Message Content */}
       <div className={cn(
-        "flex flex-col gap-1 max-w-[80%]",
+        "flex flex-col gap-2 max-w-[80%]",
         isUser ? "items-end" : "items-start"
       )}>
         <div className={cn(
-          "rounded-2xl px-4 py-3 text-sm leading-relaxed shadow-sm transition-all hover:shadow-md",
+          "rounded-2xl px-5 py-3 text-sm leading-relaxed shadow-lg transition-all duration-300 hover:shadow-xl hover:scale-[1.02]",
           isUser 
-            ? "bg-primary text-primary-foreground rounded-tr-sm" 
-            : "bg-gradient-to-br from-muted via-muted/90 to-muted/80 text-foreground rounded-tl-sm border border-border/50"
+            ? "bg-gradient-to-br from-primary via-primary to-primary/90 text-primary-foreground rounded-tr-sm backdrop-blur-sm" 
+            : "bg-gradient-to-br from-card via-card/95 to-card/90 text-foreground rounded-tl-sm border border-border/50 backdrop-blur-sm"
         )}>
           <div 
+            className="prose prose-sm max-w-none dark:prose-invert"
             dangerouslySetInnerHTML={{
               __html: message.content
-                .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-                .replace(/^- (.+)$/gm, '• $1')
+                .replace(/\*\*(.*?)\*\*/g, '<strong class="font-semibold text-foreground">$1</strong>')
+                .replace(/^- (.+)$/gm, '<span class="inline-block">• $1</span>')
                 .replace(/\n/g, '<br/>')
             }}
           />
         </div>
-        <span className="text-xs text-muted-foreground px-2">
+        <span className="text-xs text-muted-foreground px-2 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
           {message.timestamp.toLocaleTimeString('sv-SE', { 
             hour: '2-digit', 
             minute: '2-digit' 

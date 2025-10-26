@@ -39,8 +39,9 @@ export const EstimateSummary = ({
     deductionRate: rotRutDeduction.deductionRate ?? 0.50
   } : undefined;
   return (
-    <Card className="border-2 border-primary/20">
-      <CardContent className="pt-6">
+    <Card className="border-2 border-primary/30 shadow-2xl hover:shadow-3xl transition-all duration-500 bg-gradient-to-br from-card via-card/95 to-card/90 backdrop-blur-sm overflow-hidden group">
+      <div className="absolute inset-0 bg-gradient-to-br from-primary/5 via-transparent to-accent/5 opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
+      <CardContent className="pt-6 relative">
         <div className="space-y-4">
           {/* Work and Material Cost Breakdown */}
           {workCost !== undefined && materialCost !== undefined && (
@@ -153,9 +154,9 @@ export const EstimateSummary = ({
           <Separator />
 
           {/* Total */}
-          <div className="flex items-center justify-between text-lg font-bold">
-            <span className="text-foreground">Totalt</span>
-            <span className="text-primary">
+          <div className="flex items-center justify-between p-4 rounded-lg bg-gradient-to-r from-primary/10 via-primary/5 to-primary/10 border border-primary/20 shadow-md animate-in fade-in-0 zoom-in-95 duration-500">
+            <span className="text-xl font-bold text-foreground">Totalt</span>
+            <span className="text-2xl font-bold bg-gradient-to-br from-primary to-primary/70 bg-clip-text text-transparent">
               {total.toLocaleString('sv-SE')} kr
             </span>
           </div>
