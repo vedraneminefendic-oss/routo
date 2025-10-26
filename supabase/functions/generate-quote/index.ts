@@ -1326,28 +1326,53 @@ interface Exclusion {
 function parseExclusions(conversationHistory: ConversationMessage[]): Exclusion[] {
   const exclusions: Exclusion[] = [];
   
-  // STEG 1 FIX: Filtrera bort AI:ns meddelanden - KOlla BARA användarens svar
+  // STEG 1: Filtrera bort AI:ns meddelanden - Kolla BARA användarens svar
   const userMessages = conversationHistory
     .filter(m => m.role === 'user')
     .map(m => m.content)
     .join('\n');
   
-  // Regex-mönster för olika sätt att säga "jag tar hand om X"
+  // STEG 1A: Filtrera bort EXPLICITA inkluderingar först
+  const inclusionPatterns = [
+    /([^.!?\n]+)\s+(?:ska finnas med|ska ingå|ingår|inkluderas|måste vara med)/gi,
+    /(?:vi|jag som hantverkare|vi hantverkare|företaget)\s+(?:tar hand om|sköter|ordnar|utför)\s+([^.!?\n]+)/gi,
+    /(?:offerten ska innehålla|offerten inkluderar)\s+([^.!?\n]+)/gi,
+  ];
+
+  const explicitInclusions: string[] = [];
+  for (const pattern of inclusionPatterns) {
+    let match;
+    while ((match = pattern.exec(userMessages)) !== null) {
+      const item = match[1]?.trim();
+      if (item && item.length > 2) {
+        explicitInclusions.push(item.toLowerCase());
+      }
+    }
+  }
+  
+  console.log(`✅ Found ${explicitInclusions.length} explicit inclusions:`, explicitInclusions);
+  
+  // STEG 1B: Uppdaterade exclusion-regex för att undvika false positives
   const patterns = [
-    /(?:jag|vi)\s+(?:tar hand om|sköter|ordnar)\s+([^.!?\n]+)/gi,
-    /(?:kunden|kund)\s+(?:står för|tar hand om|sköter|ordnar)\s+([^.!?\n]+)/gi,
-    /([^.!?\n]+)\s+(?:är redan gjort|redan är gjort|redan klart|redan ordnat)/gi, // Kräv "är redan GJORT"
+    // KRITISKT: Kräv "kunden" eller "kund" för "tar hand om"
+    /(?:kunden|kund|köparen)\s+(?:tar hand om|sköter|ordnar)\s+([^.!?\n]+)/gi,
+    
+    // Kräv EXAKT "ska inte ingå" (inte bara "ska" + "ingå")
+    /([^.!?\n]+)\s+ska\s+inte\s+ingå/gi,
+    /ska\s+inte\s+ingå\s+([^.!?\n]+)/gi,
+    
+    /([^.!?\n]+)\s+(?:är redan gjort|redan är gjort|redan klart|redan ordnat)/gi,
     /(?:behövs inte|behöver inte)\s+([^.!?\n]+)/gi,
-    /(?:ska inte ingå|exkludera)\s+([^.!?\n]+)/gi,
+    /(?:exkludera)\s+([^.!?\n]+)/gi,
   ];
   
   for (const pattern of patterns) {
     let match;
-    while ((match = pattern.exec(userMessages)) !== null) { // ← Använd userMessages istället
+    while ((match = pattern.exec(userMessages)) !== null) {
       const item = match[1]?.trim();
       if (item && item.length > 2 && item.length < 100) {
         // Extra validering: Skippa om det ser ut som en fråga
-        if (item.includes('?') || item.toLowerCase().includes('ingår')) {
+        if (item.includes('?')) {
           continue;
         }
         
@@ -1361,12 +1386,19 @@ function parseExclusions(conversationHistory: ConversationMessage[]): Exclusion[
     }
   }
   
+  // STEG 1C: Filtrera bort items som finns i explicitInclusions
+  const validExclusions = exclusions.filter(excl => 
+    !explicitInclusions.some(incl => 
+      excl.item.toLowerCase().includes(incl) || incl.includes(excl.item.toLowerCase())
+    )
+  );
+  
   // Deduplicate
-  const uniqueExclusions = exclusions.filter((excl, index, self) =>
+  const uniqueExclusions = validExclusions.filter((excl, index, self) =>
     index === self.findIndex(e => e.item.toLowerCase() === excl.item.toLowerCase())
   );
   
-  console.log(`📋 Parsed ${uniqueExclusions.length} exclusions:`, uniqueExclusions);
+  console.log(`📋 Parsed ${uniqueExclusions.length} exclusions (after filtering inclusions):`, uniqueExclusions);
   
   return uniqueExclusions;
 }
@@ -1422,6 +1454,50 @@ function detectInclusions(conversationHistory: ConversationMessage[]): string[] 
   console.log(`✅ Detected ${uniqueInclusions.length} inclusions:`, uniqueInclusions);
   
   return uniqueInclusions;
+}
+
+// ============================================
+// SEMANTIC VALIDATION OF INCLUSIONS/EXCLUSIONS
+// ============================================
+
+function validateInclusionsExclusions(
+  inclusions: string[],
+  exclusions: Exclusion[],
+  conversationHistory: ConversationMessage[]
+): { validInclusions: string[]; validExclusions: Exclusion[]; warnings: string[] } {
+  
+  const warnings: string[] = [];
+  const validInclusions = [...inclusions];
+  const validExclusions: Exclusion[] = [];
+  
+  const allUserText = conversationHistory
+    .filter(m => m.role === 'user')
+    .map(m => m.content)
+    .join('\n')
+    .toLowerCase();
+  
+  // Check each exclusion for contradictory evidence
+  for (const excl of exclusions) {
+    const item = excl.item.toLowerCase();
+    
+    // Check if user EXPLICITLY said to include this
+    const hasInclusionPhrase = allUserText.match(
+      new RegExp(`${item}\\s+ska\\s+(finnas med|ingå|inkluderas|vara med)`, 'i')
+    );
+    
+    const hasWeInclude = allUserText.match(
+      new RegExp(`(?:vi|jag|företaget)\\s+(?:tar hand om|sköter|ordnar)\\s+${item}`, 'i')
+    );
+    
+    if (hasInclusionPhrase || hasWeInclude) {
+      warnings.push(`⚠️ "${excl.item}" markerades som exkluderad, men användaren sa att det ska inkluderas. Inkluderar istället.`);
+      validInclusions.push(excl.item);
+    } else {
+      validExclusions.push(excl);
+    }
+  }
+  
+  return { validInclusions, validExclusions, warnings };
 }
 
 // ============================================
@@ -1537,8 +1613,21 @@ async function askClarificationQuestions(
 
   const prompt = `Du är Handoff AI - en intelligent assistent som hjälper hantverkare att snabbt skapa offerter.
 
-**VIKTIG KONTEXT:**
-Du hjälper en HANTVERKARE (arborist/elektriker/rörmokare/snickare/målare/etc.) att skapa en offert baserat på vad deras KUND har beskrivit. Du pratar INTE direkt med slutkunden.
+**🎯 VIKTIG KONTEXT - LÄS NOGA:**
+- Du pratar med en HANTVERKARE (arborist/elektriker/målare/rörmokare etc.)
+- Hantverkaren skapar en offert åt sin KUND
+- När hantverkaren säger "vi tar hand om X" = X SKA INKLUDERAS i offerten
+- När hantverkaren säger "kunden tar hand om X" = X ska EXKLUDERAS från offerten
+
+**EXEMPEL PÅ TOLKNING:**
+✅ "Vi tar hand om bortforsling" → Inkludera bortforsling i offerten
+✅ "Bortforsling ska finnas med" → Inkludera bortforsling
+❌ "Kunden tar hand om bortforsling" → Exkludera bortforsling
+❌ "Bortforsling behövs inte" → Exkludera bortforsling
+
+**FRÅGOR ATT STÄLLA OM OKLART:**
+Om hantverkaren nämner något som "stubbfräsning", "rivning", "el-arbete", "bortforsling" etc. utan att specificera:
+→ Fråga: "Ska [X] ingå i offerten eller ordnar kunden det själv?"
 
 **KUNDENS FÖRFRÅGAN:**
 ${description}
@@ -1775,8 +1864,17 @@ ${workItems.map((w: any) => `- ${w.name}: ${w.hours}h × ${w.hourlyRate} kr/h = 
 
   const prompt = `Du är Handoff AI - en intelligent assistent som hjälper hantverkare skapa professionella offerter.
 
-**VIKTIG KONTEXT:**
-Du hjälper en HANTVERKARE att skapa en offert för deras KUND. Basera offerten på vad hantverkaren beskrivit från kundens förfrågan.
+**🎯 VIKTIG KONTEXT - LÄS NOGA:**
+- Du pratar med en HANTVERKARE (arborist/elektriker/målare/rörmokare/snickare etc.)
+- Hantverkaren skapar en offert åt sin KUND
+- När hantverkaren säger "vi tar hand om X" = X SKA INKLUDERAS i offerten
+- När hantverkaren säger "kunden tar hand om X" = X ska EXKLUDERAS från offerten
+
+**EXEMPEL PÅ TOLKNING:**
+✅ "Vi tar hand om bortforsling" → Lägg till workItem: "Bortforsling av ris och stamdelar"
+✅ "Bortforsling ska finnas med" → Lägg till workItem: "Bortforsling"
+❌ "Kunden tar hand om bortforsling" → Lägg till i exclusions: {item: "bortforsling", reason: "Kunden ordnar själv"}
+❌ "Bortforsling behövs inte" → Lägg inte till något
 
 **PROJEKT:**
 ${description}
@@ -1825,41 +1923,46 @@ ${similarQuotesText}
 
 ${industryDataText}
 
-**🚨 KRITISKT - TOLKNING AV VEM SOM TAR HAND OM VAD (ÅTGÄRD #2):**
+**🚨 KRITISKT - INKLUSIONS/EXKLUSIONS-REGLER:**
 
-När hantverkaren säger följande, betyder det att posten ska **EXKLUDERAS** från offerten:
+När du bygger offerten:
 
-❌ **EXKLUDERA DESSA:**
-- "Jag tar hand om bortforsling" → Hantverkaren gör det själv utanför offerten = EXKLUDERA
-- "Kunden tar hand om materialet" → Kunden köper själv = EXKLUDERA
-- "Vi har redan stubbfräsen" → Hantverkaren har redan = EXKLUDERA
-- "Det är redan gjort" → Redan utfört = EXKLUDERA
-- "Behövs inte" / "Nej tack" → EXKLUDERA
-
-✅ **INKLUDERA DESSA:**
-- "Bortforsling ingår" → Ska inkluderas i offerten
-- "Vi sköter rivningen" → Hantverkaren utför = INKLUDERA i offerten
-- "Ja, det behövs" → INKLUDERA
-- "Stubbfräsning ska göras" → INKLUDERA
+1. Om hantverkaren sagt "vi tar hand om [X]" → Inkludera [X] som workItem eller material
+2. Om hantverkaren sagt "kunden tar hand om [X]" → Lägg [X] i "exclusions"
+3. Om oklart → Anta att allt som behövs för projektet ska inkluderas (om inte explicit exkluderat)
 
 **EXEMPEL PÅ KORREKT TOLKNING:**
 
-Konversation:
-AI: "Tar du hand om bortforsling eller ska det ingå?"
-Användare: "Jag tar hand om bortforsling"
+✅ **"Vi tar hand om bortforsling"**
+→ Lägg till workItem:
+```json
+{
+  "name": "Bortforsling av ris och stamdelar",
+  "hours": 2,
+  "hourlyRate": 650,
+  "subtotal": 1300
+}
+```
 
-✅ RÄTT offert: INGEN bortforsling i offerten (användaren gör det själv)
-❌ FEL offert: Inkluderar "Bortforsling - 1500 kr"
+✅ **"Bortforsling ska finnas med på offert"**
+→ Lägg till workItem: "Bortforsling av byggavfall"
 
-Konversation:
-AI: "Ingår bortforsling?"
-Användare: "Ja, bortforsling ingår"
+❌ **"Kunden tar hand om bortforsling"**
+→ Lägg till i exclusions:
+```json
+{
+  "item": "bortforsling",
+  "reason": "Kunden ordnar själv"
+}
+```
 
-✅ RÄTT offert: "Bortforsling av byggavfall - 1500 kr"
-❌ FEL offert: Ingen bortforsling
+❌ **"Jag tar hand om bortforsling"**
+→ EXKLUDERA (hantverkaren gör det själv utanför offerten)
 
-**ANVÄND DENNA REGEL:**
-Om ordet "jag", "vi", "kunden", "redan" förekommer + arbetsmoment → EXKLUDERA det momentet
+**SYNONYM-HANTERING:**
+- "fälla träd" = "trädfällning"
+- "ta bort stubbe" = "stubbfräsning"
+- "forsla bort" = "bortforsling"
 
 ${exclusions.length > 0 ? `
 **🚫 SPRINT 1: EXPLICIT EXKLUDERADE POSTER (VIKTIGT!):**
@@ -2746,8 +2849,21 @@ Deno.serve(async (req) => {
       } else if (intent === 'review') {
         console.log('👁️ User wants to review summary via button');
         
-        const exclusions = parseExclusions(actualConversationHistory);
-        const inclusions = detectInclusions(actualConversationHistory);
+        const rawExclusions = parseExclusions(actualConversationHistory);
+        const rawInclusions = detectInclusions(actualConversationHistory);
+        
+        const { validInclusions, validExclusions, warnings } = validateInclusionsExclusions(
+          rawInclusions,
+          rawExclusions,
+          actualConversationHistory
+        );
+
+        if (warnings.length > 0) {
+          console.log('⚠️ Semantic validation warnings:', warnings);
+        }
+        
+        const exclusions = validExclusions;
+        const inclusions = validInclusions;
         
         const summary = buildProjectSummary(
           completeDescription,
@@ -2787,8 +2903,21 @@ ${summary}
       } else if (intent === 'review') {
         console.log('👁️ User wants to review summary via button');
         
-        const exclusions = parseExclusions(actualConversationHistory);
-        const inclusions = detectInclusions(actualConversationHistory);
+        const rawExclusions2 = parseExclusions(actualConversationHistory);
+        const rawInclusions2 = detectInclusions(actualConversationHistory);
+        
+        const { validInclusions: validInclusions2, validExclusions: validExclusions2, warnings: warnings2 } = validateInclusionsExclusions(
+          rawInclusions2,
+          rawExclusions2,
+          actualConversationHistory
+        );
+
+        if (warnings2.length > 0) {
+          console.log('⚠️ Semantic validation warnings:', warnings2);
+        }
+        
+        const exclusions = validExclusions2;
+        const inclusions = validInclusions2;
         
         const summary = buildProjectSummary(
           completeDescription,

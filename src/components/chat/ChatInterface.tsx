@@ -641,6 +641,21 @@ export const ChatInterface = ({ onQuoteGenerated, isGenerating }: ChatInterfaceP
             </div>
           )}
 
+          {/* Guidance Banner - Sticky below typing indicator */}
+          {messages.length > 0 && messages.length <= 3 && !generatedQuote && (
+            <div className="sticky top-0 z-10 bg-amber-50 dark:bg-amber-950/20 border-b border-amber-200 dark:border-amber-900/30 px-4 py-3">
+              <p className="text-sm font-medium text-amber-900 dark:text-amber-100 mb-2">
+                💡 Tips för tydlig kommunikation:
+              </p>
+              <div className="space-y-1 text-xs text-amber-700 dark:text-amber-300">
+                <p>✅ "Vi tar hand om X" = X läggs till i offerten</p>
+                <p>❌ "Kunden tar hand om X" = X tas bort från offerten</p>
+                <p>✏️ "X ska finnas med" = X läggs till</p>
+                <p>🗑️ "X ska inte ingå" = X tas bort</p>
+              </div>
+            </div>
+          )}
+
           {/* Proactive Ready Banner - Sticky at top */}
           {showProactivePrompt && readiness && readiness.readiness_score >= 85 && (
             <div className="sticky top-0 z-10 bg-gradient-to-r from-green-500/10 via-primary/10 to-blue-500/10 border-b border-primary/20 px-4 py-3 backdrop-blur-sm">
