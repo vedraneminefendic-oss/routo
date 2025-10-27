@@ -10,6 +10,7 @@ import QuoteDisplay from "@/components/QuoteDisplay";
 import QuoteEditor from "@/components/QuoteEditor";
 import { AIProgressIndicator } from "@/components/AIProgressIndicator";
 import { ChatInterface } from "@/components/chat/ChatInterface";
+import { LiveQuotePreview } from "@/components/chat/LiveQuotePreview";
 import { ExpressQuoteForm } from "@/components/ExpressQuoteForm";
 
 const NewQuote = () => {
@@ -27,6 +28,9 @@ const NewQuote = () => {
   const [currentCustomerId, setCurrentCustomerId] = useState<string | undefined>(undefined);
   const [hasCustomRates, setHasCustomRates] = useState(false);
   const [hourlyRate, setHourlyRate] = useState<number>(650);
+  
+  // P1: Live preview state
+  const [conversationSummary, setConversationSummary] = useState<any>(null);
   
   // Quality/validation state
   const [qualityWarning, setQualityWarning] = useState<string | undefined>(undefined);
@@ -294,6 +298,11 @@ const NewQuote = () => {
     setIsGenerating(false);
     toast.success("Offert genererad och klar att granskas!");
   };
+  
+  // P1: Handle conversation updates for live preview
+  const handleConversationUpdate = (summary: any) => {
+    setConversationSummary(summary);
+  };
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
@@ -351,77 +360,93 @@ const NewQuote = () => {
 
       {/* Main Content */}
       <main className="container mx-auto px-4 py-8">
-        <div className="max-w-4xl mx-auto space-y-6">
-          {/* AI Progress Indicator */}
-          {isGenerating && <AIProgressIndicator isGenerating={isGenerating} />}
+        {/* P1: Split view layout when in AI mode and no quote yet */}
+        {!currentQuote ? (
+          <div className="grid lg:grid-cols-[1fr,400px] gap-6 max-w-7xl mx-auto">
+            {/* Left: Chat/Form */}
+            <div className="space-y-6">
+              {/* AI Progress Indicator */}
+              {isGenerating && <AIProgressIndicator isGenerating={isGenerating} />}
 
-          {/* SPRINT 2: Tabs for AI-assisted vs Express mode */}
-          {!currentQuote && (
-            <Tabs defaultValue="ai" className="w-full">
-              <TabsList className="grid w-full grid-cols-2 mb-6">
-                <TabsTrigger value="ai" className="flex items-center gap-2">
-                  <MessageSquare className="h-4 w-4" />
-                  AI-assisterad (rekommenderas)
-                </TabsTrigger>
-                <TabsTrigger value="express" className="flex items-center gap-2">
-                  <Zap className="h-4 w-4" />
-                  Snabbläge (erfaren)
-                </TabsTrigger>
-              </TabsList>
-              
-              <TabsContent value="ai">
-                <ChatInterface 
-                  onQuoteGenerated={handleChatGenerateQuote}
-                  isGenerating={isGenerating} 
-                />
-              </TabsContent>
-              
-              <TabsContent value="express">
-                <ExpressQuoteForm 
-                  onGenerate={handleExpressGenerate}
-                  isGenerating={isGenerating}
-                />
-              </TabsContent>
-            </Tabs>
-          )}
-          
-          {/* Show chat interface during generation if quote exists */}
-          {currentQuote && (
+              {/* SPRINT 2: Tabs for AI-assisted vs Express mode */}
+              <Tabs defaultValue="ai" className="w-full">
+                <TabsList className="grid w-full grid-cols-2 mb-6">
+                  <TabsTrigger value="ai" className="flex items-center gap-2">
+                    <MessageSquare className="h-4 w-4" />
+                    AI-assisterad (rekommenderas)
+                  </TabsTrigger>
+                  <TabsTrigger value="express" className="flex items-center gap-2">
+                    <Zap className="h-4 w-4" />
+                    Snabbläge (erfaren)
+                  </TabsTrigger>
+                </TabsList>
+                
+                <TabsContent value="ai">
+                  <ChatInterface 
+                    onQuoteGenerated={handleChatGenerateQuote}
+                    isGenerating={isGenerating}
+                    onConversationUpdate={handleConversationUpdate}
+                  />
+                </TabsContent>
+                
+                <TabsContent value="express">
+                  <ExpressQuoteForm 
+                    onGenerate={handleExpressGenerate}
+                    isGenerating={isGenerating}
+                  />
+                </TabsContent>
+              </Tabs>
+            </div>
+            
+            {/* Right: Live Preview (desktop only) */}
+            <div className="hidden lg:block">
+              <LiveQuotePreview
+                quote={currentQuote}
+                isGenerating={isGenerating}
+                conversationSummary={conversationSummary}
+              />
+            </div>
+          </div>
+        ) : (
+          // Show full-width when quote is generated
+          <div className="max-w-4xl mx-auto space-y-6">
+            {/* Show chat interface during generation if quote exists */}
             <ChatInterface 
               onQuoteGenerated={handleChatGenerateQuote}
-              isGenerating={isGenerating} 
+              isGenerating={isGenerating}
+              onConversationUpdate={handleConversationUpdate}
             />
-          )}
-          
-          {/* Generated Quote Display */}
-          {currentQuote && !isEditing && (
-            <QuoteDisplay 
-              quote={currentQuote} 
-              onSave={handleSaveQuote}
-              onEdit={handleEditQuote}
-              isSaving={isSaving}
-              hasCustomRates={hasCustomRates}
-              hourlyRate={hourlyRate}
-              qualityWarning={qualityWarning}
-              warningMessage={warningMessage}
-              realismWarnings={realismWarnings}
-              validationErrors={validationErrors}
-              usedReference={usedReference}
-              referenceTitle={referenceTitle}
-              bathroomValidation={bathroomValidation}
-            />
-          )}
+            
+            {/* Generated Quote Display */}
+            {!isEditing && (
+              <QuoteDisplay 
+                quote={currentQuote} 
+                onSave={handleSaveQuote}
+                onEdit={handleEditQuote}
+                isSaving={isSaving}
+                hasCustomRates={hasCustomRates}
+                hourlyRate={hourlyRate}
+                qualityWarning={qualityWarning}
+                warningMessage={warningMessage}
+                realismWarnings={realismWarnings}
+                validationErrors={validationErrors}
+                usedReference={usedReference}
+                referenceTitle={referenceTitle}
+                bathroomValidation={bathroomValidation}
+              />
+            )}
 
-          {/* Quote Editor */}
-          {currentQuote && isEditing && (
-            <QuoteEditor
-              quote={currentQuote}
-              onSave={handleSaveEdit}
-              onCancel={handleCancelEdit}
-              isSaving={isSaving}
-            />
-          )}
-        </div>
+            {/* Quote Editor */}
+            {isEditing && (
+              <QuoteEditor
+                quote={currentQuote}
+                onSave={handleSaveEdit}
+                onCancel={handleCancelEdit}
+                isSaving={isSaving}
+              />
+            )}
+          </div>
+        )}
       </main>
     </div>
   );

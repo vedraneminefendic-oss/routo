@@ -7,6 +7,7 @@ import { MessageBubble } from "./MessageBubble";
 import { ChatInput } from "./ChatInput";
 import { ConversationStarter } from "./ConversationStarter";
 import { QuoteSheet } from "./QuoteSheet";
+import { ConversationProgress } from "./ConversationProgress";
 import { CustomerQuickSelect } from "@/components/CustomerQuickSelect";
 import { TemplateQuickAccess } from "@/components/TemplateQuickAccess";
 import { Loader2, RotateCcw, Sparkles, ChevronDown, ChevronUp, User } from "lucide-react";
@@ -27,9 +28,10 @@ export interface Message {
 interface ChatInterfaceProps {
   onQuoteGenerated: (quote: any) => void;
   isGenerating: boolean;
+  onConversationUpdate?: (summary: any) => void; // P1: Send updates to parent for live preview
 }
 
-export const ChatInterface = ({ onQuoteGenerated, isGenerating }: ChatInterfaceProps) => {
+export const ChatInterface = ({ onQuoteGenerated, isGenerating, onConversationUpdate }: ChatInterfaceProps) => {
   const navigate = useNavigate();
   const [messages, setMessages] = useState<Message[]>([]);
   const [isTyping, setIsTyping] = useState(false);
@@ -47,6 +49,13 @@ export const ChatInterface = ({ onQuoteGenerated, isGenerating }: ChatInterfaceP
   const [userMessage, setUserMessage] = useState<string>("");
   const [suggestedQuestion, setSuggestedQuestion] = useState<string | null>(null);
   const [isDraftQuote, setIsDraftQuote] = useState(false); // FAS 22: Track if current quote is draft
+  
+  // P1: Progress tracking
+  const [questionsAsked, setQuestionsAsked] = useState(0);
+  const [maxQuestions, setMaxQuestions] = useState(4);
+  const [answeredCategories, setAnsweredCategories] = useState<string[]>([]);
+  const [totalCategories, setTotalCategories] = useState(5);
+  
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const chatContainerRef = useRef<HTMLDivElement>(null);
   const askedQuestions = useRef<Set<string>>(new Set());
@@ -223,6 +232,12 @@ export const ChatInterface = ({ onQuoteGenerated, isGenerating }: ChatInterfaceP
         
         // FAS 20: Show progress with categories answered
         if (saveResult.data?.answeredCategories !== undefined) {
+          // P1: Update progress state
+          setQuestionsAsked(saveResult.data.questionsAsked || 0);
+          setMaxQuestions(saveResult.data.maxQuestions || 4);
+          setAnsweredCategories(saveResult.data.answeredCategoryNames || []);
+          setTotalCategories(saveResult.data.totalCategories || 5);
+          
           toast({
             title: `📊 Progress: ${saveResult.data.answeredCategories}/${saveResult.data.totalCategories} kategorier`,
             description: `${saveResult.data.questionsAsked}/${saveResult.data.maxQuestions} frågor ställda`
@@ -1010,6 +1025,18 @@ export const ChatInterface = ({ onQuoteGenerated, isGenerating }: ChatInterfaceP
                 <RotateCcw className="h-4 w-4" />
                 Ny konversation
               </Button>
+            </div>
+          )}
+          
+          {/* P1: Progress Indicator */}
+          {messages.length > 0 && questionsAsked > 0 && questionsAsked < maxQuestions && !generatedQuote && (
+            <div className="px-4 pt-4">
+              <ConversationProgress
+                currentQuestion={questionsAsked}
+                totalQuestions={maxQuestions}
+                answeredCategories={answeredCategories}
+                totalCategories={totalCategories}
+              />
             </div>
           )}
           
