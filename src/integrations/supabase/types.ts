@@ -105,9 +105,11 @@ export type Database = {
           created_at: string | null
           id: string
           last_message_at: string | null
+          last_questions_count: number | null
           learned_preferences: Json | null
           quote_id: string | null
           readiness_score: number | null
+          refinement_completed: boolean | null
           refinement_requested: boolean | null
           status: string | null
           user_id: string
@@ -122,9 +124,11 @@ export type Database = {
           created_at?: string | null
           id?: string
           last_message_at?: string | null
+          last_questions_count?: number | null
           learned_preferences?: Json | null
           quote_id?: string | null
           readiness_score?: number | null
+          refinement_completed?: boolean | null
           refinement_requested?: boolean | null
           status?: string | null
           user_id: string
@@ -139,9 +143,11 @@ export type Database = {
           created_at?: string | null
           id?: string
           last_message_at?: string | null
+          last_questions_count?: number | null
           learned_preferences?: Json | null
           quote_id?: string | null
           readiness_score?: number | null
+          refinement_completed?: boolean | null
           refinement_requested?: boolean | null
           status?: string | null
           user_id?: string

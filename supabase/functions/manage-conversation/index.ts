@@ -20,7 +20,8 @@ async function generateSmartQuestions(
   conversationSummary: any,
   askedQuestions: string[],
   apiKey: string,
-  maxQuestionsToGenerate: number = 3 // FAS 19: Explicit limit
+  maxQuestionsToGenerate: number = 3, // FAS 19: Explicit limit
+  isRefinement: boolean = false // FAS 24: Refinement mode
 ): Promise<string[]> {
   const checklist = conversationSummary?.checklist || {
     scope: false,
@@ -29,6 +30,36 @@ async function generateSmartQuestions(
     timeline: false,
     specialRequirements: false
   };
+  
+  // FAS 23: Identify missing categories for balanced coverage
+  const missingCategories = Object.entries(checklist)
+    .filter(([_, covered]) => !covered)
+    .map(([cat, _]) => cat);
+  
+  // FAS 24: Different prompt for refinement vs initial questions
+  const refinementPrompt = isRefinement ? `
+**FAS 24: REFINEMENT MODE - SPECIFIKA UPPFÖLJNINGSFRÅGOR**
+
+Du ska nu ställa 2-3 SPECIFIKA frågor för att förbättra offertutkastet.
+
+FOKUSERA PÅ:
+- Förtydliga prisintervall genom att fråga om kvalitetsnivå/märken
+- Bekräfta vaga omfattningar (t.ex. "Ingår förberedelser och städning?")
+- Fråga om tillägg som kan påverka priset (t.ex. "Behövs bortforsling?")
+
+UNDVIK:
+- Generella frågor som redan besvarats
+- Frågor om saker som inte påverkar priset märkbart
+` : `
+**FAS 23: INITIAL MODE - BRED TÄCKNING**
+
+Saknade huvudkategorier: ${missingCategories.length > 0 ? missingCategories.join(', ') : 'Alla täckta!'}
+
+STRATEGI:
+1. Ställ MAX 1 fråga per saknad kategori
+2. Om alla kategorier täckta → returnera [] (inga fler frågor)
+3. Prioritera de mest kritiska kategorierna först
+`;
   
   const prompt = `Du är en AI-assistent som hjälper en HANTVERKARE att skapa en offert.
 
@@ -39,11 +70,14 @@ async function generateSmartQuestions(
 - Ställ frågor som en kollega skulle ställa: "Vad är storleken på rummet?", inte "Hur stort är ert rum?"
 - Var professionell och effektiv - hantverkaren vill snabbt kunna skapa offerten
 
+**FAS 23: TWO-ROUND SYSTEM - Max 2 frågerundor**
+${refinementPrompt}
+
 **FAS 19: INTELLIGENT QUESTION BUDGET**
-Vi vill INTE överbelasta hantverkaren med frågor. Målet är 3-10 frågor TOTALT per offert.
+Vi vill INTE överbelasta hantverkaren med frågor. Målet är max 6-7 frågor TOTALT per offert.
 - Frågor ställda hittills: ${askedQuestions.length}
-- Max frågor totalt: 10
-- Du får generera: ${maxQuestionsToGenerate} frågor
+- Max frågor totalt: 7
+- Du får generera EXAKT: ${maxQuestionsToGenerate} frågor (INTE mer)
 
 **CHECKLIST - Vilka huvudkategorier har vi täckt?**
 - ✅/❌ Scope (vad ska göras?): ${checklist.scope ? '✅ JA' : '❌ NEJ - fråga om detta!'}
@@ -128,9 +162,10 @@ Om alla checklist-kategorier är täckta, returnera: []`;
     }
     
     const questions = JSON.parse(jsonStr);
-    const validQuestions = Array.isArray(questions) ? questions.slice(0, 5) : [];
+    // FAS 23: Hard cap at 4 questions maximum
+    const validQuestions = Array.isArray(questions) ? questions.slice(0, 4) : [];
     
-    console.log('✅ FAS 16: Generated', validQuestions.length, 'AI-driven questions');
+    console.log(`✅ FAS 23: Generated ${validQuestions.length} ${isRefinement ? 'refinement' : 'initial'} questions`);
     return validQuestions;
   } catch (error) {
     console.error('❌ Error generating smart questions:', error);
@@ -808,24 +843,36 @@ serve(async (req) => {
         // FAS 20: Generate questions or trigger quote generation
         if (!shouldGenerateDraftQuote && !shouldGenerateFinalQuote && maxQuestionsToGenerate > 0) {
           console.log('🤖 FAS 20: Generating AI-driven smart questions (max:', maxQuestionsToGenerate, ')');
+          
+          // FAS 26: Enhanced logging for debugging
+          console.log('🎯 FAS 26: Question round tracking:', {
+            totalAsked: totalQuestionsAsked,
+            thisRound: maxQuestionsToGenerate,
+            categoriesCovered: answeredCategories,
+            isRefinement: isRefinementRequested,
+            missingCategories: Object.entries(checklist).filter(([_, v]) => !v).map(([k]) => k)
+          });
+          
           const batchQuestions = await generateSmartQuestions(
             fullDescription,
             allMessages || [],
             conversationSummary,
             askedQuestions,
             LOVABLE_API_KEY,
-            maxQuestionsToGenerate
+            maxQuestionsToGenerate,
+            isRefinementRequested // FAS 24: Pass refinement mode flag
           );
           
           console.log('  ❓ Generated questions:', batchQuestions.length);
           console.log('  📝 Already asked:', totalQuestionsAsked, 'questions');
           
           if (batchQuestions.length > 0) {
-            // Save questions to session
+            // FAS 24 & FAS 26: Track question count and refinement status
             await supabaseClient
               .from('conversation_sessions')
               .update({
-                asked_questions: [...askedQuestions, ...batchQuestions]
+                asked_questions: [...askedQuestions, ...batchQuestions],
+                last_questions_count: batchQuestions.length // FAS 24: Track for debugging
               })
               .eq('id', sessionId);
             
@@ -965,7 +1012,7 @@ serve(async (req) => {
       );
     }
 
-    // FAS 22: REQUEST REFINEMENT (triggers Stage 2)
+    // FAS 22 & FAS 24: REQUEST REFINEMENT (triggers Stage 2)
     if (action === 'request_refinement') {
       if (!sessionId) {
         return new Response(
@@ -974,25 +1021,42 @@ serve(async (req) => {
         );
       }
 
-      const { error } = await supabaseClient
-        .from('conversation_sessions')
-        .update({ refinement_requested: true })
-        .eq('id', sessionId)
-        .eq('user_id', user.id);
+      try {
+        // FAS 24: Mark refinement as requested and reset completion flag
+        const { data: session, error } = await supabaseClient
+          .from('conversation_sessions')
+          .update({ 
+            refinement_requested: true,
+            refinement_completed: false // FAS 24: Reset for new refinement round
+          })
+          .eq('id', sessionId)
+          .eq('user_id', user.id)
+          .select()
+          .single();
 
-      if (error) {
+        if (error) throw error;
+        
+        console.log('🔧 FAS 24: Refinement requested for session:', sessionId);
+        console.log('  📊 Current state:', {
+          totalQuestions: session.asked_questions?.length || 0,
+          refinementCompleted: session.refinement_completed
+        });
+
+        return new Response(
+          JSON.stringify({ 
+            success: true, 
+            message: 'Refinement requested. Send a new message to get refinement questions.',
+            refinementMode: true
+          }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      } catch (error) {
         console.error('Error requesting refinement:', error);
         return new Response(
           JSON.stringify({ error: 'Failed to request refinement' }),
           { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }
-
-      console.log('✅ FAS 22: Refinement requested for session', sessionId);
-      return new Response(
-        JSON.stringify({ success: true }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
     }
 
     // UPDATE LEARNED PREFERENCES (FAS 5)

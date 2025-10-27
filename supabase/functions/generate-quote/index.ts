@@ -2342,32 +2342,102 @@ ${workItems.map((w: any) => `- ${w.name}: ${w.hours}h × ${w.hourlyRate} kr/h = 
     console.log('🎨 Painting project detected! Adding requirements checklist...');
   }
 
-  // FAS 22: Enhanced Draft mode instructions with clearer price interval examples
+  // FAS 22 & FAS 25: Enhanced Draft mode instructions with structured price interval format
   const draftModeInstructions = isDraft ? `
-🎯 **FAS 22: DRAFT MODE - SNABB OFFERT MED PRISINTERVALL**
+🎯 **FAS 22 & FAS 25: DRAFT MODE - SNABB OFFERT MED PRISINTERVALL**
 
 Detta är ett FÖRSTA UTKAST som ska genereras snabbt med rimliga antaganden.
 
-**KRITISKT: Använd ALLTID prisintervall och "kan justeras"-markeringar i draft mode!**
+**FAS 25: STRUKTURERAT PRISINTERVALL-FORMAT**
+
+För oklara priser, använd ALDRIG bara text - använd detta EXAKTA JSON-format:
+
+\`\`\`json
+{
+  "name": "Materialarbete",
+  "priceRange": {
+    "min": 70000,
+    "max": 90000,
+    "note": "(beroende på val av material och ytskikt)"
+  },
+  "isEstimate": true
+}
+\`\`\`
+
+I summary.customerPays, använd format:
+"70000-90000 SEK (beroende på val av material)"
+
+**EXEMPEL - MÅLNING 10 kvm:**
+
+\`\`\`json
+{
+  "workItems": [
+    {
+      "name": "Målning väggar och tak",
+      "description": "Målning av 10 kvm (väggar, tak, snickeriarbeten)",
+      "hours": 8,
+      "hourlyRate": 750,
+      "subtotal": 6000,
+      "priceRange": {
+        "min": 5000,
+        "max": 7000,
+        "note": "(beroende på antal strykningar och förberedelser)"
+      },
+      "isEstimate": true
+    }
+  ],
+  "materials": [
+    {
+      "name": "Färg (vägg, tak, snickeri)",
+      "description": "Standard kvalitet, flera nyanser",
+      "quantity": 1,
+      "unit": "set",
+      "pricePerUnit": 2500,
+      "subtotal": 2500,
+      "priceRange": {
+        "min": 2000,
+        "max": 3500,
+        "note": "(beroende på färgval och antal nyanser)"
+      },
+      "isEstimate": true
+    }
+  ],
+  "summary": {
+    "workCost": 6000,
+    "materialCost": "2000-3500",
+    "totalBeforeVAT": "8000-10500",
+    "vatAmount": "2000-2625",
+    "totalWithVAT": "10000-13125",
+    "customerPays": "10000-13125 SEK (kan justeras efter materialval)"
+  }
+}
+\`\`\`
 
 **DRAFT MODE REGLER:**
 
 1. **ANVÄND PRISINTERVALL - INTE EXAKTA PRISER**
-   ✅ KORREKT: "Totalpris: 70 000 - 90 000 SEK (beroende på materialval)"
-   ✅ KORREKT: "Kakel: 600-900 kr/kvm (kan justeras)"
-   ❌ FEL: "Totalpris: 80 000 SEK"
-   
-   **summary-exempel för draft:**
-   {
-     "totalBeforeVAT": "56 000 - 72 000 SEK",
-     "totalWithVAT": "70 000 - 90 000 SEK",
-     "customerPays": "70 000 - 90 000 SEK (kan justeras efter materialval och exakt omfattning)"
-   }
+   - workItems: Lägg till "priceRange" object OCH "isEstimate": true
+   - materials: Lägg till "priceRange" object OCH "isEstimate": true
+   - summary: Använd "min-max" format i customerPays
 
-2. **Markera ALLA osäkra poster med "(kan justeras)"**
-   ✅ "Kakelläggning badrum (kan justeras efter materialval och omfattning)"
-   ✅ "VVS-installation (kan justeras beroende på befintliga rör)"
-   ✅ "Material: Kakel standard-kvalitet (kan justeras)"
+2. **QUICK ESTIMATES - GÖR RIMLIGA ANTAGANDEN**
+   - Standard kvalitet om inget annat sägs
+   - Normala förberedelser ingår (spackling, grundning)
+   - Standard antal strykningar (2 för väggar, 1 för tak)
+
+3. **MARKERINGAR**
+   - Alla items med osäkerhet får isEstimate: true
+   - Alla osäkra priser får priceRange med min/max/note
+
+4. **EXEMPEL PÅ ANTAGANDEN:**
+   - Målning: "Antog 2 strykningar väggar, 1 strykning tak"
+   - Material: "Antog standard kvalitet (mellanpris)"
+   - Omfattning: "Antog att normala förberedelser ingår (spackling av mindre sprickor)"
+
+` : '';
+
+  // SPRINT 1.5: Build delta mode intro (if applicable)
+  const deltaModeIntro2 = isDeltaMode ? `
 
 3. **Gör generösa antaganden med dokumentation**
    - Om material inte specificerat → "Standard kvalitet"
