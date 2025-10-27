@@ -24,7 +24,9 @@ const TEXT_MODEL = 'google/gemini-2.5-flash';
 // Import validation helpers
 import { validateQuoteConsistency } from './helpers/validateQuoteConsistency.ts';
 import { isBathroomProject, getBathroomPromptAddition, BATHROOM_REQUIREMENTS } from './helpers/bathroomRequirements.ts';
-import { validateBathroomQuote, generateValidationSummary } from './helpers/validateBathroomQuote.ts';
+import { validateBathroomQuote, generateValidationSummary, autoFixBathroomQuote } from './helpers/validateBathroomQuote.ts';
+import { isKitchenProject, getKitchenPromptAddition } from './helpers/kitchenRequirements.ts';
+import { isPaintingProject, getPaintingPromptAddition } from './helpers/paintingRequirements.ts';
 
 // Brand dictionary and synonyms for better language understanding
 const KEYWORD_SYNONYMS: Record<string, string[]> = {
@@ -2054,6 +2056,32 @@ ${workItems.map((w: any) => `- ${w.name}: ${w.hours}h × ${w.hourlyRate} kr/h = 
       ).join('\n')}`
     : '';
 
+  // FAS 1: DOMAIN-SPECIFIC REQUIREMENTS
+  let domainKnowledgeText = '';
+  
+  // Extrahera area från beskrivning och konversation
+  const allText = (description + ' ' + conversationHistory.map(m => m.content).join(' ')).toLowerCase();
+  const areaMatch = allText.match(/(\d+(?:[.,]\d+)?)\s*kvm/);
+  const area = areaMatch ? parseFloat(areaMatch[1].replace(',', '.')) : 8; // Default 8 kvm
+  
+  // Check bathroom project
+  if (isBathroomProject(description)) {
+    domainKnowledgeText = getBathroomPromptAddition(area);
+    console.log('🚿 Bathroom project detected! Adding requirements checklist...');
+  }
+  
+  // Check kitchen project
+  if (isKitchenProject(description)) {
+    domainKnowledgeText = getKitchenPromptAddition(area);
+    console.log('🍳 Kitchen project detected! Adding requirements checklist...');
+  }
+  
+  // Check painting project
+  if (isPaintingProject(description)) {
+    domainKnowledgeText = getPaintingPromptAddition(area);
+    console.log('🎨 Painting project detected! Adding requirements checklist...');
+  }
+
   // SPRINT 1.5: Build delta mode intro (if applicable)
   const deltaModeIntro = isDeltaMode ? `
 **🔄 DELTA MODE - UTÖKA BEFINTLIG OFFERT (KRITISKT!):**
@@ -2144,6 +2172,8 @@ ${equipmentText}
 ${similarQuotesText}
 
     ${industryDataText}
+
+    ${domainKnowledgeText}
 
     **🚨 KRITISKT - INKLUSIONS/EXKLUSIONS-REGLER:**
 
@@ -3663,7 +3693,43 @@ Svara med **1**, **2** eller **3** (eller "granska", "generera", "mer info")`;
       console.log('⚠️ Validation issues:', validation.issues);
     }
 
-    // FAS 3: Bathroom validation removed temporarily due to scope issues
+    // ============================================
+    // FAS 3: DOMAIN-SPECIFIC VALIDATION & AUTO-FIX
+    // ============================================
+    
+    let validationWarnings: any[] = [];
+    
+    // BATHROOM VALIDATION
+    if (isBathroomProject(description)) {
+      console.log('🔍 Running bathroom quote validation...');
+      
+      // Extrahera area från konversation
+      const allText = (description + ' ' + actualConversationHistory.map((m: any) => m.content).join(' ')).toLowerCase();
+      const areaMatch = allText.match(/(\d+(?:[.,]\d+)?)\s*kvm/);
+      const area = areaMatch ? parseFloat(areaMatch[1].replace(',', '.')) : 8;
+      
+      const bathroomValidation = validateBathroomQuote(quote, area, 18000, 30000);
+      
+      if (!bathroomValidation.isValid) {
+        console.warn('⚠️ Bathroom quote validation failed:', bathroomValidation.issues);
+        validationWarnings = bathroomValidation.issues;
+        
+        // AUTO-FIX: Lägg till saknade komponenter
+        if (bathroomValidation.missing.length > 0) {
+          console.log('🔧 Auto-fixing quote with missing components:', bathroomValidation.missing);
+          quote = await autoFixBathroomQuote(quote, bathroomValidation.missing, area);
+          console.log('✅ Quote auto-fixed successfully');
+          
+          // Re-calculate totals after auto-fix
+          quote = computeQuoteTotals(quote, hourlyRates || [], equipmentRates || []);
+        }
+        
+        // Logga validationssammanfattning
+        console.log(generateValidationSummary(bathroomValidation));
+      } else {
+        console.log('✅ Bathroom quote passed validation');
+      }
+    }
 
     // ============================================
     // STEP 8: CALCULATE ROT/RUT
@@ -3757,6 +3823,7 @@ Svara med **1**, **2** eller **3** (eller "granska", "generera", "mer info")`;
         validation: validation.issues.length > 0 ? {
           warnings: validation.issues
         } : undefined,
+        bathroomValidation: validationWarnings.length > 0 ? validationWarnings : undefined,
         conversationValidation: !conversationValidation.isValid ? {
           removedItems: conversationValidation.unmentionedItems,
           removedValue: Math.round(conversationValidation.removedValue)
