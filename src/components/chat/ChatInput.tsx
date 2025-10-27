@@ -4,6 +4,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Mic, MicOff, Send, Camera, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
+import { VoiceWaveform } from "./VoiceWaveform";
 
 interface ChatInputProps {
   onSendMessage: (message: string, images?: string[], intent?: string) => void;
@@ -237,9 +238,13 @@ export const ChatInput = ({ onSendMessage, disabled, dynamicPlaceholder }: ChatI
   };
 
   return (
-    <div className="flex flex-col gap-3">
-      {/* Image previews */}
-      {images.length > 0 && (
+    <>
+      {/* P3: Voice Waveform Overlay */}
+      <VoiceWaveform isActive={isListening} interimText={interimTranscript} />
+      
+      <div className="flex flex-col gap-3">
+        {/* Image previews */}
+        {images.length > 0 && (
         <div className="flex gap-3 flex-wrap p-3 bg-gradient-to-br from-muted/50 to-muted/30 rounded-lg border border-border/50 backdrop-blur-sm animate-in fade-in-0 slide-in-from-bottom-2 duration-300">
           {images.map((img, idx) => (
             <div key={idx} className="relative group animate-in zoom-in-50 duration-300" style={{ animationDelay: `${idx * 100}ms` }}>
@@ -337,6 +342,7 @@ export const ChatInput = ({ onSendMessage, disabled, dynamicPlaceholder }: ChatI
           <Send className="h-5 w-5" />
         </Button>
       </div>
-    </div>
+      </div>
+    </>
   );
 };

@@ -10,6 +10,8 @@ import { QuoteSheet } from "./QuoteSheet";
 import { ConversationProgress } from "./ConversationProgress";
 import { TypingIndicator } from "./TypingIndicator";
 import { InlineProgressCard } from "./InlineProgressCard";
+import { SmartScroll } from "./SmartScroll";
+import { ConversationHistory } from "./ConversationHistory";
 import { CustomerQuickSelect } from "@/components/CustomerQuickSelect";
 import { TemplateQuickAccess } from "@/components/TemplateQuickAccess";
 import { Loader2, RotateCcw, Sparkles, ChevronDown, ChevronUp, User } from "lucide-react";
@@ -69,6 +71,12 @@ export const ChatInterface = ({ onQuoteGenerated, isGenerating, onConversationUp
   const chatContainerRef = useRef<HTMLDivElement>(null);
   const askedQuestions = useRef<Set<string>>(new Set());
   const { toast } = useToast();
+  
+  // P3: Message feedback tracking
+  const handleMessageFeedback = async (messageId: string, helpful: boolean) => {
+    console.log(`Message ${messageId} marked as ${helpful ? 'helpful' : 'unhelpful'}`);
+    // Could save to database for learning purposes
+  };
 
   useEffect(() => {
     const getUser = async () => {
@@ -1096,7 +1104,7 @@ export const ChatInterface = ({ onQuoteGenerated, isGenerating, onConversationUp
           )}
           
           {/* Messages Area */}
-          <div className="flex-1 overflow-y-auto px-4 py-6 space-y-4">
+          <div ref={chatContainerRef} className="flex-1 overflow-y-auto px-4 py-6 space-y-4">
           {messages.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-full space-y-6">
               <div className="text-center space-y-2">
@@ -1147,12 +1155,23 @@ export const ChatInterface = ({ onQuoteGenerated, isGenerating, onConversationUp
             </div>
           ) : (
             <>
-              {messages.map((message, index) => (
+              {/* P2: Collapsible History */}
+              {messages.length > 10 && (
+                <ConversationHistory
+                  messages={messages}
+                  currentMessageIndex={messages.length}
+                  onSendMessage={handleSendMessage}
+                  isTyping={isTyping}
+                />
+              )}
+              
+              {messages.slice(messages.length > 10 ? -10 : 0).map((message, index) => (
                 <div key={message.id} className="space-y-3">
                   <MessageBubble 
                     message={message} 
                     onSendMessage={handleSendMessage}
                     isTyping={isTyping}
+                    onFeedback={handleMessageFeedback}
                   />
                   {/* P1: Show inline progress card after user messages */}
                   {message.role === 'user' && index === messages.length - 1 && Object.keys(liveExtraction).length > 0 && (
@@ -1191,6 +1210,13 @@ export const ChatInterface = ({ onQuoteGenerated, isGenerating, onConversationUp
               <div ref={messagesEndRef} />
             </>
           )}
+          
+          {/* P2: Smart Scroll Button */}
+          <SmartScroll
+            messages={messages}
+            isTyping={isTyping}
+            containerRef={chatContainerRef}
+          />
         </div>
         
         {/* Input Area - Sticky Bottom */}
