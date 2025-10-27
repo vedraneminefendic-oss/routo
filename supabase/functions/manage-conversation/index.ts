@@ -19,8 +19,17 @@ async function generateSmartQuestions(
   conversationHistory: Array<{ role: string; content: string }>,
   conversationSummary: any,
   askedQuestions: string[],
-  apiKey: string
+  apiKey: string,
+  maxQuestionsToGenerate: number = 3 // FAS 19: Explicit limit
 ): Promise<string[]> {
+  const checklist = conversationSummary?.checklist || {
+    scope: false,
+    size: false,
+    materials: false,
+    timeline: false,
+    specialRequirements: false
+  };
+  
   const prompt = `Du är en AI-assistent som hjälper en HANTVERKARE att skapa en offert.
 
 **VIKTIGT ATT FÖRSTÅ:**
@@ -30,6 +39,19 @@ async function generateSmartQuestions(
 - Ställ frågor som en kollega skulle ställa: "Vad är storleken på rummet?", inte "Hur stort är ert rum?"
 - Var professionell och effektiv - hantverkaren vill snabbt kunna skapa offerten
 
+**FAS 19: INTELLIGENT QUESTION BUDGET**
+Vi vill INTE överbelasta hantverkaren med frågor. Målet är 3-10 frågor TOTALT per offert.
+- Frågor ställda hittills: ${askedQuestions.length}
+- Max frågor totalt: 10
+- Du får generera: ${maxQuestionsToGenerate} frågor
+
+**CHECKLIST - Vilka huvudkategorier har vi täckt?**
+- ✅/❌ Scope (vad ska göras?): ${checklist.scope ? '✅ JA' : '❌ NEJ - fråga om detta!'}
+- ✅/❌ Size (hur mycket?): ${checklist.size ? '✅ JA' : '❌ NEJ - fråga om detta!'}
+- ✅/❌ Materials (vilket material?): ${checklist.materials ? '✅ JA' : '❌ NEJ - fråga om detta!'}
+- ✅/❌ Timeline (när?): ${checklist.timeline ? '✅ JA' : '❌ NEJ - fråga om detta!'}
+- ✅/❌ Special Requirements (något speciellt?): ${checklist.specialRequirements ? '✅ JA' : '❌ NEJ - fråga om detta!'}
+
 PROJEKTBESKRIVNING: ${projectDescription}
 
 TIDIGARE STÄLLDA FRÅGOR: ${askedQuestions.join(', ') || 'Inga frågor ställda än'}
@@ -37,15 +59,22 @@ TIDIGARE STÄLLDA FRÅGOR: ${askedQuestions.join(', ') || 'Inga frågor ställda
 SAMMANFATTNING AV SAMTALET:
 ${JSON.stringify(conversationSummary, null, 2)}
 
-UPPDRAG:
-Generera 2-5 relevanta uppföljningsfrågor för detta projekt. Frågorna ska:
+**UPPDRAG:**
+Generera EXAKT ${maxQuestionsToGenerate} relevanta frågor (inte mer, inte mindre).
+
+**STRATEGI - PRIORITERA I DENNA ORDNING:**
+1. **PRIO 1:** Fråga om saknade checklist-kategorier (de som är ❌)
+2. **PRIO 2:** Om alla checklist-kategorier är ✅ → returnera [] (inga fler frågor behövs)
+3. **PRIO 3:** Om användaren varit väldigt otydlig → fyll på med branschspecifika frågor
+
+**Frågorna ska:**
 - Vara SPECIFIKA för projekttypen (${conversationSummary.projectType || 'okänt'})
 - INTE upprepa frågor som redan ställts
-- Fokusera på saknad men VIKTIG information för att kunna skapa en offert
+- Fokusera på de VIKTIGASTE saknade kategorierna först
 - Vara konkreta och enkla att svara på
 - Följa logisk ordning (omfattning → mätningar → material → tidplan)
 
-BRANSCHKUNSKAP att använda:
+**BRANSCHKUNSKAP att använda:**
 - För dränering: fråga om dräneringslängd (meter), djup, mark/husgrund, avrinning, material
 - För el-arbete: fråga om belysning, eluttag, säkringsskåp, certifiering
 - För målning: fråga om yta i kvm, antal rum, färgval, tapeter, tak/väggar
@@ -57,8 +86,14 @@ BRANSCHKUNSKAP att använda:
 - För tak: fråga om area, material (plåt/tegel), rivning, isolering
 - För trädgård: fråga om area, vad ska göras (gräs/sten/plantering), markarbete
 
+**EXEMPEL:**
+Om checklist visar: scope=false, size=false → fråga först om omfattning och storlek
+Om checklist visar: alla true → returnera [] (inga fler frågor)
+
 Svara ENDAST med en JSON-array av frågesträngar:
-["Fråga 1?", "Fråga 2?", "Fråga 3?"]`;
+["Fråga 1?", "Fråga 2?", "Fråga 3?"]
+
+Om alla checklist-kategorier är täckta, returnera: []`;
 
   try {
     const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
@@ -107,6 +142,14 @@ Svara ENDAST med en JSON-array av frågesträngar:
 // FAS 11: AI-DRIVEN CONVERSATION SUMMARY
 // ============================================
 
+interface InformationChecklist {
+  scope: boolean;        // "Vad ska göras?" (rivning, nyinstallation, etc.)
+  size: boolean;         // "Hur stort?" (kvm, antal enheter, etc.)
+  materials: boolean;    // "Vilket material?" (kvalitet, märken)
+  timeline: boolean;     // "När?" (brådskande, flexibel, etc.)
+  specialRequirements: boolean; // "Något speciellt?" (arbetssätt, begränsningar)
+}
+
 interface ConversationSummary {
   projectType?: string;
   scope?: string;
@@ -128,6 +171,7 @@ interface ConversationSummary {
   specialRequirements?: string[];
   exclusions?: string[];
   customerAnswers?: Record<string, any>;
+  checklist?: InformationChecklist; // FAS 19: Track main categories
 }
 
 async function generateConversationSummary(
@@ -148,7 +192,7 @@ async function generateConversationSummary(
 **KONVERSATION:**
 ${conversationText}
 
-**UPPGIFT:**
+**UPPGIFT 1: Extrahera information**
 Extrahera följande information och returnera som JSON:
 
 1. **projectType**: Typ av projekt (t.ex. "Badrumsrenovering", "Trädfällning", "Målning")
@@ -168,6 +212,18 @@ Extrahera följande information och returnera som JSON:
 8. **specialRequirements**: Speciella krav eller önskemål
 9. **exclusions**: Saker som INTE ska ingå i offerten
 10. **customerAnswers**: Objekt med specifika svar på frågor (t.ex. {"rivning": "ja", "bortforsling": "nej"})
+
+**UPPGIFT 2: Markera vilka huvudkategorier som är BESVARADE (FAS 19)**
+Returnera också ett "checklist"-objekt som markerar om vi har fått svar på dessa 5 huvudkategorier:
+{
+  "checklist": {
+    "scope": true/false,     // Har vi fått svar på VAD som ska göras? (rivning, renovering, nyinstallation, etc.)
+    "size": true/false,      // Har vi fått svar på STORLEK/OMFATTNING? (kvm, antal enheter, höjd, etc.)
+    "materials": true/false, // Har vi fått svar om MATERIAL/KVALITET? (budget/standard/premium, specifika material)
+    "timeline": true/false,  // Har vi fått svar om TIDSPLAN? (brådskande, flexibel, specifikt datum)
+    "specialRequirements": true/false // Har vi fått svar om SPECIELLA KRAV? (arbetssätt, begränsningar, önskemål)
+  }
+}
 
 **EXEMPEL OUTPUT:**
 {
@@ -190,6 +246,13 @@ Extrahera följande information och returnera som JSON:
     "golvvärme": "ny installation",
     "kvalitet": "standard",
     "bortforsling": "nej, kunden sköter det"
+  },
+  "checklist": {
+    "scope": true,
+    "size": true,
+    "materials": true,
+    "timeline": false,
+    "specialRequirements": true
   }
 }
 
@@ -198,6 +261,7 @@ Extrahera följande information och returnera som JSON:
 - Extrahera ENDAST information som faktiskt nämnts i konversationen
 - Var specifik med mått och enheter
 - customerAnswers ska innehålla råa svar från användaren
+- checklist ska reflektera om vi har TILLRÄCKLIG information i varje kategori för att skapa en offert
 
 Returnera bara JSON, ingen annan text.`;
 
@@ -662,7 +726,7 @@ serve(async (req) => {
           console.log('  💾 Updated answered_topics in database:', updatedTopics);
         }
         
-        // FAS 18: Calculate information completeness score
+        // FAS 19: Get checklist from conversation summary
         const { data: updatedSession } = await supabaseClient
           .from('conversation_sessions')
           .select('asked_questions, answered_topics')
@@ -672,94 +736,97 @@ serve(async (req) => {
         const askedQuestions = updatedSession?.asked_questions || [];
         const answeredTopics = updatedSession?.answered_topics || [];
         
-        // FAS 18: Information Completeness Score
-        const completeness = {
-          hasSize: conversationSummary?.measurements?.area ? 20 : 0,
-          hasScope: conversationSummary?.scope ? 20 : 0,
-          hasConfirmedWork: (conversationSummary?.confirmedWork?.length ?? 0) > 0 ? 20 : 0,
-          hasMaterials: conversationSummary?.materials ? 15 : 0,
-          hasTimeline: conversationSummary?.timeline ? 15 : 0,
-          hasSpecialReqs: (conversationSummary?.specialRequirements?.length ?? 0) > 0 ? 10 : 0
+        // FAS 19: Checklist-based completeness tracking
+        const checklist = conversationSummary?.checklist || {
+          scope: false,
+          size: false,
+          materials: false,
+          timeline: false,
+          specialRequirements: false
         };
-        const completenessScore = Object.values(completeness).reduce((a, b) => a + b, 0);
         
-        // FAS 18: Question budget - hard limit
-        const MAX_QUESTIONS = 12;
+        const answeredCategories = Object.values(checklist).filter(Boolean).length;
+        const totalCategories = 5;
+        const completenessPercentage = (answeredCategories / totalCategories) * 100;
+        
+        // FAS 19: Question budget - lowered to 10
+        const MAX_QUESTIONS = 10;
         const totalQuestionsAsked = askedQuestions.length;
         
-        console.log('🧠 FAS 18: COMPLETENESS CHECK:');
-        console.log('  📊 Completeness score:', `${completenessScore}%`);
+        console.log('🧠 FAS 19: CHECKLIST STATUS:');
+        console.log('  ✅ Scope (vad?):', checklist.scope);
+        console.log('  ✅ Size (hur mycket?):', checklist.size);
+        console.log('  ✅ Materials (vilket?):', checklist.materials);
+        console.log('  ✅ Timeline (när?):', checklist.timeline);
+        console.log('  ✅ Special (något speciellt?):', checklist.specialRequirements);
+        console.log('  📊 Total:', `${answeredCategories}/${totalCategories} (${Math.round(completenessPercentage)}%)`);
         console.log('  ❓ Questions asked:', totalQuestionsAsked, '/', MAX_QUESTIONS);
-        console.log('  📋 Has size:', completeness.hasSize > 0);
-        console.log('  📋 Has scope:', completeness.hasScope > 0);
-        console.log('  📋 Has confirmed work:', completeness.hasConfirmedWork > 0);
         
-        // FAS 18: Progressive questioning strategy
+        // FAS 19: Smart stopping logic based on answered categories
         let maxQuestionsToGenerate = 0;
         let shouldGenerateQuote = false;
         
         if (totalQuestionsAsked >= MAX_QUESTIONS) {
-          console.log('⛔ Reached question limit - forcing quote generation');
+          console.log('⛔ Reached max questions (10) - forcing quote generation');
           shouldGenerateQuote = true;
-        } else if (completenessScore >= 85) {
-          console.log('✅ High completeness (85%+) - ready to generate quote');
+        } else if (answeredCategories >= 5) {
+          console.log('✅ All 5 categories answered - ready to generate quote');
           shouldGenerateQuote = true;
-        } else if (completenessScore >= 70) {
-          maxQuestionsToGenerate = 2; // Edge case questions only
-          console.log('💡 Good completeness (70-85%) - max 2 detailed questions');
-        } else if (completenessScore >= 40) {
-          maxQuestionsToGenerate = 3; // Detail questions
-          console.log('💡 Medium completeness (40-70%) - max 3 detail questions');
+        } else if (answeredCategories >= 3) {
+          // 3/5 kategorier besvarade → 2 frågor kvar
+          maxQuestionsToGenerate = 2;
+          console.log('💡 3/5 categories answered - max 2 questions left');
         } else {
-          maxQuestionsToGenerate = 5; // Basic questions
-          console.log('💡 Low completeness (<40%) - max 5 basic questions');
+          // < 3 kategorier → 3 frågor per runda
+          maxQuestionsToGenerate = 3;
+          console.log('💡 <3 categories answered - asking 3 questions');
         }
         
-        // FAS 18: Generate questions if needed
+        // FAS 19: Generate questions if needed
         if (!shouldGenerateQuote) {
-          console.log('🤖 FAS 18: Generating AI-driven smart questions...');
+          console.log('🤖 FAS 19: Generating AI-driven smart questions...');
           const batchQuestions = await generateSmartQuestions(
             fullDescription,
             allMessages || [],
             conversationSummary,
             askedQuestions,
-            LOVABLE_API_KEY
+            LOVABLE_API_KEY,
+            maxQuestionsToGenerate // FAS 19: Pass explicit limit
           );
           
-          // Limit questions based on strategy
-          const questionsToAsk = batchQuestions.slice(0, maxQuestionsToGenerate);
-          
-          console.log('  ❓ Generated questions:', batchQuestions.length, '→ asking:', questionsToAsk.length);
+          console.log('  ❓ Generated questions:', batchQuestions.length);
           console.log('  📝 Already asked:', totalQuestionsAsked, 'questions');
           
-          if (questionsToAsk.length > 0) {
+          if (batchQuestions.length > 0) {
             // Save questions to session
             await supabaseClient
               .from('conversation_sessions')
               .update({
-                asked_questions: [...askedQuestions, ...questionsToAsk]
+                asked_questions: [...askedQuestions, ...batchQuestions]
               })
               .eq('id', sessionId);
             
-            console.log('  💾 Saved', questionsToAsk.length, 'questions to session');
+            console.log('  💾 Saved', batchQuestions.length, 'questions to session');
             console.log('  ⏸️  Blocking quote generation - needs more info');
             
             return new Response(
               JSON.stringify({ 
                 message: savedMessage,
-                suggestedQuestions: questionsToAsk,
+                suggestedQuestions: batchQuestions,
                 needsMoreInfo: true,
-                completenessScore: Math.round(completenessScore),
+                completenessScore: Math.round(completenessPercentage),
                 questionsAsked: totalQuestionsAsked,
                 maxQuestions: MAX_QUESTIONS,
-                canSkipQuestions: totalQuestionsAsked >= 5 // FAS 18: Allow skip after 5 questions
+                answeredCategories: answeredCategories,
+                totalCategories: totalCategories,
+                canSkipQuestions: totalQuestionsAsked >= 5 // FAS 19: Allow skip after 5 questions
               }),
               { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
             );
           }
         }
         
-        console.log('  ✅ Ready to generate quote (completeness:', `${completenessScore}%)`);
+        console.log('  ✅ Ready to generate quote (categories:', `${answeredCategories}/${totalCategories})`);
       }
 
       return new Response(
