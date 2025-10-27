@@ -21,8 +21,10 @@ const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY')!;
 
 const TEXT_MODEL = 'google/gemini-2.5-flash';
 
-// Import validation helper
+// Import validation helpers
 import { validateQuoteConsistency } from './helpers/validateQuoteConsistency.ts';
+import { isBathroomProject, getBathroomPromptAddition, BATHROOM_REQUIREMENTS } from './helpers/bathroomRequirements.ts';
+import { validateBathroomQuote, generateValidationSummary } from './helpers/validateBathroomQuote.ts';
 
 // Brand dictionary and synonyms for better language understanding
 const KEYWORD_SYNONYMS: Record<string, string[]> = {

@@ -35,3 +35,6 @@ verify_jwt = true
 
 [functions.suggest-templates]
 verify_jwt = true
+
+[functions.scheduled-market-update]
+verify_jwt = false

@@ -37,6 +37,7 @@ import { Label } from "@/components/ui/label";
 import { AIProgressIndicator } from "./AIProgressIndicator";
 import { QuoteVariants } from "./QuoteVariants";
 import { FollowupSettings } from "./FollowupSettings";
+import { QuoteValidationWarnings, ValidationIssue } from "./QuoteValidationWarnings";
 
 interface WorkItem {
   name: string;
@@ -95,6 +96,12 @@ interface QuoteDisplayProps {
   validationErrors?: string[];
   usedReference?: boolean;
   referenceTitle?: string;
+  bathroomValidation?: {
+    issues?: ValidationIssue[];
+    pricePerSqm?: number;
+    expectedMinPrice?: number;
+    expectedMaxPrice?: number;
+  };
 }
 
 const QuoteDisplay = ({ 

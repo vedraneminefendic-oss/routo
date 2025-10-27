@@ -7,11 +7,12 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Building2, Clock, Wrench, FileText, PlayCircle, Brain, TrendingUp, RefreshCw } from "lucide-react";
+import { Building2, Clock, Wrench, FileText, PlayCircle, Brain, TrendingUp, RefreshCw, DollarSign } from "lucide-react";
 import CompanySettings from "@/components/CompanySettings";
 import HourlyRatesManager from "@/components/HourlyRatesManager";
 import EquipmentRatesManager from "@/components/EquipmentRatesManager";
 import TemplatesManager from "@/components/TemplatesManager";
+import { MarketDataDashboard } from "@/components/MarketDataDashboard";
 import { toast } from "sonner";
 import { AppHeader } from "@/components/AppHeader";
 
@@ -262,22 +263,26 @@ const Settings = () => {
           className="space-y-6"
         >
           <div className="sticky top-0 bg-background z-10 pb-4">
-            <TabsList className="grid w-full max-w-2xl grid-cols-4">
-            <TabsTrigger value="company" className="flex items-center gap-2 data-[state=active]:text-primary data-[state=active]:font-medium">
+            <TabsList className="grid w-full max-w-3xl grid-cols-5">
+            <TabsTrigger value="company" className="flex items-center gap-2">
               <Building2 className="h-4 w-4" />
               Företag
             </TabsTrigger>
-            <TabsTrigger value="rates" className="flex items-center gap-2 data-[state=active]:text-primary data-[state=active]:font-medium">
+            <TabsTrigger value="rates" className="flex items-center gap-2">
               <Clock className="h-4 w-4" />
               Timpriser
             </TabsTrigger>
-            <TabsTrigger value="equipment" className="flex items-center gap-2 data-[state=active]:text-primary data-[state=active]:font-medium">
+            <TabsTrigger value="equipment" className="flex items-center gap-2">
               <Wrench className="h-4 w-4" />
               Maskiner
             </TabsTrigger>
-            <TabsTrigger value="templates" className="flex items-center gap-2 data-[state=active]:text-primary data-[state=active]:font-medium">
+            <TabsTrigger value="templates" className="flex items-center gap-2">
               <FileText className="h-4 w-4" />
               Mallar
+            </TabsTrigger>
+            <TabsTrigger value="market" className="flex items-center gap-2">
+              <DollarSign className="h-4 w-4" />
+              Marknad
             </TabsTrigger>
           </TabsList>
           </div>
@@ -336,6 +341,10 @@ const Settings = () => {
                 <TemplatesManager userId={user?.id} />
               </CardContent>
             </Card>
+          </TabsContent>
+
+          <TabsContent value="market">
+            <MarketDataDashboard />
           </TabsContent>
         </Tabs>
       </main>

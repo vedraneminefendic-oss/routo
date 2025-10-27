@@ -327,6 +327,33 @@ export type Database = {
         }
         Relationships: []
       }
+      market_data_logs: {
+        Row: {
+          created_at: string | null
+          details: Json | null
+          id: string
+          records_updated: number | null
+          source: string
+          status: string
+        }
+        Insert: {
+          created_at?: string | null
+          details?: Json | null
+          id?: string
+          records_updated?: number | null
+          source: string
+          status: string
+        }
+        Update: {
+          created_at?: string | null
+          details?: Json | null
+          id?: string
+          records_updated?: number | null
+          source?: string
+          status?: string
+        }
+        Relationships: []
+      }
       quote_email_logs: {
         Row: {
           clicked_at: string | null
