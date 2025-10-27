@@ -215,16 +215,23 @@ export async function autoFixBathroomQuote(
     'VVS-installation': {
       name: 'VVS-installation',
       description: 'Byte av rör, kopplingar, ventiler, golvbrunn, installera dusch/toalett/tvättställ',
-      hours: 12,
+      hours: 14,  // Ökat från 12
       hourlyRate: 950,
-      subtotal: 11400
+      subtotal: 13300
     },
     'El-installation': {
       name: 'El-installation våtrum',
       description: 'Jordfelsbrytare, IP44-armaturer, golvvärmekabel, fläktinstallation',
-      hours: 10,
+      hours: 12,  // Ökat från 10
       hourlyRate: 950,
-      subtotal: 9500
+      subtotal: 11400
+    },
+    'El-installation våtrum': {  // Duplicate key for exact matching
+      name: 'El-installation våtrum',
+      description: 'Jordfelsbrytare, IP44-armaturer, golvvärmekabel, fläktinstallation',
+      hours: 12,
+      hourlyRate: 950,
+      subtotal: 11400
     },
     'Golvvärmemontage': {
       name: 'Golvvärmemontage',
@@ -278,17 +285,34 @@ export async function autoFixBathroomQuote(
   
   const fixedQuote = { ...quote };
   
-  // Add missing workItems
-  missing.forEach(item => {
-    if (fixes[item]) {
+  // Add missing workItems with better keyword matching
+  missing.forEach(missingItem => {
+    // Try exact match first
+    if (fixes[missingItem]) {
       fixedQuote.workItems = fixedQuote.workItems || [];
-      fixedQuote.workItems.push(fixes[item]);
-      console.log(`  ✅ Auto-added work item: ${item}`);
+      fixedQuote.workItems.push(fixes[missingItem]);
+      console.log(`  ✅ Auto-added work item: ${missingItem} (${fixes[missingItem].hours}h × ${fixes[missingItem].hourlyRate} kr = ${fixes[missingItem].subtotal} kr)`);
+    } else {
+      // Try keyword matching
+      const itemLower = missingItem.toLowerCase();
+      const matchedFix = Object.entries(fixes).find(([key, _]) => 
+        itemLower.includes(key.toLowerCase().split(' ')[0]) ||
+        itemLower.includes(key.toLowerCase().split('-')[0])
+      );
+      
+      if (matchedFix) {
+        const [_, fix] = matchedFix;
+        fixedQuote.workItems = fixedQuote.workItems || [];
+        fixedQuote.workItems.push(fix);
+        console.log(`  ✅ Auto-added work item (keyword match): ${fix.name} (${fix.hours}h × ${fix.hourlyRate} kr = ${fix.subtotal} kr)`);
+      }
     }
-    if (materialFixes[item]) {
+    
+    // Add materials
+    if (materialFixes[missingItem]) {
       fixedQuote.materials = fixedQuote.materials || [];
-      fixedQuote.materials.push(materialFixes[item]);
-      console.log(`  ✅ Auto-added material: ${item}`);
+      fixedQuote.materials.push(materialFixes[missingItem]);
+      console.log(`  ✅ Auto-added material: ${missingItem}`);
     }
   });
   

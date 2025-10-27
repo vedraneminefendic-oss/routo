@@ -2067,7 +2067,11 @@ ${workItems.map((w: any) => `- ${w.name}: ${w.hours}h × ${w.hourlyRate} kr/h = 
   // Check bathroom project
   if (isBathroomProject(description)) {
     domainKnowledgeText = getBathroomPromptAddition(area);
-    console.log('🚿 Bathroom project detected! Adding requirements checklist...');
+    console.log('🚿🚿🚿 BATHROOM PROJECT DETECTED 🚿🚿🚿');
+    console.log('📝 Description:', description);
+    console.log('📏 Extracted area:', area, 'kvm');
+    console.log('💰 Expected minimum price:', Math.round(area * 18000), 'SEK');
+    console.log('💰 Expected recommended price:', Math.round(area * 25000), 'SEK');
   }
   
   // Check kitchen project
@@ -3700,13 +3704,44 @@ Svara med **1**, **2** eller **3** (eller "granska", "generera", "mer info")`;
     let validationWarnings: any[] = [];
     
     // BATHROOM VALIDATION
-    if (isBathroomProject(description)) {
+    if (isBathroomProject(completeDescription)) {  // FIX 1: Changed from description to completeDescription
       console.log('🔍 Running bathroom quote validation...');
       
       // Extrahera area från konversation
-      const allText = (description + ' ' + actualConversationHistory.map((m: any) => m.content).join(' ')).toLowerCase();
+      const allText = (completeDescription + ' ' + actualConversationHistory.map((m: any) => m.content).join(' ')).toLowerCase();
       const areaMatch = allText.match(/(\d+(?:[.,]\d+)?)\s*kvm/);
       const area = areaMatch ? parseFloat(areaMatch[1].replace(',', '.')) : 8;
+      
+      // FIX 6: Log generated quote details
+      console.log('💰 Generated quote price:', quote.summary?.totalBeforeVAT, 'SEK');
+      console.log('📊 Price per sqm:', Math.round((quote.summary?.totalBeforeVAT || 0) / area), 'kr/kvm');
+      console.log('👷 Work items:', quote.workItems?.map((w: any) => `${w.name} (${w.hours}h)`).join(', ') || 'none');
+      console.log('🔨 Has VVS?', quote.workItems?.some((w: any) => w.name?.toLowerCase().includes('vvs')));
+      console.log('⚡ Has El?', quote.workItems?.some((w: any) => w.name?.toLowerCase().includes('el')));
+      console.log('💧 Has Tätskikt?', quote.workItems?.some((w: any) => w.name?.toLowerCase().includes('tätskikt')));
+      
+      // FIX 4: PRE-VALIDATION - Automatically adjust price if too low
+      const minPrice = area * 18000;
+      const maxPrice = area * 30000;
+      const actualPrice = quote.summary?.totalBeforeVAT || 0;
+      
+      if (actualPrice < minPrice) {
+        console.error(`🚨 BATHROOM QUOTE TOO CHEAP: ${actualPrice} kr (minimum: ${minPrice} kr)`);
+        console.error('🔧 Force-correcting quote to minimum price...');
+        
+        // Öka timpriserna proportionellt
+        const multiplier = minPrice / actualPrice;
+        quote.workItems = quote.workItems?.map((item: any) => ({
+          ...item,
+          hourlyRate: Math.round(item.hourlyRate * multiplier),
+          subtotal: Math.round(item.subtotal * multiplier)
+        })) || [];
+        
+        // Re-calculate totals
+        quote = computeQuoteTotals(quote, hourlyRates || [], equipmentRates || []);
+        
+        console.log(`✅ Quote price corrected to ${quote.summary.totalBeforeVAT} kr (${Math.round(quote.summary.totalBeforeVAT / area)} kr/kvm)`);
+      }
       
       const bathroomValidation = validateBathroomQuote(quote, area, 18000, 30000);
       

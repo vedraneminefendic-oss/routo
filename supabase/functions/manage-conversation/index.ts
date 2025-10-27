@@ -187,7 +187,24 @@ serve(async (req) => {
           session.answered_topics || []
         );
         
+        console.log('🤔 Smart question system:');
+        console.log('  📋 Project type:', requirements.projectType);
+        console.log('  ❓ Generated question:', nextQuestion);
+        console.log('  📝 Already asked:', session.asked_questions?.length || 0, 'questions');
+        console.log('  ✅ Answered topics:', session.answered_topics);
+        
         if (nextQuestion) {
+          // Save the question to the session
+          const currentAskedQuestions = session.asked_questions || [];
+          await supabaseClient
+            .from('conversation_sessions')
+            .update({
+              asked_questions: [...currentAskedQuestions, nextQuestion]
+            })
+            .eq('id', sessionId);
+          
+          console.log('  💾 Saved question to session');
+          
           return new Response(
             JSON.stringify({ 
               message: savedMessage,

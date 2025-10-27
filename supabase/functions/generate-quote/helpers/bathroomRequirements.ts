@@ -92,29 +92,41 @@ export function isBathroomProject(description: string, projectType?: string): bo
 
 export function getBathroomPromptAddition(area: number): string {
   return `
-  
-⚠️ KRITISKT: Detta är en BADRUMSRENOVERING - följ dessa regler NOGGRANT:
 
-OBLIGATORISKA ARBETSMOMENT (inkludera ALLA):
-${BATHROOM_REQUIREMENTS.minimumWorkItems.map(item => 
-  `- ${item.name}: ${item.description} (minst ${item.minHours}h)`
-).join('\n')}
+🚨🚨🚨 KRITISKT - BADRUMSRENOVERING - LÄS DETTA FÖRST! 🚨🚨🚨
 
-OBLIGATORISKT MATERIAL (måste finnas med):
-${BATHROOM_REQUIREMENTS.minimumMaterials.map(m => `- ${m.name}`).join('\n')}
+Detta är en TOTALRENOVERING av ett badrum ${area} kvm.
 
-PRISKONTROLL:
-- Minimum totalpris: ${Math.round(area * BATHROOM_REQUIREMENTS.minimumCostPerSqm)} SEK (${BATHROOM_REQUIREMENTS.minimumCostPerSqm} kr/kvm × ${area} kvm)
-- Rekommenderat pris: ${Math.round(area * BATHROOM_REQUIREMENTS.recommendedCostPerSqm)} SEK (${BATHROOM_REQUIREMENTS.recommendedCostPerSqm} kr/kvm × ${area} kvm)
-- Priset MÅSTE ligga mellan dessa värden!
+DU MÅSTE inkludera ALLA dessa arbetsmoment i offerten (inga undantag):
 
-VIKTIGA SÄKERHETSVARNINGAR att inkludera i offerten:
+1. ✅ Rivning befintligt badrum (minst 8h)
+2. ✅ VVS-installation - Byte av rör, kopplingar, ventiler, golvbrunn (minst 12h)
+3. ✅ El-installation våtrum - Jordfelsbrytare, IP44-armaturer, golvvärmekabel (minst 10h)
+4. ✅ Tätskiktsarbete - Applicering enligt branschregler (minst 8h)
+5. ✅ Kakel och klinkersättning (minst 16h)
+6. ✅ Golvvärmemontage (minst 6h)
+7. ✅ Ventilationsinstallation (minst 3h)
+8. ✅ Slutbesiktning och städning (minst 4h)
+
+TOTALT MINIMUM: 67 timmar arbete
+
+OBLIGATORISKT MATERIAL:
+${BATHROOM_REQUIREMENTS.minimumMaterials.map(m => `✅ ${m.name}`).join('\n')}
+
+PRISKONTROLL - ABSOLUT MINIMUM:
+- Minimum totalpris: ${Math.round(area * BATHROOM_REQUIREMENTS.minimumCostPerSqm)} SEK
+- Rekommenderat pris: ${Math.round(area * BATHROOM_REQUIREMENTS.recommendedCostPerSqm)} SEK
+- DIN OFFERT FÅR INTE VARA LÄGRE ÄN ${Math.round(area * BATHROOM_REQUIREMENTS.minimumCostPerSqm)} SEK!
+
+⚠️ OM DU SKAPAR EN OFFERT UNDER ${Math.round(area * BATHROOM_REQUIREMENTS.minimumCostPerSqm)} SEK:
+- Lägg till fler timmar på VVS (12h → 16h)
+- Lägg till fler timmar på El (10h → 14h)
+- Öka timpriserna till 950 kr/h för specialiserade arbeten
+- Kontrollera att ALLA material finns med
+
+SÄKERHETSVARNINGAR som MÅSTE inkluderas i assumptions:
 ${BATHROOM_REQUIREMENTS.warnings.map(w => `⚠️ ${w}`).join('\n')}
 
-OM OFFERTEN BLIR FÖR BILLIG:
-- Dubbelkolla att ALLA arbetsmoment finns med
-- Se till att timmar per moment är realistiska (totalt minst 50-70h för komplett badrum)
-- Kontrollera att alla material finns med
-- Använd marknadspriser för material (golvbrunn 800-1200 kr, duschset 1500-3000 kr, etc)
+🚨 OM DU GLÖMMER VVS ELLER EL-INSTALLATION KOMMER OFFERTEN ATT AVVISAS! 🚨
 `;
 }
