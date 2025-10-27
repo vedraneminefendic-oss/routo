@@ -1,6 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.0";
-import { getProjectRequirements, generateNextQuestion, generateBatchQuestions, ProjectRequirements } from "./helpers/smartQuestions.ts";
+import { getProjectRequirements, ProjectRequirements } from "./helpers/smartQuestions.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -9,6 +9,92 @@ const corsHeaders = {
 
 const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY')!;
 const TEXT_MODEL = 'google/gemini-2.5-flash';
+
+// ============================================
+// FAS 16: AI-DRIVEN SMART QUESTIONS
+// ============================================
+
+async function generateSmartQuestions(
+  projectDescription: string,
+  conversationHistory: Array<{ role: string; content: string }>,
+  conversationSummary: any,
+  askedQuestions: string[],
+  apiKey: string
+): Promise<string[]> {
+  const prompt = `Du är en expert på att ställa relevanta frågor för byggprojekt.
+
+PROJEKTBESKRIVNING: ${projectDescription}
+
+TIDIGARE STÄLLDA FRÅGOR: ${askedQuestions.join(', ') || 'Inga frågor ställda än'}
+
+SAMMANFATTNING AV SAMTALET:
+${JSON.stringify(conversationSummary, null, 2)}
+
+UPPDRAG:
+Generera 3-5 relevanta uppföljningsfrågor för detta projekt. Frågorna ska:
+- Vara SPECIFIKA för projekttypen (${conversationSummary.projectType || 'okänt'})
+- INTE upprepa frågor som redan ställts
+- Fokusera på saknad men VIKTIG information för att kunna skapa en offert
+- Vara konkreta och enkla att svara på
+- Följa logisk ordning (omfattning → mätningar → material → tidplan)
+
+BRANSCHKUNSKAP att använda:
+- För dränering: fråga om dräneringslängd (meter), djup, mark/husgrund, avrinning, material
+- För el-arbete: fråga om belysning, eluttag, säkringsskåp, certifiering
+- För målning: fråga om yta i kvm, antal rum, färgval, tapeter, tak/väggar
+- För badrum: fråga om storlek, kakel, golvvärme, VVS-arbete, ventilation
+- För kök: fråga om storlek, apparater, bänkskivor, VVS, el
+- För trädfällning: fråga om antal träd, höjd, diameter, stubbfräsning, bortforsling
+- För städning: fråga om typ (hem/stor/flytt), area, antal rum, fönster
+- För golv: fråga om area, typ (laminat/parkett), rivning, socklar
+- För tak: fråga om area, material (plåt/tegel), rivning, isolering
+- För trädgård: fråga om area, vad ska göras (gräs/sten/plantering), markarbete
+
+Svara ENDAST med en JSON-array av frågesträngar:
+["Fråga 1?", "Fråga 2?", "Fråga 3?"]`;
+
+  try {
+    const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: TEXT_MODEL,
+        messages: [
+          { role: 'system', content: 'Du är en AI som genererar strukturerad JSON. Svara ENDAST med giltlig JSON.' },
+          { role: 'user', content: prompt }
+        ],
+      }),
+    });
+
+    if (!response.ok) {
+      console.error('❌ AI API error:', response.status, await response.text());
+      return [];
+    }
+
+    const data = await response.json();
+    const content = data.choices[0].message.content.trim();
+    
+    // Extract JSON from response (handle markdown code blocks)
+    let jsonStr = content;
+    if (content.includes('```json')) {
+      jsonStr = content.split('```json')[1].split('```')[0].trim();
+    } else if (content.includes('```')) {
+      jsonStr = content.split('```')[1].split('```')[0].trim();
+    }
+    
+    const questions = JSON.parse(jsonStr);
+    const validQuestions = Array.isArray(questions) ? questions.slice(0, 5) : [];
+    
+    console.log('✅ FAS 16: Generated', validQuestions.length, 'AI-driven questions');
+    return validQuestions;
+  } catch (error) {
+    console.error('❌ Error generating smart questions:', error);
+    return [];
+  }
+}
 
 // ============================================
 // FAS 11: AI-DRIVEN CONVERSATION SUMMARY
@@ -589,12 +675,14 @@ serve(async (req) => {
         console.log('  ✅ Mandatory answered:', mandatoryAnswered.length, '/', mandatoryQuestions.length);
         console.log('  📋 Project type:', requirements.projectType);
         
-        // FIX 2: Generate batch questions (4-6 questions at once)
-        const batchQuestions = generateBatchQuestions(
-          requirements,
+        // FAS 16: Generate AI-driven smart questions
+        console.log('🤖 FAS 16: Generating AI-driven smart questions...');
+        const batchQuestions = await generateSmartQuestions(
+          fullDescription,
+          allMessages || [],
+          conversationSummary,
           askedQuestions,
-          answeredTopics,
-          6 // Max 6 questions
+          LOVABLE_API_KEY
         );
         
         console.log('  ❓ Generated questions:', batchQuestions.length);
