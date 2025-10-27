@@ -1,11 +1,70 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.0";
-import { getProjectRequirements, generateNextQuestion, generateBatchQuestions } from "./helpers/smartQuestions.ts";
+import { getProjectRequirements, generateNextQuestion, generateBatchQuestions, ProjectRequirements } from "./helpers/smartQuestions.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
+
+// FAS 8: Extract answered topics from user message
+function extractAnsweredTopics(userMessage: string, requirements: ProjectRequirements): string[] {
+  const topics: string[] = [];
+  const lower = userMessage.toLowerCase();
+  
+  // Pattern matching för vanliga svar
+  const patterns: Record<string, RegExp> = {
+    'area': /(\d+)\s*(kvm|kvadratmeter|m2|kvadrat)/i,
+    'rivning': /(ja|nej|behövs|ingå|riva|demontera|rivning)/i,
+    'golvvärme': /(ja|nej|ny|befintlig|golvvärme)/i,
+    'el': /(ja|nej|ny dragning|armaturer|elarbete|el-|uttag)/i,
+    'ventilation': /(ja|nej|fläkt|ventilation)/i,
+    'kakel': /(budget|standard|premium|billig|dyr|högkvalitet)/i,
+    'kvalitet': /(budget|standard|premium|billig|dyr|högkvalitet)/i,
+    'antal_träd': /(\d+)\s*(träd|ek|gran|tall|ekar|granar|tallar)/i,
+    'höjd': /(\d+)\s*(meter|m)\s*(hög|höjd|höga)?/i,
+    'diameter': /(\d+)\s*(cm|meter|m)\s*(diameter|tjock|bred)?/i,
+    'stubbfräsning': /(stubb|fräsa|stubbar|stubbfräsning)/i,
+    'bortforsling': /(forsla|bortforsling|transport|ta bort)/i,
+    'maskin': /(maskin|tillgång|manuellt|åtkomst)/i,
+    'scope': /(total|del|helt|komplett|renovering|nytt)/i,
+    'vvs': /(vvs|vatten|avlopp|diskho|dusch)/i,
+    'målning': /(måla|målning|färg|stryk)/i,
+    'tak': /(tak|taket)/i,
+    'golv': /(golv|parkett|laminat)/i,
+    'fönster': /(fönster|fönstren)/i,
+    'strykningar': /(strykning|strykningar|gång|gånger)/i
+  };
+  
+  // Check each pattern
+  for (const [topic, pattern] of Object.entries(patterns)) {
+    if (pattern.test(lower)) {
+      topics.push(topic);
+      console.log(`    🎯 Pattern match: "${topic}" found in message`);
+    }
+  }
+  
+  // Check mot mandatory questions keywords
+  for (const question of requirements.mandatoryQuestions) {
+    const questionKeywords = question.toLowerCase()
+      .replace(/[?.,]/g, '')
+      .split(' ')
+      .filter(w => w.length > 3) // Bara ord längre än 3 tecken
+      .slice(0, 3); // Första 3 nyckelorden
+    
+    const matchesKeywords = questionKeywords.some(kw => lower.includes(kw));
+    
+    if (matchesKeywords && lower.length > 10) { // Inte bara "ja" eller "nej"
+      const topicName = question.split(' ').slice(0, 2).join('_').toLowerCase();
+      if (!topics.includes(topicName)) {
+        topics.push(topicName);
+        console.log(`    🎯 Keyword match: "${topicName}" from question: "${question}"`);
+      }
+    }
+  }
+  
+  return topics;
+}
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -167,7 +226,7 @@ serve(async (req) => {
         .update(updateData)
         .eq('id', sessionId);
 
-      // FIX 2 + FAS 4: Generate batch questions and check readiness for user messages
+      // FIX 2 + FAS 4 + FAS 8: Generate batch questions and check readiness for user messages
       if (message.role === 'user') {
         const { data: allMessages } = await supabaseClient
           .from('conversation_messages')
@@ -182,9 +241,33 @@ serve(async (req) => {
         
         const requirements = getProjectRequirements(fullDescription);
         
-        // FAS 4: Calculate readiness score
-        const askedQuestions = session.asked_questions || [];
-        const answeredTopics = session.answered_topics || [];
+        // FAS 8: Extract answered topics from current user message
+        const extractedTopics = extractAnsweredTopics(message.content, requirements);
+        
+        if (extractedTopics.length > 0) {
+          console.log('  ✅ Extracted topics from user message:', extractedTopics);
+          
+          // Merge with existing answered topics (no duplicates)
+          const currentAnsweredTopics = session.answered_topics || [];
+          const updatedTopics = [...new Set([...currentAnsweredTopics, ...extractedTopics])];
+          
+          await supabaseClient
+            .from('conversation_sessions')
+            .update({ answered_topics: updatedTopics })
+            .eq('id', sessionId);
+          
+          console.log('  💾 Updated answered_topics in database:', updatedTopics);
+        }
+        
+        // FAS 4: Calculate readiness score (with potentially updated topics)
+        const { data: updatedSession } = await supabaseClient
+          .from('conversation_sessions')
+          .select('asked_questions, answered_topics')
+          .eq('id', sessionId)
+          .single();
+        
+        const askedQuestions = updatedSession?.asked_questions || [];
+        const answeredTopics = updatedSession?.answered_topics || [];
         const mandatoryQuestions = requirements.mandatoryQuestions || [];
         
         // Count how many mandatory questions have been answered
