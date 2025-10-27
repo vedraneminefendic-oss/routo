@@ -66,21 +66,44 @@ serve(async (req) => {
           {
             role: 'user',
             content: `
-Sök på webben och sammanfatta genomsnittliga kostnader i Sverige 2025:
+FAS 4: Sök på webben och sammanfatta genomsnittliga kostnader i Sverige 2025 för följande 15 kategorier:
+
 1. Badrumsrenovering (kr/kvm, inkl material + arbete)
 2. Köksrenovering (kr/kvm)
 3. Målning (kr/kvm)
-4. Trädgårdsarbete/fallning (kr/timme)
+4. Trädfällning (kr per träd, flat cost)
+5. Stubbfräsning (kr per stubb, flat cost)
+6. Golvläggning (kr/kvm)
+7. Takarbete (kr/kvm)
+8. Städning (kr flat cost för hus)
+9. El-installation (kr flat cost)
+10. VVS-installation (kr flat cost)
+11. Fönsterbyte (kr flat cost per fönster)
+12. Fasadrenovering (kr/kvm)
+13. Altanbygge (kr/kvm)
+14. Vindsisolering (kr/kvm)
+15. Trädgårdsanläggning (kr/kvm)
 
 Format svar som JSON (returnera ENDAST JSON, ingen annan text):
 {
   "badrum_renovering": { "minPerSqm": 15000, "maxPerSqm": 25000 },
   "kok_renovering": { "minPerSqm": 20000, "maxPerSqm": 35000 },
   "malning": { "minPerSqm": 300, "maxPerSqm": 600 },
-  "tradgard_fallning": { "minPerSqm": 500, "maxPerSqm": 1200 }
+  "tree_felling": { "minPerSqm": 5000, "maxPerSqm": 25000 },
+  "stump_grinding": { "minPerSqm": 2000, "maxPerSqm": 8000 },
+  "flooring": { "minPerSqm": 300, "maxPerSqm": 800 },
+  "roofing": { "minPerSqm": 800, "maxPerSqm": 1800 },
+  "cleaning": { "minPerSqm": 1500, "maxPerSqm": 5000 },
+  "electrical": { "minPerSqm": 5000, "maxPerSqm": 25000 },
+  "plumbing": { "minPerSqm": 8000, "maxPerSqm": 30000 },
+  "windows": { "minPerSqm": 8000, "maxPerSqm": 35000 },
+  "facade": { "minPerSqm": 500, "maxPerSqm": 1200 },
+  "deck": { "minPerSqm": 2000, "maxPerSqm": 4500 },
+  "attic_insulation": { "minPerSqm": 150, "maxPerSqm": 350 },
+  "landscaping": { "minPerSqm": 300, "maxPerSqm": 1000 }
 }
 
-Använd källor: byggfakta.se, husbyggaren.se, byggahus.se
+Använd källor: byggfakta.se, husbyggaren.se, byggahus.se, rormokarna.se
             `
           }
         ]

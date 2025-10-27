@@ -1,9 +1,23 @@
+// ============================================================================
+// SMART QUESTIONS - FAS 3: Batch-frågor och synonym-mapping
+// ============================================================================
+
 export interface ProjectRequirements {
   projectType: string;
   mandatoryQuestions: string[];
   optionalQuestions: string[];
   assumptions: string[];
 }
+
+// FAS 3: KEYWORD SYNONYMS - Förstår användarens input
+export const KEYWORD_SYNONYMS: Record<string, string[]> = {
+  'rivning': ['bilning', 'bila', 'riva', 'demontera'],
+  'vvs': ['rör', 'vatten', 'avlopp'],
+  'el': ['elarbete', 'eluttag', 'belysning'],
+  'målning': ['måla', 'målar', 'färg'],
+  'kakel': ['klinker', 'plattsättning'],
+  'fällning': ['fälla', 'fallning', 'såga']
+};
 
 export function getProjectRequirements(description: string): ProjectRequirements {
   const desc = description.toLowerCase();
@@ -84,33 +98,79 @@ export function getProjectRequirements(description: string): ProjectRequirements
   };
 }
 
+// FAS 3: Normalize keyword to canonical form
+function normalizeKeyword(word: string): string {
+  const normalized = word.toLowerCase().trim();
+  
+  for (const [canonical, synonyms] of Object.entries(KEYWORD_SYNONYMS)) {
+    if (synonyms.includes(normalized)) {
+      return canonical;
+    }
+  }
+  
+  return normalized;
+}
+
+// FAS 3: Check if question matches synonym or topic
+function matchesSynonymOrTopic(question: string, askedQuestions: string[], answeredTopics: string[]): boolean {
+  const questionWords = question.toLowerCase().split(' ').slice(0, 5).join(' ');
+  
+  // Check if already asked
+  const alreadyAsked = askedQuestions.some(q => 
+    q.toLowerCase().includes(questionWords)
+  );
+  
+  if (alreadyAsked) return true;
+  
+  // Check if topic answered (with synonym matching)
+  for (const topic of answeredTopics) {
+    const normalizedTopic = normalizeKeyword(topic);
+    if (question.toLowerCase().includes(normalizedTopic)) {
+      return true;
+    }
+  }
+  
+  return false;
+}
+
+// FAS 3: BATCH QUESTIONS - Returnera flera frågor samtidigt
+export function generateBatchQuestions(
+  requirements: ProjectRequirements,
+  askedQuestions: string[],
+  answeredTopics: string[],
+  maxQuestions: number = 6
+): string[] {
+  const questions: string[] = [];
+  
+  // Prioritera obligatoriska frågor
+  for (const question of requirements.mandatoryQuestions) {
+    if (questions.length >= maxQuestions) break;
+    
+    if (!matchesSynonymOrTopic(question, askedQuestions, answeredTopics)) {
+      questions.push(question);
+    }
+  }
+  
+  // Lägg till optionella om vi har plats
+  if (questions.length < maxQuestions) {
+    for (const question of requirements.optionalQuestions) {
+      if (questions.length >= maxQuestions) break;
+      
+      if (!matchesSynonymOrTopic(question, askedQuestions, answeredTopics)) {
+        questions.push(question);
+      }
+    }
+  }
+  
+  return questions;
+}
+
+// Legacy single-question mode (fallback)
 export function generateNextQuestion(
   requirements: ProjectRequirements,
   askedQuestions: string[],
   answeredTopics: string[]
 ): string | null {
-  
-  // Hitta nästa obligatorisk fråga som inte ställts
-  for (const question of requirements.mandatoryQuestions) {
-    const alreadyAsked = askedQuestions.some(q => 
-      q.toLowerCase().includes(question.toLowerCase().split(' ').slice(0, 3).join(' '))
-    );
-    
-    if (!alreadyAsked) {
-      return question;
-    }
-  }
-  
-  // Om alla obligatoriska är besvarade, kolla optionella
-  for (const question of requirements.optionalQuestions) {
-    const alreadyAsked = askedQuestions.some(q => 
-      q.toLowerCase().includes(question.toLowerCase().split(' ').slice(0, 3).join(' '))
-    );
-    
-    if (!alreadyAsked) {
-      return question;
-    }
-  }
-  
-  return null; // Inga fler frågor
+  const batch = generateBatchQuestions(requirements, askedQuestions, answeredTopics, 1);
+  return batch.length > 0 ? batch[0] : null;
 }

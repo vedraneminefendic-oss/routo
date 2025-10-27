@@ -27,6 +27,8 @@ import { isBathroomProject, getBathroomPromptAddition, BATHROOM_REQUIREMENTS } f
 import { validateBathroomQuote, generateValidationSummary, autoFixBathroomQuote } from './helpers/validateBathroomQuote.ts';
 import { isKitchenProject, getKitchenPromptAddition } from './helpers/kitchenRequirements.ts';
 import { isPaintingProject, getPaintingPromptAddition } from './helpers/paintingRequirements.ts';
+// FAS 2: Import project standards
+import { detectProjectType, getProjectPromptAddition, PROJECT_STANDARDS, normalizeKeyword } from './helpers/projectStandards.ts';
 
 // Brand dictionary and synonyms for better language understanding
 const KEYWORD_SYNONYMS: Record<string, string[]> = {
@@ -2245,21 +2247,51 @@ För varje antagande du gör, lägg till ett "assumptions"-fält i response:
   ]
 }
 
-**🚨 BESLUTSPROCESS (FÖLJ STRIKT I ORDNING) - FÖRBÄTTRING #3:**
+**🚨 FAS 1: FÖRBÄTTRAD BESLUTSPROCESS - Branschstandard först!**
 
-När du överväger att inkludera ett arbetsmoment eller material i offerten, FÖLJ DENNA TRAPPA:
+NYTT SYSTEM: Inkludera alltid branschstandard för projekttypen, sedan lägg till/ta bort baserat på konversation.
 
-**STEG 1: Är detta EXPLICIT nämnt i konversationen ovan?**
-   ✅ JA → Gå till steg 2
-   ❌ NEJ → Gå till steg 3
+**STEG 1: Vilken projekttyp är detta?**
+   - Identifiera projekttyp (badrum, kök, målning, trädfällning, etc.)
+   - Ladda in BRANSCHSTANDARD för den typen (obligatoriska arbetsmoment, material, prisintervall)
 
-**STEG 2: Kostar det mer än 5000 kr?**
-   ✅ JA → Inkludera INTE (även om det verkar logiskt!)
-   ❌ NEJ (under 5000 kr) → Gå till steg 3
+**STEG 2: Inkludera branschstandard automatiskt**
+   ✅ Inkludera ALLA obligatoriska arbetsmoment från branschstandard (även om inte nämnda!)
+   ✅ Inkludera ALLA obligatoriska material från branschstandard
+   ✅ Följ minsta pris per kvm/flat enligt branschstandard
 
-**STEG 3: Är det en standardpost <2000 kr?**
-   ✅ JA → Inkludera om relevant för projekttypen
-   ❌ NEJ → Inkludera INTE
+**STEG 3: Justera baserat på konversation**
+   - Om användaren EXPLICIT exkluderar något → Ta bort från offerten + lägg till i "Exkluderingar"
+   - Om användaren nämner extra arbete → Lägg till utöver branschstandard
+   - Om användaren nämner kvalitetsnivå → Justera priser uppåt/nedåt
+
+**EXEMPEL PÅ KORREKT BESLUTSFATTANDE (NYTT SYSTEM):**
+
+✅ **RÄTT (Badrumsrenovering):**
+- Input: "Renovera badrum 8 kvm"
+- AI laddar branschstandard för badrum → Inkluderar AUTOMATISKT:
+  * Rivning (8-16h)
+  * VVS-installation (14-24h) 
+  * El-installation (12-18h)
+  * Tätskikt (8-12h)
+  * Golvvärme (6-10h)
+  * Ventilation (4-8h)
+  * Kakel (16-32h)
+  * Sanitet (6-10h)
+- Total: 144 000 kr (18 000 kr/kvm enligt branschstandard)
+- ✅ Korrekt: Alla obligatoriska moment ingår automatiskt!
+
+✅ **RÄTT (Med exkludering):**
+- Input: "Renovera badrum 8 kvm, kunden ordnar el själv"
+- AI laddar branschstandard → Inkluderar alla utom El
+- Lägg till i exclusions: "El-installation (kunden ordnar själv)"
+- Total: ~120 000 kr (justerat nedåt)
+- ✅ Korrekt: Explicit exkludering respekteras
+
+❌ **FEL (Gamla systemet):**
+- Input: "Renovera badrum 8 kvm"
+- AI inkluderar bara: Kakel + Material = 45 000 kr
+- ⚠️ Problem: VVS, El, Tätskikt saknas → offert för billig!
 
 **EXEMPEL PÅ KORREKT BESLUTSFATTANDE:**
 
@@ -3698,10 +3730,24 @@ Svara med **1**, **2** eller **3** (eller "granska", "generera", "mer info")`;
     }
 
     // ============================================
+    // FAS 2: PROJECT STANDARDS INTEGRATION
+    // ============================================
+    
+    const detectedProject = detectProjectType(completeDescription);
+    if (detectedProject) {
+      console.log(`🎯 Detected project: ${detectedProject.displayName}`);
+    }
+    
+    // ============================================
     // FAS 3: DOMAIN-SPECIFIC VALIDATION & AUTO-FIX
     // ============================================
     
     let validationWarnings: any[] = [];
+    let reasoning = {
+      detectedProjectType: detectedProject?.displayName || 'unknown',
+      appliedStandards: detectedProject ? 'yes' : 'no',
+      priceRange: detectedProject ? `${detectedProject.minCostPerSqm || detectedProject.minCostFlat}-${detectedProject.maxCostPerSqm || detectedProject.maxCostFlat}` : 'n/a'
+    };
     
     // BATHROOM VALIDATION
     if (isBathroomProject(completeDescription)) {  // FIX 1: Changed from description to completeDescription
