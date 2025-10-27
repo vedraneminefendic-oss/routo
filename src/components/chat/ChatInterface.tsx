@@ -1148,6 +1148,8 @@ export const ChatInterface = ({ onQuoteGenerated, isGenerating }: ChatInterfaceP
       onSend={handleSendQuote}
       onSaveAsDraft={handleSaveAsDraft}
       onEdit={handleEditQuote}
+      isDraft={isDraftQuote}
+      onRefine={handleRequestRefinement}
     />
   </>
   );
