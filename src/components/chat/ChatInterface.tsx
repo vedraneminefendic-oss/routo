@@ -175,7 +175,7 @@ export const ChatInterface = ({ onQuoteGenerated, isGenerating }: ChatInterfaceP
         }
       }
 
-      // Step 2: Save user message and get smart question
+      // Step 2: Save user message and check readiness
       const saveResult = await supabase.functions.invoke('manage-conversation', {
         body: {
           action: 'save_message',
@@ -184,12 +184,54 @@ export const ChatInterface = ({ onQuoteGenerated, isGenerating }: ChatInterfaceP
         }
       });
 
-      // FAS 4: Display suggested question if available
+      // FIX 1: If AI wants to ask questions, show them INSTEAD of generating quote
+      if (saveResult.data?.suggestedQuestions && saveResult.data.suggestedQuestions.length > 0) {
+        console.log('🤔 AI vill ställa frågor först, hoppar över offertgenerering');
+        
+        const aiMessage: Message = {
+          id: (Date.now() + 1).toString(),
+          role: 'assistant',
+          content: 'Jag behöver lite mer information för att ge dig en exakt offert:',
+          timestamp: new Date(),
+          quickReplies: saveResult.data.suggestedQuestions.map((q: string) => ({
+            label: q,
+            action: 'answer_question'
+          }))
+        };
+        
+        setMessages(prev => [...prev, aiMessage]);
+        
+        // Save AI message
+        await supabase.functions.invoke('manage-conversation', {
+          body: {
+            action: 'save_message',
+            sessionId,
+            message: { 
+              role: 'assistant', 
+              content: aiMessage.content,
+              aiQuestions: saveResult.data.suggestedQuestions
+            }
+          }
+        });
+        
+        // Show readiness score if available
+        if (saveResult.data?.readinessScore !== undefined) {
+          toast({
+            title: `📊 Beredskap: ${saveResult.data.readinessScore}%`,
+            description: `${saveResult.data.mandatoryAnswered}/${saveResult.data.mandatoryTotal} viktiga frågor besvarade`
+          });
+        }
+        
+        setIsTyping(false);
+        return; // STOP here, don't generate quote yet
+      }
+
+      // FAS 4: Display suggested question if available (legacy support)
       if (saveResult.data?.suggestedQuestion) {
         setSuggestedQuestion(saveResult.data.suggestedQuestion);
       }
 
-      // Step 3: Generate quote
+      // Step 3: Generate quote (only if no questions needed)
       toast({
         title: imageAnalysis ? "🧮 Steg 2/3: Beräknar..." : "🧮 Steg 1/2: Beräknar...",
         description: "Analyserar projekt och kostnader"
@@ -763,7 +805,7 @@ export const ChatInterface = ({ onQuoteGenerated, isGenerating }: ChatInterfaceP
             </div>
           )}
 
-          {/* SPRINT 2: Enhanced transparent readiness panel - Expandable */}
+          {/* FAS 5: Enhanced readiness panel with progress bar and skip button */}
           {readiness && readiness.readiness_score < 85 && !generatedQuote && messages.length > 0 && (
             <div className="sticky top-0 z-10 bg-gradient-to-b from-background via-background to-transparent border-b px-4 py-3">
               <div 
@@ -791,8 +833,8 @@ export const ChatInterface = ({ onQuoteGenerated, isGenerating }: ChatInterfaceP
                   </div>
                 </div>
                 
-                {/* Gradient Progress med milestones */}
-                <div className="relative">
+                {/* FAS 5: Progress bar showing question completion */}
+                <div className="relative mb-3">
                   <div className="h-3 w-full overflow-hidden rounded-full bg-secondary">
                     <div 
                       className="h-full transition-all duration-500 ease-out"
@@ -823,6 +865,24 @@ export const ChatInterface = ({ onQuoteGenerated, isGenerating }: ChatInterfaceP
                     </div>
                   ))}
                 </div>
+                
+                {/* FAS 6: Skip questions button */}
+                {readiness.readiness_score >= 50 && (
+                  <div className="flex justify-end">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleSendMessage("Generera offert med nuvarande information");
+                      }}
+                      className="text-xs gap-1"
+                    >
+                      <Sparkles className="h-3 w-3" />
+                      Hoppa över frågor och generera offert nu
+                    </Button>
+                  </div>
+                )}
               </div>
 
               {/* SPRINT 2: Expandable details section */}

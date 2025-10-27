@@ -167,7 +167,7 @@ serve(async (req) => {
         .update(updateData)
         .eq('id', sessionId);
 
-      // FAS 2: Generate smart question for user messages
+      // FIX 2 + FAS 4: Generate batch questions and check readiness for user messages
       if (message.role === 'user') {
         const { data: allMessages } = await supabaseClient
           .from('conversation_messages')
@@ -181,39 +181,65 @@ serve(async (req) => {
           .join(' ') || '';
         
         const requirements = getProjectRequirements(fullDescription);
-        const nextQuestion = generateNextQuestion(
-          requirements,
-          session.asked_questions || [],
-          session.answered_topics || []
+        
+        // FAS 4: Calculate readiness score
+        const askedQuestions = session.asked_questions || [];
+        const answeredTopics = session.answered_topics || [];
+        const mandatoryQuestions = requirements.mandatoryQuestions || [];
+        
+        // Count how many mandatory questions have been answered
+        const mandatoryAnswered = mandatoryQuestions.filter(q =>
+          answeredTopics.some((topic: string) => q.toLowerCase().includes(topic.toLowerCase()))
         );
         
-        console.log('🤔 Smart question system:');
-        console.log('  📋 Project type:', requirements.projectType);
-        console.log('  ❓ Generated question:', nextQuestion);
-        console.log('  📝 Already asked:', session.asked_questions?.length || 0, 'questions');
-        console.log('  ✅ Answered topics:', session.answered_topics);
+        const readinessScore = mandatoryQuestions.length > 0 
+          ? (mandatoryAnswered.length / mandatoryQuestions.length) * 100
+          : 0;
         
-        if (nextQuestion) {
-          // Save the question to the session
-          const currentAskedQuestions = session.asked_questions || [];
+        console.log('🧠 READINESS CHECK:');
+        console.log('  📊 Readiness score:', `${readinessScore.toFixed(0)}%`);
+        console.log('  ✅ Mandatory answered:', mandatoryAnswered.length, '/', mandatoryQuestions.length);
+        console.log('  📋 Project type:', requirements.projectType);
+        
+        // FIX 2: Generate batch questions (4-6 questions at once)
+        const batchQuestions = generateBatchQuestions(
+          requirements,
+          askedQuestions,
+          answeredTopics,
+          6 // Max 6 questions
+        );
+        
+        console.log('  ❓ Generated questions:', batchQuestions.length);
+        console.log('  📝 Already asked:', askedQuestions.length, 'questions');
+        
+        // FAS 4: Only return questions if readiness is below threshold (80%)
+        if (batchQuestions.length > 0 && readinessScore < 80) {
+          // Save all questions to the session
           await supabaseClient
             .from('conversation_sessions')
             .update({
-              asked_questions: [...currentAskedQuestions, nextQuestion]
+              asked_questions: [...askedQuestions, ...batchQuestions]
             })
             .eq('id', sessionId);
           
-          console.log('  💾 Saved question to session');
+          console.log('  💾 Saved', batchQuestions.length, 'questions to session');
+          console.log('  ⏸️  Blocking quote generation - needs more info');
           
           return new Response(
             JSON.stringify({ 
               message: savedMessage,
-              suggestedQuestion: nextQuestion,
+              suggestedQuestions: batchQuestions, // Plural - array
+              needsMoreInfo: true, // Signal that we need more info
+              readinessScore: Math.round(readinessScore),
+              mandatoryAnswered: mandatoryAnswered.length,
+              mandatoryTotal: mandatoryQuestions.length,
               projectRequirements: requirements
             }),
             { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
           );
         }
+        
+        console.log('  ✅ Ready to generate quote (readiness:', `${readinessScore.toFixed(0)}%)` );
       }
 
       return new Response(
