@@ -674,6 +674,11 @@ export const ChatInterface = ({ onQuoteGenerated, isGenerating }: ChatInterfaceP
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Användaren är inte inloggad');
       
+      // Extract deduction type from quote
+      const deductionType = generatedQuote.deductionType || 
+                           generatedQuote.summary?.deduction?.type?.toLowerCase() || 
+                           'none';
+      
       const { data: savedQuote, error } = await supabase
         .from('quotes')
         .insert({
@@ -681,6 +686,7 @@ export const ChatInterface = ({ onQuoteGenerated, isGenerating }: ChatInterfaceP
           title: generatedQuote.title || 'Offert',
           description: messages.find(m => m.role === 'user')?.content || '',
           generated_quote: generatedQuote,
+          deduction_type: deductionType,
           status: 'draft',
           customer_id: null
         })
@@ -715,6 +721,11 @@ export const ChatInterface = ({ onQuoteGenerated, isGenerating }: ChatInterfaceP
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Användaren är inte inloggad');
       
+      // Extract deduction type from quote
+      const deductionType = generatedQuote.deductionType || 
+                           generatedQuote.summary?.deduction?.type?.toLowerCase() || 
+                           'none';
+      
       const { data, error } = await supabase
         .from('quotes')
         .insert({
@@ -722,6 +733,7 @@ export const ChatInterface = ({ onQuoteGenerated, isGenerating }: ChatInterfaceP
           title: generatedQuote.title || 'Offert',
           description: messages.find(m => m.role === 'user')?.content || '',
           generated_quote: generatedQuote,
+          deduction_type: deductionType,
           status: 'draft',
           customer_id: null
         })

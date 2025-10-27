@@ -69,9 +69,15 @@ export const QuoteSheet = ({
                 subtotal={quote.summary?.totalBeforeVAT || 0}
                 workCost={quote.summary?.workCost || 0}
                 materialCost={quote.summary?.materialCost || 0}
-                vat={quote.summary?.vatAmount || 0}
+                vat={quote.summary?.vatAmount || quote.summary?.vat || 0}
                 totalWithVAT={quote.summary?.totalWithVAT || 0}
-                rotRutDeduction={quote.summary?.deduction}
+                rotRutDeduction={quote.summary?.deduction ? {
+                  type: quote.summary.deduction.type,
+                  laborCost: quote.summary.deduction.workCostWithVAT || quote.summary.deduction.laborCost || 0,
+                  deductionAmount: quote.summary.deduction.deductionAmount || 0,
+                  priceAfterDeduction: quote.summary.deduction.priceAfterDeduction || quote.summary?.customerPays || 0,
+                  deductionRate: quote.summary.deduction.deductionRate || 0.5,
+                } : undefined}
                 total={quote.summary?.customerPays || quote.summary?.totalWithVAT || 0}
               />
             </div>

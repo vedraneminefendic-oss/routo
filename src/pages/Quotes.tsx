@@ -99,8 +99,15 @@ const Quotes = () => {
 
   const handleQuoteClick = (quote: any) => {
     const quoteToDisplay = quote.edited_quote || quote.generated_quote;
+    
+    // Add deduction_type from database row to quote object
+    const quoteWithDeduction = {
+      ...quoteToDisplay,
+      deductionType: quote.deduction_type || quoteToDisplay.deductionType || 'none'
+    };
+    
     setViewingQuote(quote);
-    setCurrentQuote(quoteToDisplay);
+    setCurrentQuote(quoteWithDeduction);
     setCurrentDescription(quote.description);
     setSearchParams({ id: quote.id });
   };
