@@ -1431,12 +1431,19 @@ function mapWorkItemToRate(
   return fallback?.rate || 700;
 }
 
-// Helper: Compute deterministic quote totals
+// FAS 22: Compute deterministic quote totals (skip if draft mode)
 function computeQuoteTotals(
   quote: any,
   hourlyRates: Array<{ work_type: string; rate: number }>,
-  equipmentRates: Array<{ name: string; price_per_day: number | null; price_per_hour: number | null }>
+  equipmentRates: Array<{ name: string; price_per_day: number | null; price_per_hour: number | null }>,
+  isDraft: boolean = false
 ): any {
+  // FAS 22: If draft mode, preserve AI-generated price intervals as-is
+  if (isDraft) {
+    console.log('📄 FAS 22: Draft mode - preserving AI price intervals, skipping deterministic calculations');
+    return quote; // Return quote as-is with price interval strings
+  }
+  
   let workCost = 0;
   let materialCost = 0;
   let equipmentCost = 0;
@@ -2335,44 +2342,84 @@ ${workItems.map((w: any) => `- ${w.name}: ${w.hours}h × ${w.hourlyRate} kr/h = 
     console.log('🎨 Painting project detected! Adding requirements checklist...');
   }
 
-  // FAS 20: Draft mode instructions
+  // FAS 22: Enhanced Draft mode instructions with clearer price interval examples
   const draftModeInstructions = isDraft ? `
-🎯 **FAS 20: DRAFT MODE - SNABB OFFERT MED PRISINTERVALL**
+🎯 **FAS 22: DRAFT MODE - SNABB OFFERT MED PRISINTERVALL**
 
 Detta är ett FÖRSTA UTKAST som ska genereras snabbt med rimliga antaganden.
 
+**KRITISKT: Använd ALLTID prisintervall och "kan justeras"-markeringar i draft mode!**
+
 **DRAFT MODE REGLER:**
-1. **Använd PRISINTERVALL istället för exakta priser där information saknas**
-   - Exempel: "Kakel: 600-900 kr/kvm (beroende på kvalitet)"
-   - Markera osäkra delar med "(kan justeras efter mer information)"
 
-2. **Gör generösa antaganden baserat på branschstandard**
-   - Om material inte specificerat → använd "Standard" kvalitet
-   - Om arbetsomfattning oklar → använd typiskt intervall för projekttypen
-   - Dokumentera antaganden i assumptions-fältet
+1. **ANVÄND PRISINTERVALL - INTE EXAKTA PRISER**
+   ✅ KORREKT: "Totalpris: 70 000 - 90 000 SEK (beroende på materialval)"
+   ✅ KORREKT: "Kakel: 600-900 kr/kvm (kan justeras)"
+   ❌ FEL: "Totalpris: 80 000 SEK"
+   
+   **summary-exempel för draft:**
+   {
+     "totalBeforeVAT": "56 000 - 72 000 SEK",
+     "totalWithVAT": "70 000 - 90 000 SEK",
+     "customerPays": "70 000 - 90 000 SEK (kan justeras efter materialval och exakt omfattning)"
+   }
 
-3. **Behåll SAMMA STRUKTUR som vanlig offert**
+2. **Markera ALLA osäkra poster med "(kan justeras)"**
+   ✅ "Kakelläggning badrum (kan justeras efter materialval och omfattning)"
+   ✅ "VVS-installation (kan justeras beroende på befintliga rör)"
+   ✅ "Material: Kakel standard-kvalitet (kan justeras)"
+
+3. **Gör generösa antaganden med dokumentation**
+   - Om material inte specificerat → "Standard kvalitet"
+   - Om arbetsomfattning oklar → använd typiskt intervall
+   - Dokumentera ALLA antaganden i assumptions-fältet
+   
+   **Exempel på assumptions:**
+   - "Utgår från standard kvalitet på kakel (300-600 kr/kvm)"
+   - "Antar att rivning av befintligt badrum ingår"
+   - "Inga dolda skador förutsätts"
+
+4. **Behåll SAMMA STRUKTUR men med intervall**
    - Alla workItems, materials och equipment ska finnas
-   - summary-fältet ska ha korrekt struktur
-   - Men priser kan vara estimerade med större marginal
+   - summary kan innehålla strängar med intervall (inte bara nummer)
+   - explanation-fält ska förklara intervallet
 
-4. **Markera osäkerheter tydligt**
-   - I description-fält: lägg till "(kan justeras)"
-   - Exempel: "Kakelläggning badrum (kan justeras efter materialval)"
+5. **Bredare marginaler (+/- 20-30%)**
+   - Lägre gräns: Enklaste scenariot (standard material, inga överraskningar)
+   - Övre gräns: Komplexare scenario (premium material, extra arbete)
 
-5. **Snabbare generation**
-   - Färre detaljerade beräkningar
-   - Mer fokus på branschstandard och liknande quotes
-   - Bredare prisintervall (±20% istället för ±5%)
-
-**EXEMPEL PÅ DRAFT MODE ITEM:**
+**KOMPLETT EXEMPEL PÅ DRAFT MODE QUOTE:**
 {
-  "name": "Badrumsrenovering 8 kvm",
-  "description": "Total renovering inkl. kakel, VVS, el (kan justeras efter materialval och omfattning)",
-  "hours": 80,
-  "hourlyRate": 850,
-  "subtotal": 68000,
-  "explanation": "Estimerat 80-120 timmar baserat på 8 kvm badrum. Använder mittenpris 850 kr/h. Exakt tid beror på rivningsomfattning och materialval."
+  "title": "Badrumsrenovering 8 kvm (UTKAST)",
+  "workItems": [{
+    "name": "Badrumsrenovering 8 kvm",
+    "description": "Total renovering inkl. kakel, VVS, el (kan justeras efter materialval)",
+    "hours": "80-120 timmar",
+    "hourlyRate": 850,
+    "subtotal": "68 000 - 102 000 SEK",
+    "explanation": "Intervall baserat på omfattning. Mittenpris 850 kr/h. Exakt tid beror på rivning och materialval."
+  }],
+  "materials": [{
+    "name": "Kakel standard",
+    "quantity": 8,
+    "unit": "kvm",
+    "pricePerUnit": "600-900 kr",
+    "subtotal": "4 800 - 7 200 SEK",
+    "specifications": "Standard kakel 30x60cm (kan justeras)"
+  }],
+  "summary": {
+    "workCost": "68 000 - 102 000 SEK",
+    "materialCost": "15 000 - 25 000 SEK",
+    "totalBeforeVAT": "83 000 - 127 000 SEK",
+    "totalWithVAT": "104 000 - 159 000 SEK (prisintervall, kan justeras)",
+    "customerPays": "104 000 - 159 000 SEK"
+  },
+  "assumptions": [
+    "Utgår från standard kvalitet på material",
+    "Rivning av befintligt badrum ingår",
+    "Inga dolda skador förutsätts",
+    "Prisintervall baserat på erfarenhet från liknande projekt"
+  ]
 }
 
 ` : '';
@@ -4107,9 +4154,9 @@ Svara med **1**, **2** eller **3** (eller "granska", "generera", "mer info")`;
     // STEP 6.6: VALIDATE REALISM (FÖRBÄTTRING #9)
     // ============================================
     
-    // Apply deterministic pricing
+    // Apply deterministic pricing (FAS 22: skip if draft mode)
     console.log('💰 Computing deterministic totals...');
-    quote = computeQuoteTotals(quote, hourlyRates || [], equipmentRates || []);
+    quote = computeQuoteTotals(quote, hourlyRates || [], equipmentRates || [], isDraft);
 
     console.log('🔬 Validating realism...');
     const realismWarnings = validateRealism(
@@ -4223,8 +4270,8 @@ Svara med **1**, **2** eller **3** (eller "granska", "generera", "mer info")`;
           subtotal: Math.round(item.subtotal * multiplier)
         })) || [];
         
-        // Re-calculate totals
-        quote = computeQuoteTotals(quote, hourlyRates || [], equipmentRates || []);
+        // Re-calculate totals (FAS 22: respect draft mode)
+        quote = computeQuoteTotals(quote, hourlyRates || [], equipmentRates || [], isDraft);
         
         // STRATEGI 2: Om fortfarande under minimum, lägg till materialuppgradering
         const remainingGap = minPrice - (quote.summary?.totalBeforeVAT || 0);
@@ -4242,8 +4289,8 @@ Svara med **1**, **2** eller **3** (eller "granska", "generera", "mer info")`;
             subtotal: Math.round(remainingGap)
           });
           
-          // Final re-calculate
-          quote = computeQuoteTotals(quote, hourlyRates || [], equipmentRates || []);
+          // Final re-calculate (FAS 22: respect draft mode)
+          quote = computeQuoteTotals(quote, hourlyRates || [], equipmentRates || [], isDraft);
         }
         
         console.log(`✅ Quote price corrected to ${quote.summary.totalBeforeVAT} kr (${Math.round(quote.summary.totalBeforeVAT / area)} kr/kvm)`);
@@ -4270,8 +4317,8 @@ Svara med **1**, **2** eller **3** (eller "granska", "generera", "mer info")`;
           quote = await autoFixBathroomQuote(quote, bathroomValidation.missing, area);
           console.log('✅ Quote auto-fixed successfully');
           
-          // Re-calculate totals after auto-fix
-          quote = computeQuoteTotals(quote, hourlyRates || [], equipmentRates || []);
+          // Re-calculate totals after auto-fix (FAS 22: respect draft mode)
+          quote = computeQuoteTotals(quote, hourlyRates || [], equipmentRates || [], isDraft);
         }
         
         // Logga validationssammanfattning

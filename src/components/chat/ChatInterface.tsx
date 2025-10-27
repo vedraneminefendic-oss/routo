@@ -46,6 +46,7 @@ export const ChatInterface = ({ onQuoteGenerated, isGenerating }: ChatInterfaceP
   const [userId, setUserId] = useState<string | null>(null);
   const [userMessage, setUserMessage] = useState<string>("");
   const [suggestedQuestion, setSuggestedQuestion] = useState<string | null>(null);
+  const [isDraftQuote, setIsDraftQuote] = useState(false); // FAS 22: Track if current quote is draft
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const chatContainerRef = useRef<HTMLDivElement>(null);
   const askedQuestions = useRef<Set<string>>(new Set());
@@ -478,6 +479,7 @@ export const ChatInterface = ({ onQuoteGenerated, isGenerating }: ChatInterfaceP
           setConversationFeedback(data.conversationFeedback);
           setReadiness(data.readiness);
           setShowQuoteSheet(true);
+          setIsDraftQuote(data.isDraft || false); // FAS 22: Track if draft quote
           
           // SPRINT 1.5: Track delta mode state
           if (data.is_delta_mode) {
@@ -618,6 +620,7 @@ export const ChatInterface = ({ onQuoteGenerated, isGenerating }: ChatInterfaceP
         setShowProactivePrompt(false);
         setCurrentQuoteId(null);
         setPreviousQuoteTotal(null);
+        setIsDraftQuote(false); // FAS 22: Reset draft flag
         askedQuestions.current.clear();
         toast({
           title: "Ny konversation",
@@ -629,6 +632,36 @@ export const ChatInterface = ({ onQuoteGenerated, isGenerating }: ChatInterfaceP
       toast({
         title: "Fel",
         description: "Kunde inte starta ny konversation.",
+        variant: "destructive"
+      });
+    }
+  };
+
+  // FAS 22: Handle refinement request (triggers Stage 2 questions)
+  const handleRequestRefinement = async () => {
+    if (!sessionId) return;
+    
+    try {
+      const { error } = await supabase.functions.invoke('manage-conversation', {
+        body: { action: 'request_refinement', sessionId }
+      });
+      
+      if (error) throw error;
+      
+      setShowQuoteSheet(false);
+      setIsDraftQuote(false);
+      
+      toast({
+        title: "🔧 Förfiningar begärda",
+        description: "Jag ställer nu fördjupande frågor för att förbättra offerten."
+      });
+      
+      await handleSendMessage("Jag vill förfina offerten");
+    } catch (error: any) {
+      console.error('Error requesting refinement:', error);
+      toast({
+        title: "Fel",
+        description: "Kunde inte begära förfining",
         variant: "destructive"
       });
     }

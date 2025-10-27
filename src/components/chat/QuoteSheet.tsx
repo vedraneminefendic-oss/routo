@@ -12,6 +12,8 @@ interface QuoteSheetProps {
   onSend: () => void;
   onSaveAsDraft: () => void;
   onEdit: () => void;
+  isDraft?: boolean; // FAS 22
+  onRefine?: () => void; // FAS 22
 }
 
 export const QuoteSheet = ({ 
@@ -20,7 +22,9 @@ export const QuoteSheet = ({
   quote, 
   onSend, 
   onSaveAsDraft, 
-  onEdit 
+  onEdit,
+  isDraft = false, // FAS 22
+  onRefine // FAS 22
 }: QuoteSheetProps) => {
   if (!quote) return null;
 
@@ -86,6 +90,18 @@ export const QuoteSheet = ({
 
           {/* Action Buttons */}
           <div className="flex flex-col gap-3 pt-4 border-t sticky bottom-0 bg-background pb-4">
+            {/* FAS 22: Show "Förfina offerten" button for draft quotes */}
+            {isDraft && onRefine && (
+              <Button 
+                onClick={onRefine}
+                className="w-full gap-2 bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-600 hover:to-orange-700"
+                size="lg"
+              >
+                <Sparkles className="h-4 w-4" />
+                Förfina offerten (2-3 fler frågor)
+              </Button>
+            )}
+            
             <Button 
               onClick={onSend}
               className="w-full gap-2 bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700"

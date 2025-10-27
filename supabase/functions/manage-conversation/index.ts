@@ -777,10 +777,10 @@ serve(async (req) => {
           maxQuestionsToGenerate = 3;
           console.log('🎯 FAS 20 STAGE 1: Asking initial 3 questions');
         }
-        // STAGE 1 → DRAFT: After first round OR 2+ categories answered
-        else if (!isRefinementRequested && (totalQuestionsAsked >= STAGE_1_MAX_QUESTIONS || answeredCategories >= 2)) {
+        // FAS 22: FORCE DRAFT QUOTE EARLIER - After 3 questions (not 4)
+        else if (!isRefinementRequested && totalQuestionsAsked >= 3) {
           shouldGenerateDraftQuote = true;
-          console.log('📄 FAS 20: Generating DRAFT QUOTE after initial round');
+          console.log('📄 FAS 22: Generating DRAFT QUOTE after 3 questions (forced earlier)');
           console.log('  ✅ Questions asked:', totalQuestionsAsked);
           console.log('  ✅ Categories answered:', answeredCategories, '/', totalCategories);
         }
@@ -959,6 +959,36 @@ serve(async (req) => {
         );
       }
 
+      return new Response(
+        JSON.stringify({ success: true }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // FAS 22: REQUEST REFINEMENT (triggers Stage 2)
+    if (action === 'request_refinement') {
+      if (!sessionId) {
+        return new Response(
+          JSON.stringify({ error: 'Missing sessionId' }),
+          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      const { error } = await supabaseClient
+        .from('conversation_sessions')
+        .update({ refinement_requested: true })
+        .eq('id', sessionId)
+        .eq('user_id', user.id);
+
+      if (error) {
+        console.error('Error requesting refinement:', error);
+        return new Response(
+          JSON.stringify({ error: 'Failed to request refinement' }),
+          { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      console.log('✅ FAS 22: Refinement requested for session', sessionId);
       return new Response(
         JSON.stringify({ success: true }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
