@@ -2437,64 +2437,6 @@ I summary.customerPays, använd format:
 ` : '';
 
   // SPRINT 1.5: Build delta mode intro (if applicable)
-  const deltaModeIntro2 = isDeltaMode ? `
-
-3. **Gör generösa antaganden med dokumentation**
-   - Om material inte specificerat → "Standard kvalitet"
-   - Om arbetsomfattning oklar → använd typiskt intervall
-   - Dokumentera ALLA antaganden i assumptions-fältet
-   
-   **Exempel på assumptions:**
-   - "Utgår från standard kvalitet på kakel (300-600 kr/kvm)"
-   - "Antar att rivning av befintligt badrum ingår"
-   - "Inga dolda skador förutsätts"
-
-4. **Behåll SAMMA STRUKTUR men med intervall**
-   - Alla workItems, materials och equipment ska finnas
-   - summary kan innehålla strängar med intervall (inte bara nummer)
-   - explanation-fält ska förklara intervallet
-
-5. **Bredare marginaler (+/- 20-30%)**
-   - Lägre gräns: Enklaste scenariot (standard material, inga överraskningar)
-   - Övre gräns: Komplexare scenario (premium material, extra arbete)
-
-**KOMPLETT EXEMPEL PÅ DRAFT MODE QUOTE:**
-{
-  "title": "Badrumsrenovering 8 kvm (UTKAST)",
-  "workItems": [{
-    "name": "Badrumsrenovering 8 kvm",
-    "description": "Total renovering inkl. kakel, VVS, el (kan justeras efter materialval)",
-    "hours": "80-120 timmar",
-    "hourlyRate": 850,
-    "subtotal": "68 000 - 102 000 SEK",
-    "explanation": "Intervall baserat på omfattning. Mittenpris 850 kr/h. Exakt tid beror på rivning och materialval."
-  }],
-  "materials": [{
-    "name": "Kakel standard",
-    "quantity": 8,
-    "unit": "kvm",
-    "pricePerUnit": "600-900 kr",
-    "subtotal": "4 800 - 7 200 SEK",
-    "specifications": "Standard kakel 30x60cm (kan justeras)"
-  }],
-  "summary": {
-    "workCost": "68 000 - 102 000 SEK",
-    "materialCost": "15 000 - 25 000 SEK",
-    "totalBeforeVAT": "83 000 - 127 000 SEK",
-    "totalWithVAT": "104 000 - 159 000 SEK (prisintervall, kan justeras)",
-    "customerPays": "104 000 - 159 000 SEK"
-  },
-  "assumptions": [
-    "Utgår från standard kvalitet på material",
-    "Rivning av befintligt badrum ingår",
-    "Inga dolda skador förutsätts",
-    "Prisintervall baserat på erfarenhet från liknande projekt"
-  ]
-}
-
-` : '';
-
-  // SPRINT 1.5: Build delta mode intro (if applicable)
   const deltaModeIntro = isDeltaMode ? `
 **🔄 DELTA MODE - UTÖKA BEFINTLIG OFFERT (KRITISKT!):**
 

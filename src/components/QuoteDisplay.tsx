@@ -296,6 +296,25 @@ const QuoteDisplay = ({
     }).format(amount);
   };
 
+  // FAS 25: Helper to format values that might be numbers, strings, or ranges
+  const formatValue = (value: any): string => {
+    if (typeof value === 'number') {
+      return formatCurrency(value);
+    }
+    if (typeof value === 'string') {
+      // If it's already a string with currency or range, return as-is
+      return value;
+    }
+    if (value && typeof value === 'object' && 'min' in value && 'max' in value) {
+      // Handle priceRange objects: { min: 70000, max: 90000, note: "..." }
+      const minFormatted = formatCurrency(value.min);
+      const maxFormatted = formatCurrency(value.max);
+      const note = value.note ? ` ${value.note}` : '';
+      return `${minFormatted} - ${maxFormatted}${note}`;
+    }
+    return String(value);
+  };
+
   // Support both old and new deduction field names
   const deductionAmount = quote.summary.deductionAmount ?? quote.summary.rotDeduction ?? quote.summary.rutDeduction ?? 0;
   const deductionType = quote.deductionType ?? quote.summary.deductionType ?? 
@@ -753,17 +772,29 @@ const QuoteDisplay = ({
             {quote.workItems.map((item, index) => (
               <div key={index} className="bg-muted/50 rounded-lg p-4">
                 <div className="flex justify-between items-start mb-2">
-                  <div>
+                  <div className="flex-1">
                     <h4 className="font-medium">{item.name}</h4>
                     <p className="text-sm text-muted-foreground">{item.description}</p>
+                    {/* FAS 25: Show estimate badge if present */}
+                    {(item as any).isEstimate && (
+                      <Badge variant="outline" className="mt-1 text-xs">
+                        Prisindikation
+                      </Badge>
+                    )}
                   </div>
                   <span className="font-semibold whitespace-nowrap ml-4">
-                    {formatCurrency(item.subtotal)}
+                    {formatValue(item.subtotal)}
                   </span>
                 </div>
                 <p className="text-sm text-muted-foreground">
-                  {item.hours} timmar × {formatCurrency(item.hourlyRate)}/tim
+                  {formatValue(item.hours)} {typeof item.hours === 'number' ? 'timmar' : ''} × {formatValue(item.hourlyRate)}/tim
                 </p>
+                {/* FAS 25: Show explanation if present */}
+                {(item as any).explanation && (
+                  <p className="text-xs text-muted-foreground mt-2 italic">
+                    {(item as any).explanation}
+                  </p>
+                )}
               </div>
             ))}
           </div>
@@ -777,14 +808,28 @@ const QuoteDisplay = ({
               {quote.materials.map((item, index) => (
                 <div key={index} className="bg-muted/50 rounded-lg p-4">
                   <div className="flex justify-between items-start mb-2">
-                    <h4 className="font-medium">{item.name}</h4>
+                    <div className="flex-1">
+                      <h4 className="font-medium">{item.name}</h4>
+                      {/* FAS 25: Show estimate badge if present */}
+                      {(item as any).isEstimate && (
+                        <Badge variant="outline" className="mt-1 text-xs">
+                          Prisindikation
+                        </Badge>
+                      )}
+                    </div>
                     <span className="font-semibold whitespace-nowrap ml-4">
-                      {formatCurrency(item.subtotal)}
+                      {formatValue(item.subtotal)}
                     </span>
                   </div>
                   <p className="text-sm text-muted-foreground">
-                    {item.quantity} {item.unit} × {formatCurrency(item.pricePerUnit)}/{item.unit}
+                    {item.quantity} {item.unit} × {formatValue(item.pricePerUnit)}/{item.unit}
                   </p>
+                  {/* FAS 25: Show specifications if present */}
+                  {(item as any).specifications && (
+                    <p className="text-xs text-muted-foreground mt-2 italic">
+                      {(item as any).specifications}
+                    </p>
+                  )}
                 </div>
               ))}
             </div>
@@ -799,24 +844,24 @@ const QuoteDisplay = ({
           <div className="space-y-2">
             <div className="flex justify-between">
               <span>Arbetskostnad:</span>
-              <span>{formatCurrency(quote.summary.workCost)}</span>
+              <span>{formatValue(quote.summary.workCost)}</span>
             </div>
             <div className="flex justify-between">
               <span>Materialkostnad:</span>
-              <span>{formatCurrency(quote.summary.materialCost)}</span>
+              <span>{formatValue(quote.summary.materialCost)}</span>
             </div>
             <Separator />
             <div className="flex justify-between">
               <span>Summa före moms:</span>
-              <span>{formatCurrency(quote.summary.totalBeforeVAT)}</span>
+              <span>{formatValue(quote.summary.totalBeforeVAT)}</span>
             </div>
             <div className="flex justify-between text-muted-foreground">
               <span>Moms (25%):</span>
-              <span>{formatCurrency(quote.summary.vat)}</span>
+              <span>{formatValue(quote.summary.vat)}</span>
             </div>
             <div className="flex justify-between font-semibold text-lg">
               <span>Totalt inkl. moms:</span>
-              <span>{formatCurrency(quote.summary.totalWithVAT)}</span>
+              <span>{formatValue(quote.summary.totalWithVAT)}</span>
             </div>
             {deductionAmount > 0 && (
               <>
