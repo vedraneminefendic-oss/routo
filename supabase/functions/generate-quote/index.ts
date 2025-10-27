@@ -780,20 +780,138 @@ function getProtectedItemsForProjectType(projectType: string): string[] {
   return protectedByType[projectType] || [];
 }
 
-// FAS 1: IMPROVED - Validate against conversation with protected items
-function validateQuoteAgainstConversation(
+// ============================================
+// AI-DRIVEN STANDARD WORK ITEM DETECTION
+// ============================================
+
+async function isStandardWorkItemAI(
+  itemName: string,
+  projectDescription: string,
+  conversationHistory: ConversationMessage[],
+  userPatterns: any[],
+  industryKnowledge: any,
+  lovableApiKey: string
+): Promise<{ isStandard: boolean; confidence: number; reasoning: string }> {
+  
+  // Build context from user's previous accepted quotes
+  const userContext = userPatterns
+    .filter(p => p.customer_accepted && p.was_kept_by_ai)
+    .map(p => `- ${p.work_item_name} (accepterat ${Math.round(p.confidence_score * 100)}% confidence)`)
+    .join('\n');
+  
+  // Build context from industry knowledge
+  const industryContext = industryKnowledge?.standardWorkItems
+    ?.map((item: any) => `- ${item.name} (${item.mandatory ? 'obligatoriskt' : 'vanligt'})`)
+    .join('\n') || 'Ingen branschdata tillgänglig';
+  
+  const conversationText = conversationHistory
+    .map(m => `${m.role}: ${m.content}`)
+    .join('\n');
+
+  const prompt = `Du är en expert på svenska byggofferter. Avgör om "${itemName}" är ett STANDARDMOMENT för detta projekt:
+
+**PROJEKT:**
+${projectDescription}
+
+**KONVERSATION:**
+${conversationText.substring(0, 2000)}
+
+**ANVÄNDARENS HISTORIK (tidigare accepterade standardmoment):**
+${userContext || 'Ingen historik än'}
+
+**BRANSCHSTANDARDER:**
+${industryContext}
+
+**UPPGIFT:**
+Är "${itemName}" ett standardmoment som ALLTID ingår i denna typ av projekt, även om kunden inte nämner det explicit?
+
+Returnera JSON:
+{
+  "isStandard": true/false,
+  "confidence": 0.0-1.0,
+  "reasoning": "Kort förklaring (max 50 ord)"
+}
+
+**EXEMPEL - Målning:**
+- "Grundmålning" → isStandard: true (alltid nödvändigt före toppmålning)
+- "Guldram runt fönster" → isStandard: false (specialönskemål)
+
+**EXEMPEL - Badrum:**
+- "Tätskikt" → isStandard: true (lagkrav för våtrum)
+- "Marmorgolv" → isStandard: false (lyxval)`;
+
+  try {
+    const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${lovableApiKey}`,
+      },
+      body: JSON.stringify({
+        model: 'google/gemini-2.5-flash',
+        messages: [{ role: 'user', content: prompt }],
+        response_format: { type: 'json_object' }
+      }),
+    });
+
+    if (!response.ok) {
+      console.error('❌ AI standard check failed:', response.status);
+      return { isStandard: false, confidence: 0, reasoning: 'AI otillgänglig' };
+    }
+
+    const data = await response.json();
+    const result = JSON.parse(data.choices?.[0]?.message?.content || '{}');
+    
+    console.log(`🤖 AI decision for "${itemName}":`, result);
+    return result;
+
+  } catch (error) {
+    console.error('❌ Error in AI standard check:', error);
+    return { isStandard: false, confidence: 0, reasoning: 'Fel vid AI-anrop' };
+  }
+}
+
+// ============================================
+// FAS 1 + AI: VALIDATE QUOTE AGAINST CONVERSATION (AI-Enhanced)
+// ============================================
+
+async function validateQuoteAgainstConversation(
   quote: any,
   conversationHistory: ConversationMessage[],
   description: string,
-  projectType?: string // FAS 1: NEW PARAMETER
-): { isValid: boolean; unmentionedItems: string[]; warnings: string[]; removedValue: number } {
+  projectType: string | null,
+  userId: string,
+  lovableApiKey: string,
+  supabaseClient: any
+): Promise<{ isValid: boolean; unmentionedItems: string[]; warnings: string[]; removedValue: number; aiDecisions: any[] }> {
+  console.log('🔍 FAS 1 + AI: Validating quote against conversation with AI assistance...');
+  
+  // Fetch user's learned patterns
+  const { data: userPatterns } = await supabaseClient
+    .from('accepted_work_patterns')
+    .select('*')
+    .eq('user_id', userId)
+    .eq('project_type', projectType)
+    .order('created_at', { ascending: false })
+    .limit(50);
+  
+  // Fetch industry knowledge
+  const { data: industryData } = await supabaseClient
+    .from('industry_knowledge')
+    .select('*')
+    .eq('project_type', projectType)
+    .eq('category', 'standard_work_items')
+    .single();
+  
+  console.log(`📚 Loaded ${userPatterns?.length || 0} user patterns, industry data: ${industryData ? 'Yes' : 'No'}`);
   
   const fullText = (description + ' ' + conversationHistory
     .map(m => m.content)
     .join(' ')).toLowerCase();
   
   const unmentioned: string[] = [];
-  const warnings: string[] = []; // FAS 1: NEW - warnings instead of removal
+  const warnings: string[] = [];
+  const aiDecisions: any[] = [];
   let removedValue = 0;
   
   // FAS 1: Get protected items for this project type
@@ -848,7 +966,7 @@ function validateQuoteAgainstConversation(
       continue;
     }
     
-    // Om item kostar >5000 kr → kräver omnämnande
+    // Om item kostar >5000 kr → kräver omnämnande ELLER AI-godkännande
     if (item.subtotal > 5000) {
       // Extrahera nyckelord från item name (minst 4 tecken)
       const keywords = item.name.toLowerCase()
@@ -859,9 +977,32 @@ function validateQuoteAgainstConversation(
       const mentioned = keywords.some((kw: string) => fullText.includes(kw));
       
       if (!mentioned) {
-        unmentioned.push(`${item.name} (${Math.round(item.subtotal)} kr) - inte nämnt i konversation`);
-        removedValue += item.subtotal;
-        console.log(`🗑️ Removing unmentioned item: ${item.name} (${item.subtotal} kr)`);
+        // 🤖 AI CHECK: Is this a standard work item?
+        const aiCheck = await isStandardWorkItemAI(
+          item.name,
+          description,
+          conversationHistory,
+          userPatterns || [],
+          industryData?.content,
+          lovableApiKey
+        );
+        
+        aiDecisions.push({
+          itemName: item.name,
+          subtotal: item.subtotal,
+          ...aiCheck
+        });
+        
+        // Keep if AI says it's standard with high confidence
+        if (aiCheck.isStandard && aiCheck.confidence >= 0.75) {
+          validWorkItems.push(item);
+          warnings.push(`🤖 "${item.name}" inkluderat som standardmoment (AI confidence: ${Math.round(aiCheck.confidence * 100)}%) - ${aiCheck.reasoning}`);
+          console.log(`✅ AI kept standard item: ${item.name} (${aiCheck.confidence * 100}% confidence)`);
+        } else {
+          unmentioned.push(`${item.name} (${Math.round(item.subtotal)} kr) - inte nämnt och ej standardmoment (AI confidence: ${Math.round(aiCheck.confidence * 100)}%)`);
+          removedValue += item.subtotal;
+          console.log(`🗑️ Removing unmentioned item: ${item.name} (${item.subtotal} kr) - AI confidence too low: ${aiCheck.confidence}`);
+        }
       } else {
         validWorkItems.push(item);
       }
@@ -927,8 +1068,9 @@ function validateQuoteAgainstConversation(
   return {
     isValid: unmentioned.length === 0,
     unmentionedItems: unmentioned,
-    warnings: warnings, // FAS 1: NEW
-    removedValue: removedValue
+    warnings: warnings,
+    removedValue: removedValue,
+    aiDecisions: aiDecisions
   };
 }
 
@@ -4225,12 +4367,15 @@ Svara med **1**, **2** eller **3** (eller "granska", "generera", "mer info")`;
     // FAS 1 & 5: Validate quote against conversation with project type and intent
     const detectedProjectForValidation = detectProjectType(completeDescription);
     
-    console.log('🔍 Validating quote against conversation...');
-    const conversationValidation = validateQuoteAgainstConversation(
+    console.log('🔍 Validating quote against conversation with AI learning...');
+    const conversationValidation = await validateQuoteAgainstConversation(
       quote,
       conversation_history,
       description,
-      detectedProjectForValidation?.projectType // FAS 1: Pass project type for protected items
+      detectedProjectForValidation?.projectType || null,
+      user.id,
+      LOVABLE_API_KEY,
+      supabaseClient
     );
     
     // FAS 6: Log protected items

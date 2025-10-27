@@ -41,3 +41,9 @@ verify_jwt = false
 
 [functions.classify-rot-rut]
 verify_jwt = true
+
+[functions.learn-from-accepted-quote]
+verify_jwt = true
+
+[functions.update-industry-standards]
+verify_jwt = false

@@ -102,6 +102,13 @@ interface QuoteDisplayProps {
     expectedMinPrice?: number;
     expectedMaxPrice?: number;
   };
+  aiDecisions?: Array<{
+    itemName: string;
+    subtotal: number;
+    isStandard: boolean;
+    confidence: number;
+    reasoning: string;
+  }>;
 }
 
 const QuoteDisplay = ({ 

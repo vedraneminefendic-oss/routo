@@ -14,6 +14,56 @@ export type Database = {
   }
   public: {
     Tables: {
+      accepted_work_patterns: {
+        Row: {
+          ai_reasoning: string | null
+          confidence_score: number | null
+          created_at: string
+          customer_accepted: boolean
+          id: string
+          project_type: string
+          quote_id: string | null
+          user_id: string
+          was_explicitly_mentioned: boolean
+          was_kept_by_ai: boolean
+          work_item_name: string
+        }
+        Insert: {
+          ai_reasoning?: string | null
+          confidence_score?: number | null
+          created_at?: string
+          customer_accepted?: boolean
+          id?: string
+          project_type: string
+          quote_id?: string | null
+          user_id: string
+          was_explicitly_mentioned?: boolean
+          was_kept_by_ai?: boolean
+          work_item_name: string
+        }
+        Update: {
+          ai_reasoning?: string | null
+          confidence_score?: number | null
+          created_at?: string
+          customer_accepted?: boolean
+          id?: string
+          project_type?: string
+          quote_id?: string | null
+          user_id?: string
+          was_explicitly_mentioned?: boolean
+          was_kept_by_ai?: boolean
+          work_item_name?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "accepted_work_patterns_quote_id_fkey"
+            columns: ["quote_id"]
+            isOneToOne: false
+            referencedRelation: "quotes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       company_settings: {
         Row: {
           address: string | null
@@ -333,6 +383,33 @@ export type Database = {
           min_value?: number | null
           sample_size?: number | null
           work_category?: string
+        }
+        Relationships: []
+      }
+      industry_knowledge: {
+        Row: {
+          category: string
+          content: Json
+          id: string
+          last_updated: string
+          project_type: string
+          source: string
+        }
+        Insert: {
+          category: string
+          content: Json
+          id?: string
+          last_updated?: string
+          project_type: string
+          source: string
+        }
+        Update: {
+          category?: string
+          content?: Json
+          id?: string
+          last_updated?: string
+          project_type?: string
+          source?: string
         }
         Relationships: []
       }
