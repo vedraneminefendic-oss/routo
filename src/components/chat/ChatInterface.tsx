@@ -45,6 +45,7 @@ export const ChatInterface = ({ onQuoteGenerated, isGenerating }: ChatInterfaceP
   const [selectedCustomer, setSelectedCustomer] = useState<any>(null);
   const [userId, setUserId] = useState<string | null>(null);
   const [userMessage, setUserMessage] = useState<string>("");
+  const [suggestedQuestion, setSuggestedQuestion] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const chatContainerRef = useRef<HTMLDivElement>(null);
   const askedQuestions = useRef<Set<string>>(new Set());
@@ -174,14 +175,19 @@ export const ChatInterface = ({ onQuoteGenerated, isGenerating }: ChatInterfaceP
         }
       }
 
-      // Step 2: Save user message
-      await supabase.functions.invoke('manage-conversation', {
+      // Step 2: Save user message and get smart question
+      const saveResult = await supabase.functions.invoke('manage-conversation', {
         body: {
           action: 'save_message',
           sessionId,
           message: { role: 'user', content }
         }
       });
+
+      // FAS 4: Display suggested question if available
+      if (saveResult.data?.suggestedQuestion) {
+        setSuggestedQuestion(saveResult.data.suggestedQuestion);
+      }
 
       // Step 3: Generate quote
       toast({
@@ -438,6 +444,20 @@ export const ChatInterface = ({ onQuoteGenerated, isGenerating }: ChatInterfaceP
             timestamp: new Date()
           };
           setMessages(prev => [...prev, aiMessage]);
+          
+          // FAS 4: Show validation warnings if present
+          if (data.validationWarnings?.length > 0) {
+            const criticalIssues = data.validationWarnings.filter((w: any) => 
+              w.severity === 'CRITICAL' || w.severity === 'ERROR'
+            );
+            if (criticalIssues.length > 0) {
+              toast({
+                title: "⚠️ Kvalitetsvarningar",
+                description: `${criticalIssues.length} problem hittades i offerten. Se detaljer nedan.`,
+                variant: "destructive"
+              });
+            }
+          }
           
           // SPRINT 1.5: Show warnings if consistency issues detected
           if (data.warnings?.length > 0) {

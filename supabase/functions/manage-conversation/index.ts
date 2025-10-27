@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.0";
+import { getProjectRequirements, generateNextQuestion } from "./helpers/smartQuestions.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -165,6 +166,38 @@ serve(async (req) => {
         .from('conversation_sessions')
         .update(updateData)
         .eq('id', sessionId);
+
+      // FAS 2: Generate smart question for user messages
+      if (message.role === 'user') {
+        const { data: allMessages } = await supabaseClient
+          .from('conversation_messages')
+          .select('content')
+          .eq('session_id', sessionId)
+          .order('created_at', { ascending: true });
+        
+        const fullDescription = allMessages
+          ?.filter((m: any) => m.content)
+          .map((m: any) => m.content)
+          .join(' ') || '';
+        
+        const requirements = getProjectRequirements(fullDescription);
+        const nextQuestion = generateNextQuestion(
+          requirements,
+          session.asked_questions || [],
+          session.answered_topics || []
+        );
+        
+        if (nextQuestion) {
+          return new Response(
+            JSON.stringify({ 
+              message: savedMessage,
+              suggestedQuestion: nextQuestion,
+              projectRequirements: requirements
+            }),
+            { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+      }
 
       return new Response(
         JSON.stringify({ message: savedMessage }),

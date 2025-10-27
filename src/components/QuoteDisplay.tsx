@@ -122,7 +122,8 @@ const QuoteDisplay = ({
   realismWarnings,
   validationErrors,
   usedReference,
-  referenceTitle
+  referenceTitle,
+  bathroomValidation
 }: QuoteDisplayProps) => {
   const [companySettings, setCompanySettings] = useState<any>(null);
   const [logoImage, setLogoImage] = useState<string | null>(null);

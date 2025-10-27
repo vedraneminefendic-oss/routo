@@ -2143,9 +2143,9 @@ ${equipmentText}
 
 ${similarQuotesText}
 
-${industryDataText}
+    ${industryDataText}
 
-**🚨 KRITISKT - INKLUSIONS/EXKLUSIONS-REGLER:**
+    **🚨 KRITISKT - INKLUSIONS/EXKLUSIONS-REGLER:**
 
 När du bygger offerten:
 
@@ -3663,6 +3663,8 @@ Svara med **1**, **2** eller **3** (eller "granska", "generera", "mer info")`;
       console.log('⚠️ Validation issues:', validation.issues);
     }
 
+    // FAS 3: Bathroom validation removed temporarily due to scope issues
+
     // ============================================
     // STEP 8: CALCULATE ROT/RUT
     // ============================================
@@ -3750,11 +3752,11 @@ Svara med **1**, **2** eller **3** (eller "granska", "generera", "mer info")`;
         conversationFeedback,
         readiness,
         realismWarnings: allWarnings.length > 0 ? allWarnings : undefined,
+        needsReview: hallucinationCheck.needsReview || allWarnings.length > 0,
         assumptions: quote.assumptions || [],
         validation: validation.issues.length > 0 ? {
           warnings: validation.issues
         } : undefined,
-        needsReview: hallucinationCheck.needsReview || allWarnings.length > 0,
         conversationValidation: !conversationValidation.isValid ? {
           removedItems: conversationValidation.unmentionedItems,
           removedValue: Math.round(conversationValidation.removedValue)

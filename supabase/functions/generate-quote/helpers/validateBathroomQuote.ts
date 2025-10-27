@@ -203,3 +203,109 @@ export function generateValidationSummary(validation: ValidationResult): string 
   
   return summary;
 }
+
+// AUTO-FIX: Add missing bathroom components
+export async function autoFixBathroomQuote(
+  quote: any,
+  missing: string[],
+  area: number
+): Promise<any> {
+  
+  const fixes: Record<string, any> = {
+    'VVS-installation': {
+      name: 'VVS-installation',
+      description: 'Byte av rör, kopplingar, ventiler, golvbrunn, installera dusch/toalett/tvättställ',
+      hours: 12,
+      hourlyRate: 950,
+      subtotal: 11400
+    },
+    'El-installation': {
+      name: 'El-installation våtrum',
+      description: 'Jordfelsbrytare, IP44-armaturer, golvvärmekabel, fläktinstallation',
+      hours: 10,
+      hourlyRate: 950,
+      subtotal: 9500
+    },
+    'Golvvärmemontage': {
+      name: 'Golvvärmemontage',
+      description: 'Läggning av golvvärmematta och installation av termostat',
+      hours: 6,
+      hourlyRate: 850,
+      subtotal: 5100
+    },
+    'Ventilationsinstallation': {
+      name: 'Ventilationsinstallation',
+      description: 'Montering av badrumsfläkt med timer och fuktavkännare',
+      hours: 3,
+      hourlyRate: 850,
+      subtotal: 2550
+    },
+    'Tätskiktsarbete': {
+      name: 'Tätskiktsarbete',
+      description: 'Applicering av tätskikt på golv och väggar enligt branschregler',
+      hours: 8,
+      hourlyRate: 850,
+      subtotal: 6800
+    }
+  };
+  
+  const materialFixes: Record<string, any> = {
+    'Golvbrunn': {
+      name: 'Golvbrunn',
+      quantity: 1,
+      unitPrice: 800,
+      subtotal: 800
+    },
+    'Golvvärme': {
+      name: 'Golvvärmematta',
+      quantity: area,
+      unitPrice: 350,
+      subtotal: area * 350
+    },
+    'Badrumsfläkt': {
+      name: 'Badrumsfläkt med timer',
+      quantity: 1,
+      unitPrice: 1200,
+      subtotal: 1200
+    },
+    'Jordfelsbrytare': {
+      name: 'Jordfelsbrytare',
+      quantity: 1,
+      unitPrice: 600,
+      subtotal: 600
+    }
+  };
+  
+  const fixedQuote = { ...quote };
+  
+  // Add missing workItems
+  missing.forEach(item => {
+    if (fixes[item]) {
+      fixedQuote.workItems = fixedQuote.workItems || [];
+      fixedQuote.workItems.push(fixes[item]);
+      console.log(`  ✅ Auto-added work item: ${item}`);
+    }
+    if (materialFixes[item]) {
+      fixedQuote.materials = fixedQuote.materials || [];
+      fixedQuote.materials.push(materialFixes[item]);
+      console.log(`  ✅ Auto-added material: ${item}`);
+    }
+  });
+  
+  // Recalculate summary
+  const newWorkCost = fixedQuote.workItems.reduce((sum: number, w: any) => sum + w.subtotal, 0);
+  const newMaterialCost = fixedQuote.materials.reduce((sum: number, m: any) => sum + m.subtotal, 0);
+  const newTotalBeforeVAT = newWorkCost + newMaterialCost;
+  
+  fixedQuote.summary = {
+    ...fixedQuote.summary,
+    workCost: newWorkCost,
+    materialCost: newMaterialCost,
+    totalBeforeVAT: newTotalBeforeVAT,
+    vat: Math.round(newTotalBeforeVAT * 0.25),
+    totalWithVAT: Math.round(newTotalBeforeVAT * 1.25),
+    customerPays: Math.round(newTotalBeforeVAT * 1.25)
+  };
+  
+  return fixedQuote;
+}

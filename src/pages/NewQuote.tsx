@@ -33,6 +33,7 @@ const NewQuote = () => {
   const [warningMessage, setWarningMessage] = useState<string | undefined>(undefined);
   const [realismWarnings, setRealismWarnings] = useState<string[]>([]);
   const [validationErrors, setValidationErrors] = useState<string[]>([]);
+  const [bathroomValidation, setBathroomValidation] = useState<any>(null);
   
   // Reference metadata
   const [usedReference, setUsedReference] = useState<boolean | undefined>(undefined);
@@ -98,6 +99,9 @@ const NewQuote = () => {
       if (result.validationErrors) {
         setValidationErrors(result.validationErrors);
       }
+      if (result.validationWarnings) {
+        setBathroomValidation(result.validationWarnings);
+      }
       
       toast.success("✅ Offert genererad!", {
         description: "Nu kan du granska och redigera offerten"
@@ -157,6 +161,9 @@ const NewQuote = () => {
       }
       if (data.validationErrors) {
         setValidationErrors(data.validationErrors);
+      }
+      if (data.validationWarnings) {
+        setBathroomValidation(data.validationWarnings);
       }
       
       setHasCustomRates(data.hasCustomRates || false);
@@ -401,6 +408,7 @@ const NewQuote = () => {
               validationErrors={validationErrors}
               usedReference={usedReference}
               referenceTitle={referenceTitle}
+              bathroomValidation={bathroomValidation}
             />
           )}
 
