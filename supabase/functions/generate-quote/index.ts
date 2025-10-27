@@ -905,6 +905,94 @@ function validateQuoteAgainstConversation(
 }
 
 // ============================================
+// FAS 13: PRICE RANGE ESTIMATION
+// ============================================
+
+interface PriceEstimate {
+  min: number;
+  max: number;
+  confidence: number;
+  reasoning: string;
+}
+
+async function estimatePriceRange(
+  description: string,
+  conversationData: any,
+  userRates: any[],
+  similarQuotes: any[],
+  learningContext: LearningContext,
+  apiKey: string
+): Promise<PriceEstimate> {
+  console.log('💰 FAS 13: Estimating price range...');
+  
+  // Quick estimation based on project type and measurements
+  const text = description.toLowerCase();
+  let baseMin = 10000;
+  let baseMax = 30000;
+  
+  // Extract area if available
+  const areaMatch = text.match(/(\d+)\s*(kvm|m2|m²|kvadratmeter)/i);
+  const area = areaMatch ? parseInt(areaMatch[1]) : 0;
+  
+  // Project-specific estimates
+  if (text.includes('badrum') && text.includes('renovera')) {
+    baseMin = area > 0 ? area * 18000 : 80000;
+    baseMax = area > 0 ? area * 30000 : 150000;
+  } else if (text.includes('kök') && text.includes('renovera')) {
+    baseMin = area > 0 ? area * 20000 : 100000;
+    baseMax = area > 0 ? area * 35000 : 200000;
+  } else if (text.includes('målning') || text.includes('måla')) {
+    baseMin = area > 0 ? area * 400 : 15000;
+    baseMax = area > 0 ? area * 800 : 50000;
+  } else if (text.includes('fäll') || text.includes('träd')) {
+    const treeCountMatch = text.match(/(\d+)\s*(träd|granar|tallar|ekar)/i);
+    const treeCount = treeCountMatch ? parseInt(treeCountMatch[1]) : 1;
+    baseMin = treeCount * 8000;
+    baseMax = treeCount * 25000;
+  } else if (text.includes('städ')) {
+    baseMin = area > 0 ? area * 50 : 5000;
+    baseMax = area > 0 ? area * 150 : 15000;
+  }
+  
+  // Adjust based on similar quotes
+  if (similarQuotes && similarQuotes.length > 0) {
+    const similarPrices = similarQuotes
+      .map(q => q.quote_data?.summary?.customerPays || 0)
+      .filter(p => p > 0);
+    
+    if (similarPrices.length > 0) {
+      const avgSimilar = similarPrices.reduce((a, b) => a + b, 0) / similarPrices.length;
+      // Weight towards similar quotes
+      baseMin = Math.round((baseMin + avgSimilar * 0.8) / 2);
+      baseMax = Math.round((baseMax + avgSimilar * 1.2) / 2);
+    }
+  }
+  
+  // Adjust based on user patterns
+  if (learningContext.userPatterns?.average_quote_value) {
+    const userAvg = learningContext.userPatterns.average_quote_value;
+    // Slight adjustment towards user's typical pricing
+    baseMin = Math.round(baseMin * 0.9 + userAvg * 0.1);
+    baseMax = Math.round(baseMax * 0.9 + userAvg * 0.1);
+  }
+  
+  // Calculate confidence
+  let confidence = 50;
+  if (area > 0) confidence += 20; // Has measurements
+  if (similarQuotes && similarQuotes.length > 0) confidence += 20; // Has similar work
+  if (userRates && userRates.length > 0) confidence += 10; // Has custom rates
+  
+  const reasoning = `Baserat på ${area > 0 ? `${area} kvm, ` : ''}projekttyp och ${similarQuotes?.length || 0} liknande offerter`;
+  
+  return {
+    min: Math.round(baseMin),
+    max: Math.round(baseMax),
+    confidence: Math.min(confidence, 95),
+    reasoning
+  };
+}
+
+// ============================================
 // CONFIDENCE SCORE (FÖRBÄTTRING #5)
 // ============================================
 
@@ -2133,7 +2221,8 @@ async function generateQuoteWithAI(
   deductionType: string,
   apiKey: string,
   exclusions: Exclusion[] = [],
-  previousQuote: any = null // SPRINT 1.5: For delta mode
+  previousQuote: any = null, // SPRINT 1.5: For delta mode
+  includeExplanations: boolean = false // FAS 14: Enable explanations
 ): Promise<any> {
   
   const historyText = conversationHistory
@@ -2553,6 +2642,23 @@ VARJE material MÅSTE specificeras enligt: **Märke + Modell + Storlek/Färg + M
 5. Var realistisk med tider och endast inkludera vad som diskuterats
 6. Inkludera standardposter från listan ovan om relevanta
 7. Inkludera INTE stora arbetsmoment som inte diskuterats (se lista ovan)
+${includeExplanations ? `
+8. **FAS 14: FÖRKLARINGAR (KRITISKT VIKTIGT!)** 
+   Lägg till ett "explanation"-fält för VARJE workItem, material och equipment som förklarar:
+   - VARFÖR denna post ingår i offerten
+   - HUR priset/tiden beräknades
+   - VILKA faktorer som påverkade beslutet
+   
+   **EXEMPEL PÅ BRA FÖRKLARINGAR:**
+   ✅ "explanation": "Rivning krävs enligt branschstandard för badrumsrenovering. 8 kvm × 4 timmar/kvm baserat på befintlig kakeltyp."
+   ✅ "explanation": "Premium kakel valt enligt kundens önskemål. Pris baserat på Marazzi-serien som nämndes i konversationen."
+   ✅ "explanation": "Motorsåg behövs för träd över 10m höjd. 2 dagars hyra baserat på 3 träd × 4 timmar per träd."
+   
+   **EXEMPEL PÅ DÅLIGA FÖRKLARINGAR:**
+   ❌ "explanation": "Behövs för projektet" (för vag)
+   ❌ "explanation": "Standard" (ingen kontext)
+   ❌ "explanation": "" (tom)
+` : ''}
 
 **EXEMPEL PÅ KORREKT STRUKTUR:**
 
@@ -2566,14 +2672,16 @@ VARJE material MÅSTE specificeras enligt: **Märke + Modell + Storlek/Färg + M
       "description": "Fällning av 3 stora granar (15m höga, 5m diameter)",
       "hours": 12,
       "hourlyRate": 800,
-      "subtotal": 9600
+      "subtotal": 9600${includeExplanations ? `,
+      "explanation": "12 timmar baserat på 4 timmar per träd (15m höjd kräver försiktig fällning). Timpris 800 kr/h för arboristarbete enligt användarens prislista."` : ''}
     },
     {
       "name": "Slutstädning",
       "description": "Städning av arbetsområdet",
       "hours": 2,
       "hourlyRate": 650,
-      "subtotal": 1300
+      "subtotal": 1300${includeExplanations ? `,
+      "explanation": "Standardpost för alla trädfällningsprojekt. 2 timmar för att städa upp kvistar och spill från 3 träd."` : ''}
     }
   ],
   "materials": [
@@ -2583,7 +2691,8 @@ VARJE material MÅSTE specificeras enligt: **Märke + Modell + Storlek/Färg + M
       "quantity": 1,
       "unit": "st",
       "pricePerUnit": 1500,
-      "subtotal": 1500
+      "subtotal": 1500${includeExplanations ? `,
+      "explanation": "Fast pris för bortforsling av trädrester från 3 granar. Inkluderar transport till återvinningsstation."` : ''}
     },
     {
       "name": "Motorsågsolja och kedja",
@@ -2591,7 +2700,8 @@ VARJE material MÅSTE specificeras enligt: **Märke + Modell + Storlek/Färg + M
       "quantity": 1,
       "unit": "set",
       "pricePerUnit": 400,
-      "subtotal": 400
+      "subtotal": 400${includeExplanations ? `,
+      "explanation": "Förbrukningsmaterial uppskattat för 12 timmars motorsågsarbete (3 träd). Inkluderar kedjolja och reservkedja."` : ''}
     }
   ],
   "equipment": [
@@ -2601,7 +2711,8 @@ VARJE material MÅSTE specificeras enligt: **Märke + Modell + Storlek/Färg + M
       "quantity": 2,
       "unit": "dagar",
       "pricePerUnit": 600,
-      "subtotal": 1200
+      "subtotal": 1200${includeExplanations ? `,
+      "explanation": "Professionell motorsåg hyrs i 2 dagar (12 timmars arbete kräver 2 arbetsdagar). Hyra 600 kr/dag enligt utrustningslista."` : ''}
     }
   ]
 }
@@ -3656,6 +3767,55 @@ Svara med **1**, **2** eller **3** (eller "granska", "generera", "mer info")`;
 
     console.log('🎯 Generating complete quote...');
     
+    // ============================================
+    // FAS 13: PRICE EXPECTATION CHECK
+    // ============================================
+    
+    console.log('💰 FAS 13: Estimating price range...');
+    const priceEstimate = await estimatePriceRange(
+      completeDescription,
+      conversationSummary || conversationFeedback,
+      hourlyRates || [],
+      similarQuotes,
+      learningContext,
+      LOVABLE_API_KEY
+    );
+    
+    console.log(`💰 FAS 13: Estimated range: ${priceEstimate.min} - ${priceEstimate.max} kr`);
+    console.log(`💰 FAS 13: Confidence: ${priceEstimate.confidence}%`);
+    
+    // Check if user has a budget constraint
+    if (conversationSummary?.budget || conversationFeedback?.understood?.budget) {
+      const userBudget = conversationSummary?.budget || conversationFeedback?.understood?.budget;
+      console.log(`💡 FAS 13: User mentioned budget: ${userBudget}`);
+      
+      // If estimate exceeds user budget, warn them
+      if (priceEstimate.max > 0 && userBudget) {
+        const budgetNumber = parseInt(userBudget.replace(/[^\d]/g, ''));
+        if (!isNaN(budgetNumber) && priceEstimate.min > budgetNumber) {
+          console.log(`⚠️ FAS 13: Estimated price (${priceEstimate.min} kr) exceeds budget (${budgetNumber} kr)`);
+          
+          return new Response(
+            JSON.stringify({
+              type: 'budget_warning',
+              message: `⚠️ **Prisförväntning**\n\nBaserat på projektets omfattning uppskattar jag priset till:\n\n💰 **${priceEstimate.min.toLocaleString('sv-SE')} - ${priceEstimate.max.toLocaleString('sv-SE')} kr** (exkl. ROT/RUT-avdrag)\n\nDu nämnde en budget på ca ${budgetNumber.toLocaleString('sv-SE')} kr, vilket är lägre än estimatet.\n\n**Vad vill du göra?**\n- Justera omfattningen (ta bort vissa arbetsmoment)\n- Fortsätt med full offert ändå\n- Diskutera alternativ`,
+              priceRange: priceEstimate,
+              userBudget: budgetNumber,
+              quickReplies: [
+                { label: '📋 Generera ändå', action: 'generate' },
+                { label: '✂️ Minska omfattning', action: 'reduce_scope' },
+                { label: '💬 Diskutera alternativ', action: 'discuss_alternatives' }
+              ]
+            }),
+            {
+              headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+              status: 200,
+            }
+          );
+        }
+      }
+    }
+    
     // SPRINT 1: Parse exclusions och inclusions från konversation
     const exclusionsForQuote = parseExclusions(actualConversationHistory);
     const inclusionsForQuote = detectInclusions(actualConversationHistory);
@@ -3671,7 +3831,8 @@ Svara med **1**, **2** eller **3** (eller "granska", "generera", "mer info")`;
       learningContext,
       finalDeductionType,
       LOVABLE_API_KEY,
-      exclusionsForQuote
+      exclusionsForQuote,
+      true // FAS 14: Enable explanations
     );
     
     // SPRINT 2: Generate smart auto-title

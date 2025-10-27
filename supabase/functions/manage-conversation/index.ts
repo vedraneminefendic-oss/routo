@@ -192,6 +192,124 @@ function extractAnsweredTopics(userMessage: string, requirements: ProjectRequire
   return topics;
 }
 
+// ============================================
+// FAS 12: NEGATION AND CORRECTION DETECTION
+// ============================================
+
+interface NegationResult {
+  isNegation: boolean;
+  correctionType?: 'remove' | 'replace' | 'clarify';
+  targetItems?: string[];
+  newValue?: string;
+  explanation?: string;
+}
+
+function detectNegationOrCorrection(
+  userMessage: string,
+  conversationSummary: any
+): NegationResult {
+  const lower = userMessage.toLowerCase();
+  
+  // Pattern 1: Direct negation ("Nej", "Glöm det")
+  const directNegations = [
+    /^nej[,.]?\s/i,
+    /glöm\s+(det|tidigare|att jag sa)/i,
+    /inte\s+längre/i,
+    /ångrar\s+mig/i,
+    /fel[,.]?\s/i,
+    /inte\s+(det|så)/i,
+  ];
+  
+  for (const pattern of directNegations) {
+    if (pattern.test(lower)) {
+      console.log('🚫 FAS 12: Direct negation detected:', userMessage);
+      
+      // Try to identify what they're negating
+      const targetItems: string[] = [];
+      
+      // Check against confirmed work
+      if (conversationSummary?.confirmedWork) {
+        conversationSummary.confirmedWork.forEach((work: string) => {
+          if (lower.includes(work.toLowerCase())) {
+            targetItems.push(work);
+          }
+        });
+      }
+      
+      return {
+        isNegation: true,
+        correctionType: 'remove',
+        targetItems: targetItems.length > 0 ? targetItems : ['senaste svar'],
+        explanation: 'Användaren ångrar/korrigerar sitt tidigare svar'
+      };
+    }
+  }
+  
+  // Pattern 2: Replacement ("istället för X, Y")
+  const replacementPatterns = [
+    /istället\s+för\s+([^,]+),?\s+(.+)/i,
+    /inte\s+([^,]+)\s+utan\s+(.+)/i,
+    /byt\s+ut\s+([^,]+)\s+mot\s+(.+)/i,
+  ];
+  
+  for (const pattern of replacementPatterns) {
+    const match = lower.match(pattern);
+    if (match) {
+      console.log('🔄 FAS 12: Replacement detected:', match[1], '→', match[2]);
+      return {
+        isNegation: true,
+        correctionType: 'replace',
+        targetItems: [match[1].trim()],
+        newValue: match[2].trim(),
+        explanation: `Ersätter "${match[1]}" med "${match[2]}"`
+      };
+    }
+  }
+  
+  // Pattern 3: Correction of quantity/measurement
+  const quantityCorrections = [
+    /(?:egentligen|faktiskt|snarare)\s+(\d+)/i,
+    /rättelse[:\s]+(\d+)/i,
+    /menade\s+(\d+)/i,
+  ];
+  
+  for (const pattern of quantityCorrections) {
+    const match = lower.match(pattern);
+    if (match) {
+      console.log('📏 FAS 12: Quantity correction detected:', match[1]);
+      return {
+        isNegation: true,
+        correctionType: 'replace',
+        newValue: match[1],
+        explanation: 'Korrigerar tidigare angiven siffra'
+      };
+    }
+  }
+  
+  // Pattern 4: "Ta bort X" / "Exkludera X"
+  const removalPatterns = [
+    /ta\s+bort\s+(.+)/i,
+    /exkludera\s+(.+)/i,
+    /skippa\s+(.+)/i,
+    /behövs\s+inte\s+(.+)/i,
+  ];
+  
+  for (const pattern of removalPatterns) {
+    const match = lower.match(pattern);
+    if (match) {
+      console.log('❌ FAS 12: Removal request detected:', match[1]);
+      return {
+        isNegation: true,
+        correctionType: 'remove',
+        targetItems: [match[1].trim()],
+        explanation: `Ta bort "${match[1]}" från offerten`
+      };
+    }
+  }
+  
+  return { isNegation: false };
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -366,6 +484,52 @@ serve(async (req) => {
           allMessages || [],
           LOVABLE_API_KEY
         );
+        
+        // FAS 12: Check for negations/corrections in user message
+        console.log('🔍 FAS 12: Checking for negations/corrections...');
+        const negationResult = detectNegationOrCorrection(
+          message.content,
+          conversationSummary
+        );
+        
+        if (negationResult.isNegation) {
+          console.log('🚫 FAS 12: Negation detected!', negationResult);
+          
+          // Update conversation summary to reflect correction
+          if (negationResult.correctionType === 'remove' && negationResult.targetItems) {
+            // Remove from confirmedWork
+            if (conversationSummary.confirmedWork) {
+              conversationSummary.confirmedWork = conversationSummary.confirmedWork.filter(
+                (work: string) => !negationResult.targetItems?.some(
+                  target => work.toLowerCase().includes(target.toLowerCase())
+                )
+              );
+            }
+            
+            // Add to exclusions
+            if (!conversationSummary.exclusions) conversationSummary.exclusions = [];
+            negationResult.targetItems.forEach(item => {
+              if (conversationSummary.exclusions && !conversationSummary.exclusions.includes(item)) {
+                conversationSummary.exclusions.push(item);
+              }
+            });
+          } else if (negationResult.correctionType === 'replace' && negationResult.targetItems && negationResult.newValue) {
+            // Update value in summary
+            if (conversationSummary.customerAnswers) {
+              const oldKey = negationResult.targetItems[0];
+              const newValue = negationResult.newValue;
+              
+              // Find and update the relevant answer
+              Object.keys(conversationSummary.customerAnswers).forEach(key => {
+                if (key.toLowerCase().includes(oldKey.toLowerCase()) && conversationSummary.customerAnswers) {
+                  conversationSummary.customerAnswers[key] = newValue;
+                }
+              });
+            }
+          }
+          
+          console.log('✅ FAS 12: Updated conversation summary after correction');
+        }
         
         // Save summary to session
         await supabaseClient
