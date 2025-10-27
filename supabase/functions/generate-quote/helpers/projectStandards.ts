@@ -36,6 +36,41 @@ export interface ProjectStandard {
   assumptions: string[];
 }
 
+// FAS 5: PROJECT INTENT
+export interface ProjectIntent {
+  scope: 'total' | 'partial' | 'new' | 'unknown';
+  urgency: 'urgent' | 'normal' | 'flexible';
+  quality: 'budget' | 'standard' | 'premium';
+  explicitInclusions: string[];
+  explicitExclusions: string[];
+  specialRequirements: string[];
+}
+
+// FAS 2: Detect scope
+export function detectScope(description: string): 'total' | 'partial' | 'new' | 'unknown' {
+  const lower = description.toLowerCase();
+  const totalKeywords = ['totalrenovering', 'total renovering', 'hel renovering', 'komplett renovering'];
+  const partialKeywords = ['delrenovering', 'upprustning', 'uppfräschning'];
+  
+  if (totalKeywords.some(kw => lower.includes(kw))) return 'total';
+  if (partialKeywords.some(kw => lower.includes(kw))) return 'partial';
+  return 'unknown';
+}
+
+// FAS 5: Detect project intent
+export function detectProjectIntent(description: string, conversation: string[]): ProjectIntent {
+  const combined = (description + ' ' + conversation.join(' ')).toLowerCase();
+  
+  return {
+    scope: detectScope(combined),
+    urgency: 'normal',
+    quality: 'standard',
+    explicitInclusions: [],
+    explicitExclusions: [],
+    specialRequirements: []
+  };
+}
+
 export const PROJECT_STANDARDS: ProjectStandard[] = [
   // 1. BADRUMSRENOVERING
   {

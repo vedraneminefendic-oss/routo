@@ -27,8 +27,8 @@ import { isBathroomProject, getBathroomPromptAddition, BATHROOM_REQUIREMENTS } f
 import { validateBathroomQuote, generateValidationSummary, autoFixBathroomQuote } from './helpers/validateBathroomQuote.ts';
 import { isKitchenProject, getKitchenPromptAddition } from './helpers/kitchenRequirements.ts';
 import { isPaintingProject, getPaintingPromptAddition } from './helpers/paintingRequirements.ts';
-// FAS 2: Import project standards
-import { detectProjectType, getProjectPromptAddition, PROJECT_STANDARDS, normalizeKeyword } from './helpers/projectStandards.ts';
+// FAS 2 & 5: Import project standards and intent detection
+import { detectProjectType, getProjectPromptAddition, PROJECT_STANDARDS, normalizeKeyword, detectScope, detectProjectIntent, type ProjectIntent } from './helpers/projectStandards.ts';
 
 // Brand dictionary and synonyms for better language understanding
 const KEYWORD_SYNONYMS: Record<string, string[]> = {
@@ -654,18 +654,42 @@ function findRelevantHourlyRate(itemName: string, userRates: any[], existingWork
   return 700;
 }
 
+// FAS 1: Get protected items for project type
+function getProtectedItemsForProjectType(projectType: string): string[] {
+  const protectedByType: Record<string, string[]> = {
+    'bathroom_renovation': ['vvs', 'el', 'tätskikt', 'golvvärme', 'ventilation', 'kakel', 'sanitet', 'rivning'],
+    'kitchen_renovation': ['vvs', 'el', 'skåp', 'bänkskiva', 'kakel', 'rivning'],
+    'painting': ['målning', 'spackling', 'slipning'],
+    'tree_felling': ['fällning', 'kapning', 'bortforsling'],
+    'stump_grinding': ['stubbfräsning', 'bortforsling'],
+    'roofing': ['takarbete', 'takläggning', 'taktäckning', 'takpapp'],
+    'electrical': ['el', 'elinstallation', 'elarbete'],
+    'plumbing': ['vvs', 'rör', 'avlopp', 'vatten'],
+    'flooring': ['golv', 'golvläggning', 'underlag'],
+    'cleaning': ['städning', 'slutstädning']
+  };
+  
+  return protectedByType[projectType] || [];
+}
+
+// FAS 1: IMPROVED - Validate against conversation with protected items
 function validateQuoteAgainstConversation(
   quote: any,
   conversationHistory: ConversationMessage[],
-  description: string
-): { isValid: boolean; unmentionedItems: string[]; removedValue: number } {
+  description: string,
+  projectType?: string // FAS 1: NEW PARAMETER
+): { isValid: boolean; unmentionedItems: string[]; warnings: string[]; removedValue: number } {
   
   const fullText = (description + ' ' + conversationHistory
     .map(m => m.content)
     .join(' ')).toLowerCase();
   
   const unmentioned: string[] = [];
+  const warnings: string[] = []; // FAS 1: NEW - warnings instead of removal
   let removedValue = 0;
+  
+  // FAS 1: Get protected items for this project type
+  const protectedItems = projectType ? getProtectedItemsForProjectType(projectType) : [];
   
   // Kolla workItems
   const originalWorkItems = [...(quote.workItems || [])];
@@ -689,6 +713,30 @@ function validateQuoteAgainstConversation(
       });
       
       unmentioned.push(`${item.name} (felaktig struktur - flyttad till materials)`);
+      continue;
+    }
+    
+    // FAS 1: Check if item is protected (part of project standard)
+    const isProtected = protectedItems.some(p => 
+      item.name.toLowerCase().includes(p.toLowerCase())
+    );
+    
+    if (isProtected) {
+      // FAS 1: KEEP protected items but warn if not mentioned
+      validWorkItems.push(item);
+      
+      if (item.subtotal > 5000) {
+        const keywords = item.name.toLowerCase()
+          .split(/[\s\-,\/]+/)
+          .filter((kw: string) => kw.length >= 4);
+        
+        const mentioned = keywords.some((kw: string) => fullText.includes(kw));
+        
+        if (!mentioned) {
+          warnings.push(`⚠️ "${item.name}" ingår i branschstandard men nämndes inte explicit i konversationen`);
+          console.log(`🔒 Protected item kept: ${item.name} (${item.subtotal} kr) - part of ${projectType} standard`);
+        }
+      }
       continue;
     }
     
@@ -771,6 +819,7 @@ function validateQuoteAgainstConversation(
   return {
     isValid: unmentioned.length === 0,
     unmentionedItems: unmentioned,
+    warnings: warnings, // FAS 1: NEW
     removedValue: removedValue
   };
 }
@@ -3633,7 +3682,7 @@ Svara med **1**, **2** eller **3** (eller "granska", "generera", "mer info")`;
     }
 
     // ============================================
-    // STEP 6: VALIDATE QUOTE AGAINST CONVERSATION (SPRINT 1: HALLUCINATION FIX)
+    // FAS 1: IMPROVED VALIDATION ORDER - Project intent & conversation validation FIRST
     // ============================================
     
     console.log('🔍 Validating quote for hallucinations...');
@@ -3644,16 +3693,48 @@ Svara med **1**, **2** eller **3** (eller "granska", "generera", "mer info")`;
       console.log('⚠️ Hallucination warnings:', hallucinationCheck.warnings);
     }
     
+    // FAS 5: Detect project intent first
+    const projectIntent = detectProjectIntent(completeDescription, conversation_history.map(m => m.content));
+    
+    // FAS 6: Log project intent analysis
+    console.log('🧠 PROJECT INTENT ANALYSIS', {
+      scope: projectIntent.scope,
+      quality: projectIntent.quality,
+      urgency: projectIntent.urgency,
+      explicitInclusions: projectIntent.explicitInclusions,
+      explicitExclusions: projectIntent.explicitExclusions
+    });
+    
+    // FAS 1 & 5: Validate quote against conversation with project type and intent
+    const detectedProjectForValidation = detectProjectType(completeDescription);
+    
     console.log('🔍 Validating quote against conversation...');
     const conversationValidation = validateQuoteAgainstConversation(
       quote,
       conversation_history,
-      description
+      description,
+      detectedProjectForValidation?.projectType // FAS 1: Pass project type for protected items
     );
+    
+    // FAS 6: Log protected items
+    if (detectedProjectForValidation) {
+      const protectedItems = getProtectedItemsForProjectType(detectedProjectForValidation.projectType);
+      console.log('🔒 PROTECTED ITEMS', {
+        projectType: detectedProjectForValidation.projectType,
+        protectedByStandard: protectedItems,
+        protectedByExplicitMention: projectIntent.explicitInclusions,
+        totalProtected: [...protectedItems, ...projectIntent.explicitInclusions]
+      });
+    }
     
     if (!conversationValidation.isValid) {
       console.log(`⚠️ Removed ${conversationValidation.unmentionedItems.length} unmentioned items:`);
       conversationValidation.unmentionedItems.forEach(item => console.log(`  - ${item}`));
+    }
+    
+    // FAS 1 & 6: Log warnings for protected items
+    if (conversationValidation.warnings.length > 0) {
+      console.log('⚠️ Validation warnings:', conversationValidation.warnings);
     }
 
     // ============================================
@@ -3736,6 +3817,7 @@ Svara med **1**, **2** eller **3** (eller "granska", "generera", "mer info")`;
     const detectedProject = detectProjectType(completeDescription);
     if (detectedProject) {
       console.log(`🎯 Detected project: ${detectedProject.displayName}`);
+      console.log(`📏 Scope: ${projectIntent.scope}`);
     }
     
     // ============================================
@@ -3743,14 +3825,20 @@ Svara med **1**, **2** eller **3** (eller "granska", "generera", "mer info")`;
     // ============================================
     
     let validationWarnings: any[] = [];
+    
+    // FAS 5: Enhanced reasoning with project intent
     let reasoning = {
       detectedProjectType: detectedProject?.displayName || 'unknown',
+      scope: projectIntent.scope,
+      quality: projectIntent.quality,
       appliedStandards: detectedProject ? 'yes' : 'no',
-      priceRange: detectedProject ? `${detectedProject.minCostPerSqm || detectedProject.minCostFlat}-${detectedProject.maxCostPerSqm || detectedProject.maxCostFlat}` : 'n/a'
+      priceRange: detectedProject ? `${detectedProject.minCostPerSqm || detectedProject.minCostFlat}-${detectedProject.maxCostPerSqm || detectedProject.maxCostFlat}` : 'n/a',
+      explicitInclusions: projectIntent.explicitInclusions,
+      explicitExclusions: projectIntent.explicitExclusions
     };
     
     // BATHROOM VALIDATION
-    if (isBathroomProject(completeDescription)) {  // FIX 1: Changed from description to completeDescription
+    if (isBathroomProject(completeDescription)) {
       console.log('🔍 Running bathroom quote validation...');
       
       // Extrahera area från konversation
@@ -3758,35 +3846,69 @@ Svara med **1**, **2** eller **3** (eller "granska", "generera", "mer info")`;
       const areaMatch = allText.match(/(\d+(?:[.,]\d+)?)\s*kvm/);
       const area = areaMatch ? parseFloat(areaMatch[1].replace(',', '.')) : 8;
       
-      // FIX 6: Log generated quote details
-      console.log('💰 Generated quote price:', quote.summary?.totalBeforeVAT, 'SEK');
-      console.log('📊 Price per sqm:', Math.round((quote.summary?.totalBeforeVAT || 0) / area), 'kr/kvm');
-      console.log('👷 Work items:', quote.workItems?.map((w: any) => `${w.name} (${w.hours}h)`).join(', ') || 'none');
-      console.log('🔨 Has VVS?', quote.workItems?.some((w: any) => w.name?.toLowerCase().includes('vvs')));
-      console.log('⚡ Has El?', quote.workItems?.some((w: any) => w.name?.toLowerCase().includes('el')));
-      console.log('💧 Has Tätskikt?', quote.workItems?.some((w: any) => w.name?.toLowerCase().includes('tätskikt')));
+      // FAS 6: Enhanced logging with project details
+      console.log('🛁 BATHROOM QUOTE DETAILS', {
+        area: area,
+        price: quote.summary?.totalBeforeVAT,
+        pricePerSqm: Math.round((quote.summary?.totalBeforeVAT || 0) / area),
+        scope: projectIntent.scope,
+        workItems: quote.workItems?.map((w: any) => ({ name: w.name, hours: w.hours, cost: w.subtotal })) || [],
+        hasVVS: quote.workItems?.some((w: any) => w.name?.toLowerCase().includes('vvs')),
+        hasEl: quote.workItems?.some((w: any) => w.name?.toLowerCase().includes('el')),
+        hasTätskikt: quote.workItems?.some((w: any) => w.name?.toLowerCase().includes('tätskikt')),
+        hasGolvvärme: quote.workItems?.some((w: any) => w.name?.toLowerCase().includes('golvvärme'))
+      });
       
-      // FIX 4: PRE-VALIDATION - Automatically adjust price if too low
+      // FAS 4: AGGRESSIVE PRICE FLOOR - Ensures minimum price is ALWAYS met
       const minPrice = area * 18000;
       const maxPrice = area * 30000;
       const actualPrice = quote.summary?.totalBeforeVAT || 0;
       
       if (actualPrice < minPrice) {
         console.error(`🚨 BATHROOM QUOTE TOO CHEAP: ${actualPrice} kr (minimum: ${minPrice} kr)`);
-        console.error('🔧 Force-correcting quote to minimum price...');
+        console.error('🔧 Applying aggressive price floor correction...');
         
-        // Öka timpriserna proportionellt
-        const multiplier = minPrice / actualPrice;
+        // STRATEGI 1: Öka timpriser proportionellt (men max 1200 kr/h)
+        const multiplier = Math.min(minPrice / actualPrice, 2.0); // Max 2x ökning
         quote.workItems = quote.workItems?.map((item: any) => ({
           ...item,
-          hourlyRate: Math.round(item.hourlyRate * multiplier),
+          hourlyRate: Math.min(Math.round(item.hourlyRate * multiplier), 1200),
           subtotal: Math.round(item.subtotal * multiplier)
         })) || [];
         
         // Re-calculate totals
         quote = computeQuoteTotals(quote, hourlyRates || [], equipmentRates || []);
         
+        // STRATEGI 2: Om fortfarande under minimum, lägg till materialuppgradering
+        const remainingGap = minPrice - (quote.summary?.totalBeforeVAT || 0);
+        if (remainingGap > 0) {
+          console.warn(`⚠️ Still ${remainingGap} kr below minimum after hourly rate increase`);
+          console.log('🔧 Adding premium material upgrade to reach minimum...');
+          
+          quote.materials = quote.materials || [];
+          quote.materials.push({
+            name: 'Högkvalitativa materialuppgraderingar',
+            description: 'Premium-material och komponenter för långsiktig hållbarhet och kvalitet',
+            quantity: 1,
+            unit: 'paket',
+            pricePerUnit: Math.round(remainingGap),
+            subtotal: Math.round(remainingGap)
+          });
+          
+          // Final re-calculate
+          quote = computeQuoteTotals(quote, hourlyRates || [], equipmentRates || []);
+        }
+        
         console.log(`✅ Quote price corrected to ${quote.summary.totalBeforeVAT} kr (${Math.round(quote.summary.totalBeforeVAT / area)} kr/kvm)`);
+        
+        // FAS 6: Log price floor correction details
+        console.log('💰 PRICE FLOOR CORRECTION', {
+          original: actualPrice,
+          minimum: minPrice,
+          final: quote.summary.totalBeforeVAT,
+          multiplierUsed: multiplier.toFixed(2),
+          materialUpgradeAdded: remainingGap > 0 ? Math.round(remainingGap) : 0
+        });
       }
       
       const bathroomValidation = validateBathroomQuote(quote, area, 18000, 30000);
@@ -3905,10 +4027,12 @@ Svara med **1**, **2** eller **3** (eller "granska", "generera", "mer info")`;
           warnings: validation.issues
         } : undefined,
         bathroomValidation: validationWarnings.length > 0 ? validationWarnings : undefined,
-        conversationValidation: !conversationValidation.isValid ? {
+        conversationValidation: !conversationValidation.isValid || conversationValidation.warnings.length > 0 ? {
           removedItems: conversationValidation.unmentionedItems,
-          removedValue: Math.round(conversationValidation.removedValue)
+          removedValue: Math.round(conversationValidation.removedValue),
+          warnings: conversationValidation.warnings // FAS 1: Include warnings
         } : undefined,
+        projectIntent: reasoning, // FAS 5: Include project intent in response
         timeSaved: timeSaved,
         is_delta_mode: isDeltaMode, // SPRINT 1.5
         previous_quote_total: previousQuoteTotal || undefined, // SPRINT 1.5

@@ -27,6 +27,7 @@ export function getProjectRequirements(description: string): ProjectRequirements
     return {
       projectType: 'bathroom_renovation',
       mandatoryQuestions: [
+        'Är det en totalrenovering (allt rivs och görs nytt) eller en delrenovering (vissa delar)?', // FAS 3: Scope question first!
         'Vilken area har badrummet (kvm)?',
         'Ska rivning av befintligt badrum ingå?',
         'Golvvärme - ska ny installeras eller behålla befintlig?',
@@ -52,6 +53,7 @@ export function getProjectRequirements(description: string): ProjectRequirements
     return {
       projectType: 'kitchen_renovation',
       mandatoryQuestions: [
+        'Är det en totalrenovering eller delrenovering (t.ex. bara skåpbyte)?', // FAS 3: Scope question first!
         'Vilken area har köket (kvm)?',
         'Ska befintligt kök rivas?',
         'Behövs nya VVS-dragningar (diskho, diskmaskin)?',
