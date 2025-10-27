@@ -188,15 +188,15 @@ export const ChatInterface = ({ onQuoteGenerated, isGenerating }: ChatInterfaceP
       if (saveResult.data?.suggestedQuestions && saveResult.data.suggestedQuestions.length > 0) {
         console.log('🤔 AI vill ställa frågor först, hoppar över offertgenerering');
         
+        const questionsText = saveResult.data.suggestedQuestions
+          .map((q: string, i: number) => `${i + 1}. ${q}`)
+          .join('\n\n');
+
         const aiMessage: Message = {
           id: (Date.now() + 1).toString(),
           role: 'assistant',
-          content: 'Jag behöver lite mer information för att ge dig en exakt offert:',
-          timestamp: new Date(),
-          quickReplies: saveResult.data.suggestedQuestions.map((q: string) => ({
-            label: q,
-            action: 'answer_question'
-          }))
+          content: `För att ge dig en exakt offert behöver jag veta:\n\n${questionsText}\n\nSvara gärna i fritext eller besvara frågorna en i taget! 📝`,
+          timestamp: new Date()
         };
         
         setMessages(prev => [...prev, aiMessage]);
