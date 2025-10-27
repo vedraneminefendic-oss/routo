@@ -7,6 +7,132 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY')!;
+const TEXT_MODEL = 'google/gemini-2.5-flash';
+
+// ============================================
+// FAS 11: AI-DRIVEN CONVERSATION SUMMARY
+// ============================================
+
+interface ConversationSummary {
+  projectType?: string;
+  scope?: string;
+  measurements?: {
+    area?: string;
+    rooms?: number;
+    height?: string;
+    quantity?: number;
+    [key: string]: any;
+  };
+  confirmedWork?: string[];
+  materials?: {
+    quality?: string;
+    brands?: string[];
+    specific?: string[];
+  };
+  budget?: string;
+  timeline?: string;
+  specialRequirements?: string[];
+  exclusions?: string[];
+  customerAnswers?: Record<string, any>;
+}
+
+async function generateConversationSummary(
+  allMessages: Array<{ role: string; content: string }>,
+  apiKey: string
+): Promise<ConversationSummary> {
+  const conversationText = allMessages
+    .map(m => `${m.role === 'user' ? 'Användare' : 'AI'}: ${m.content}`)
+    .join('\n');
+
+  const prompt = `Analysera denna konversation och extrahera strukturerad data för en offertkalkyl.
+
+**KONVERSATION:**
+${conversationText}
+
+**UPPGIFT:**
+Extrahera följande information och returnera som JSON:
+
+1. **projectType**: Typ av projekt (t.ex. "Badrumsrenovering", "Trädfällning", "Målning")
+2. **scope**: Omfattning (t.ex. "Totalrenovering", "Delrenovering", "Endast målning")
+3. **measurements**: Mått och storlekar
+   - area: "X kvm" om nämnt
+   - rooms: antal rum om nämnt
+   - height: höjd om nämnt (t.ex. träd)
+   - quantity: antal enheter (t.ex. 3 träd)
+4. **confirmedWork**: Lista med bekräftade arbetsmoment (t.ex. ["Rivning", "Kakelläggning", "VVS"])
+5. **materials**: Information om material
+   - quality: "budget", "standard" eller "premium" om nämnt
+   - brands: Lista med nämnda märken
+   - specific: Specifika material som nämnts
+6. **budget**: Budgetram om nämnt
+7. **timeline**: Tidsplan om nämnt
+8. **specialRequirements**: Speciella krav eller önskemål
+9. **exclusions**: Saker som INTE ska ingå i offerten
+10. **customerAnswers**: Objekt med specifika svar på frågor (t.ex. {"rivning": "ja", "bortforsling": "nej"})
+
+**EXEMPEL OUTPUT:**
+{
+  "projectType": "Badrumsrenovering",
+  "scope": "Totalrenovering med rivning",
+  "measurements": {
+    "area": "8 kvm",
+    "rooms": 1
+  },
+  "confirmedWork": ["Rivning", "Kakelläggning", "VVS-installation", "Elarbeten", "Målning"],
+  "materials": {
+    "quality": "standard",
+    "brands": ["Alcro"],
+    "specific": ["Vit kakel 20x20cm"]
+  },
+  "specialRequirements": ["Jobba på kvällar"],
+  "exclusions": ["Bortforsling"],
+  "customerAnswers": {
+    "rivning": "ja",
+    "golvvärme": "ny installation",
+    "kvalitet": "standard",
+    "bortforsling": "nej, kunden sköter det"
+  }
+}
+
+**VIKTIGT:**
+- Om information inte nämnts, lämna fältet tomt eller undefined
+- Extrahera ENDAST information som faktiskt nämnts i konversationen
+- Var specifik med mått och enheter
+- customerAnswers ska innehålla råa svar från användaren
+
+Returnera bara JSON, ingen annan text.`;
+
+  try {
+    const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model: TEXT_MODEL,
+        messages: [{ role: 'user', content: prompt }],
+        response_format: { type: 'json_object' },
+      }),
+    });
+
+    if (!response.ok) {
+      console.error('❌ AI summary request failed:', response.statusText);
+      return {};
+    }
+
+    const data = await response.json();
+    const summary = JSON.parse(data.choices[0].message.content);
+    
+    console.log('✅ Generated conversation summary:', JSON.stringify(summary, null, 2));
+    return summary;
+  } catch (error) {
+    console.error('❌ Error generating conversation summary:', error);
+    return {};
+  }
+}
+
 // FAS 8: Extract answered topics from user message
 function extractAnsweredTopics(userMessage: string, requirements: ProjectRequirements): string[] {
   const topics: string[] = [];
@@ -230,9 +356,24 @@ serve(async (req) => {
       if (message.role === 'user') {
         const { data: allMessages } = await supabaseClient
           .from('conversation_messages')
-          .select('content')
+          .select('role, content')
           .eq('session_id', sessionId)
           .order('created_at', { ascending: true });
+        
+        // FAS 11: Generate AI-driven conversation summary
+        console.log('🧠 FAS 11: Generating AI-driven conversation summary...');
+        const conversationSummary = await generateConversationSummary(
+          allMessages || [],
+          LOVABLE_API_KEY
+        );
+        
+        // Save summary to session
+        await supabaseClient
+          .from('conversation_sessions')
+          .update({ conversation_summary: conversationSummary })
+          .eq('id', sessionId);
+        
+        console.log('✅ FAS 11: Conversation summary saved to database');
         
         const fullDescription = allMessages
           ?.filter((m: any) => m.content)

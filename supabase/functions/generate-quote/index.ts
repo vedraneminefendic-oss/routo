@@ -136,6 +136,86 @@ function buildCompleteDescription(history: ConversationMessage[], currentDescrip
   return `${baseDescription}\n\n**Ytterligare detaljer:**\n${userMessages.join('\n')}`.trim();
 }
 
+// FAS 11: Build enhanced description from conversation summary
+function buildEnhancedDescriptionFromSummary(
+  currentDescription: string,
+  summary: any
+): string {
+  if (!summary || Object.keys(summary).length === 0) {
+    return currentDescription;
+  }
+  
+  console.log('🚀 FAS 11: Building enhanced description from conversation summary...');
+  
+  const parts: string[] = [currentDescription];
+  
+  // Add project details
+  if (summary.projectType) {
+    parts.push(`\n**Projekttyp:** ${summary.projectType}`);
+  }
+  
+  if (summary.scope) {
+    parts.push(`**Omfattning:** ${summary.scope}`);
+  }
+  
+  // Add measurements
+  if (summary.measurements) {
+    const measurements: string[] = [];
+    if (summary.measurements.area) measurements.push(`Area: ${summary.measurements.area}`);
+    if (summary.measurements.rooms) measurements.push(`Antal rum: ${summary.measurements.rooms}`);
+    if (summary.measurements.height) measurements.push(`Höjd: ${summary.measurements.height}`);
+    if (summary.measurements.quantity) measurements.push(`Antal: ${summary.measurements.quantity}`);
+    
+    if (measurements.length > 0) {
+      parts.push(`**Mått:** ${measurements.join(', ')}`);
+    }
+  }
+  
+  // Add confirmed work
+  if (summary.confirmedWork && summary.confirmedWork.length > 0) {
+    parts.push(`**Bekräftat arbete:** ${summary.confirmedWork.join(', ')}`);
+  }
+  
+  // Add materials
+  if (summary.materials) {
+    const materials: string[] = [];
+    if (summary.materials.quality) materials.push(`Kvalitet: ${summary.materials.quality}`);
+    if (summary.materials.brands) materials.push(`Märken: ${summary.materials.brands.join(', ')}`);
+    if (summary.materials.specific) materials.push(summary.materials.specific.join(', '));
+    
+    if (materials.length > 0) {
+      parts.push(`**Material:** ${materials.join(' | ')}`);
+    }
+  }
+  
+  // Add budget and timeline
+  if (summary.budget) parts.push(`**Budget:** ${summary.budget}`);
+  if (summary.timeline) parts.push(`**Tidsplan:** ${summary.timeline}`);
+  
+  // Add special requirements
+  if (summary.specialRequirements && summary.specialRequirements.length > 0) {
+    parts.push(`**Speciella krav:** ${summary.specialRequirements.join(', ')}`);
+  }
+  
+  // Add exclusions
+  if (summary.exclusions && summary.exclusions.length > 0) {
+    parts.push(`**Exkluderat:** ${summary.exclusions.join(', ')}`);
+  }
+  
+  // Add specific customer answers
+  if (summary.customerAnswers && Object.keys(summary.customerAnswers).length > 0) {
+    const answers = Object.entries(summary.customerAnswers)
+      .map(([key, value]) => `${key}: ${value}`)
+      .join(', ');
+    parts.push(`**Specifika svar:** ${answers}`);
+  }
+  
+  const enhancedDescription = parts.join('\n');
+  console.log('✅ FAS 11: Enhanced description length:', enhancedDescription.length, 'chars');
+  
+  return enhancedDescription;
+}
+
 // ÅTGÄRD 2: Detektera tvetydiga fraser som "bara", "endast", "inte", och "rusta"
 function detectAmbiguousPhrase(message: string): {
   isAmbiguous: boolean;
@@ -2881,8 +2961,50 @@ Deno.serve(async (req) => {
     const user_id = user.id;
     console.log('Generating quote for user:', user_id);
 
-    // ÅTGÄRD 1 & 4: Build complete description from conversation
-    const completeDescription = buildCompleteDescription(conversation_history, description);
+    // FAS 11: Fetch conversation summary early if sessionId exists
+    let conversationSummary: any = null;
+    let actualConversationHistory = conversation_history || [];
+    
+    if (sessionId) {
+      console.log('📚 FAS 11: Fetching conversation summary from database...');
+      try {
+        const { data: sessionData } = await supabaseClient
+          .from('conversation_sessions')
+          .select('conversation_summary')
+          .eq('id', sessionId)
+          .single();
+        
+        if (sessionData?.conversation_summary) {
+          conversationSummary = sessionData.conversation_summary;
+          console.log('✅ FAS 11: Loaded conversation summary');
+        }
+        
+        // Fetch messages for fallback
+        const { data: messagesData } = await supabaseClient
+          .from('conversation_messages')
+          .select('role, content')
+          .eq('session_id', sessionId)
+          .order('created_at', { ascending: true });
+        
+        if (messagesData && messagesData.length > 0) {
+          actualConversationHistory = messagesData.map((m: any) => ({
+            role: m.role as 'user' | 'assistant',
+            content: m.content
+          }));
+          console.log(`✅ Loaded ${actualConversationHistory.length} messages from DB`);
+        }
+      } catch (error) {
+        console.error('Exception fetching conversation data:', error);
+      }
+    }
+
+    // ÅTGÄRD 1 & 4 + FAS 11: Build complete description
+    const completeDescription = conversationSummary 
+      ? buildEnhancedDescriptionFromSummary(description, conversationSummary)
+      : buildCompleteDescription(actualConversationHistory, description);
+    
+    console.log('📝 Complete description length:', completeDescription.length, 'chars');
+    console.log('📝 Using conversation summary:', !!conversationSummary);
 
     // ============================================
     // STEP 1: FETCH USER DATA
@@ -3020,35 +3142,6 @@ Deno.serve(async (req) => {
 
     console.log(`📅 Deduction type: ${finalDeductionType}`);
     console.log(`📊 Recipients: ${recipients} → Max ROT: ${50000 * recipients} kr, Max RUT: ${75000 * recipients} kr`);
-
-    // ============================================
-    // ÅTGÄRD 3: FETCH ACTUAL CONVERSATION FROM DB IF SESSION EXISTS
-    // ============================================
-    
-    let actualConversationHistory = conversation_history || [];
-    
-    if (sessionId) {
-      console.log('📚 Fetching conversation history from database...');
-      try {
-        const { data: messagesData, error: messagesError } = await supabaseClient
-          .from('conversation_messages')
-          .select('role, content, created_at')
-          .eq('session_id', sessionId)
-          .order('created_at', { ascending: true });
-        
-        if (messagesError) {
-          console.error('Error fetching messages:', messagesError);
-        } else if (messagesData && messagesData.length > 0) {
-          actualConversationHistory = messagesData.map((m: any) => ({
-            role: m.role as 'user' | 'assistant',
-            content: m.content
-          }));
-          console.log(`✅ Loaded ${actualConversationHistory.length} messages from DB`);
-        }
-      } catch (error) {
-        console.error('Exception fetching messages:', error);
-      }
-    }
 
     // ============================================
     // STEP 3.5: FETCH CONVERSATION FEEDBACK ONCE (BEFORE INTENT HANDLING)
