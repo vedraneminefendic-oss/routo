@@ -187,9 +187,29 @@ function buildEnhancedDescriptionFromSummary(
   // Add materials
   if (summary.materials) {
     const materials: string[] = [];
-    if (summary.materials.quality) materials.push(`Kvalitet: ${summary.materials.quality}`);
-    if (summary.materials.brands) materials.push(`Märken: ${summary.materials.brands.join(', ')}`);
-    if (summary.materials.specific) materials.push(summary.materials.specific.join(', '));
+    if (summary.materials.quality && summary.materials.quality !== 'undefined') {
+      materials.push(`Kvalitet: ${summary.materials.quality}`);
+    }
+    
+    // Handle brands (can be array or string)
+    if (summary.materials.brands) {
+      const brandsStr = Array.isArray(summary.materials.brands) 
+        ? summary.materials.brands.join(', ')
+        : String(summary.materials.brands);
+      if (brandsStr && brandsStr.length > 0 && brandsStr !== 'undefined') {
+        materials.push(`Märken: ${brandsStr}`);
+      }
+    }
+    
+    // Handle specific (can be array or string)
+    if (summary.materials.specific) {
+      const specificStr = Array.isArray(summary.materials.specific)
+        ? summary.materials.specific.join(', ')
+        : String(summary.materials.specific);
+      if (specificStr && specificStr !== 'undefined') {
+        materials.push(specificStr);
+      }
+    }
     
     if (materials.length > 0) {
       parts.push(`**Material:** ${materials.join(' | ')}`);
