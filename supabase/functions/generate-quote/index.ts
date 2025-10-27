@@ -75,6 +75,13 @@ const RequestSchema = z.object({
   previous_quote_id: z.string().nullish(), // SPRINT 1.5: For delta mode (accepts null/undefined)
 });
 
+interface RotRutClassification {
+  deductionType: 'rot' | 'rut' | 'none';
+  confidence: number;
+  reasoning: string;
+  source: string;
+}
+
 type ConversationMessage = z.infer<typeof ConversationMessageSchema>;
 
 interface LearningContext {
@@ -3217,17 +3224,29 @@ Deno.serve(async (req) => {
     // ============================================
 
     let finalDeductionType = deductionType;
+    let rotRutExplanation: RotRutClassification | null = null;
     
     if (finalDeductionType === 'auto') {
-      // Check cache first
-      const cachedDeduction = learningContext.learnedPreferences?.deductionType;
-      if (cachedDeduction) {
-        finalDeductionType = cachedDeduction;
-        console.log(`💾 Using cached deduction: ${finalDeductionType}`);
-      } else {
-        // Try rule-based first
-        const ruleBasedDeduction = detectDeductionByRules(completeDescription);
-        if (ruleBasedDeduction) {
+      // FAS 17: Use AI-driven ROT/RUT classification
+      console.log('🤖 FAS 17: Calling AI ROT/RUT classifier...');
+      try {
+        const classifyResponse = await supabaseClient.functions.invoke('classify-rot-rut', {
+          body: {
+            projectDescription: completeDescription,
+            workType: conversationSummary?.projectType || '',
+            conversationSummary
+          }
+        });
+
+        if (classifyResponse.data && !classifyResponse.error) {
+          rotRutExplanation = classifyResponse.data as RotRutClassification;
+          finalDeductionType = rotRutExplanation.deductionType;
+          console.log(`✅ AI Classification: ${finalDeductionType} (${rotRutExplanation.confidence}% confidence)`);
+          console.log(`📝 Reasoning: ${rotRutExplanation.reasoning}`);
+        } else {
+          console.warn('⚠️ AI classification failed, falling back to rule-based');
+          const ruleBasedDeduction = detectDeductionByRules(completeDescription);
+          if (ruleBasedDeduction) {
           finalDeductionType = ruleBasedDeduction;
         } else {
           // Use AI for unclear cases

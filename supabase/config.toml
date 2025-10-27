@@ -38,3 +38,6 @@ verify_jwt = true
 
 [functions.scheduled-market-update]
 verify_jwt = false
+
+[functions.classify-rot-rut]
+verify_jwt = true
