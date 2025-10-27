@@ -3247,26 +3247,32 @@ Deno.serve(async (req) => {
           console.warn('⚠️ AI classification failed, falling back to rule-based');
           const ruleBasedDeduction = detectDeductionByRules(completeDescription);
           if (ruleBasedDeduction) {
-          finalDeductionType = ruleBasedDeduction;
-        } else {
-          // Use AI for unclear cases
-          console.log('⚠️ Unclear deduction, using AI...');
-          finalDeductionType = await detectDeductionWithAI(completeDescription, LOVABLE_API_KEY);
+            finalDeductionType = ruleBasedDeduction;
+          } else {
+            // Use AI for unclear cases
+            console.log('⚠️ Unclear deduction, using AI...');
+            finalDeductionType = await detectDeductionWithAI(completeDescription, LOVABLE_API_KEY);
+          }
+          
+          // Cache for future
+          if (sessionId && finalDeductionType !== 'none') {
+            await supabaseClient
+              .from('conversation_sessions')
+              .update({
+                learned_preferences: {
+                  ...learningContext.learnedPreferences,
+                  deductionType: finalDeductionType
+                }
+              })
+              .eq('id', sessionId);
+            console.log('💾 Cached deduction type');
+          }
         }
-        
-        // Cache for future
-        if (sessionId && finalDeductionType !== 'none') {
-          await supabaseClient
-            .from('conversation_sessions')
-            .update({
-              learned_preferences: {
-                ...learningContext.learnedPreferences,
-                deductionType: finalDeductionType
-              }
-            })
-            .eq('id', sessionId);
-          console.log('💾 Cached deduction type');
-        }
+      } catch (error) {
+        console.error('❌ ROT/RUT classification error:', error);
+        // Fallback to rule-based
+        const ruleBasedDeduction = detectDeductionByRules(completeDescription);
+        finalDeductionType = ruleBasedDeduction || 'none';
       }
     }
 

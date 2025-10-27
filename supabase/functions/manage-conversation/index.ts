@@ -21,7 +21,14 @@ async function generateSmartQuestions(
   askedQuestions: string[],
   apiKey: string
 ): Promise<string[]> {
-  const prompt = `Du är en expert på att ställa relevanta frågor för byggprojekt.
+  const prompt = `Du är en AI-assistent som hjälper en HANTVERKARE att skapa en offert.
+
+**VIKTIGT ATT FÖRSTÅ:**
+- Du pratar med en HANTVERKARE (t.ex. elektriker, byggnadsarbetare, målare, rörmokare)
+- Hantverkaren ska senare skicka offerten till sin SLUTKUND
+- Du ska hjälpa hantverkaren att samla in den information som behövs för att skapa en korrekt offert
+- Ställ frågor som en kollega skulle ställa: "Vad är storleken på rummet?", inte "Hur stort är ert rum?"
+- Var professionell och effektiv - hantverkaren vill snabbt kunna skapa offerten
 
 PROJEKTBESKRIVNING: ${projectDescription}
 
@@ -31,7 +38,7 @@ SAMMANFATTNING AV SAMTALET:
 ${JSON.stringify(conversationSummary, null, 2)}
 
 UPPDRAG:
-Generera 3-5 relevanta uppföljningsfrågor för detta projekt. Frågorna ska:
+Generera 2-5 relevanta uppföljningsfrågor för detta projekt. Frågorna ska:
 - Vara SPECIFIKA för projekttypen (${conversationSummary.projectType || 'okänt'})
 - INTE upprepa frågor som redan ställts
 - Fokusera på saknad men VIKTIG information för att kunna skapa en offert
@@ -131,7 +138,12 @@ async function generateConversationSummary(
     .map(m => `${m.role === 'user' ? 'Användare' : 'AI'}: ${m.content}`)
     .join('\n');
 
-  const prompt = `Analysera denna konversation och extrahera strukturerad data för en offertkalkyl.
+  const prompt = `Du analyserar en konversation mellan en AI-assistent och en HANTVERKARE som ska skapa en offert.
+
+**VIKTIGT KONTEXT:**
+- Hantverkaren beskriver ett projekt som de ska offerera på
+- Detta är INTE en konversation med slutkunden
+- Extrahera strukturerad data för att kunna beräkna en korrekt offert
 
 **KONVERSATION:**
 ${conversationText}
@@ -650,7 +662,7 @@ serve(async (req) => {
           console.log('  💾 Updated answered_topics in database:', updatedTopics);
         }
         
-        // FAS 4: Calculate readiness score (with potentially updated topics)
+        // FAS 18: Calculate information completeness score
         const { data: updatedSession } = await supabaseClient
           .from('conversation_sessions')
           .select('asked_questions, answered_topics')
@@ -659,63 +671,95 @@ serve(async (req) => {
         
         const askedQuestions = updatedSession?.asked_questions || [];
         const answeredTopics = updatedSession?.answered_topics || [];
-        const mandatoryQuestions = requirements.mandatoryQuestions || [];
         
-        // Count how many mandatory questions have been answered
-        const mandatoryAnswered = mandatoryQuestions.filter(q =>
-          answeredTopics.some((topic: string) => q.toLowerCase().includes(topic.toLowerCase()))
-        );
+        // FAS 18: Information Completeness Score
+        const completeness = {
+          hasSize: conversationSummary?.measurements?.area ? 20 : 0,
+          hasScope: conversationSummary?.scope ? 20 : 0,
+          hasConfirmedWork: (conversationSummary?.confirmedWork?.length ?? 0) > 0 ? 20 : 0,
+          hasMaterials: conversationSummary?.materials ? 15 : 0,
+          hasTimeline: conversationSummary?.timeline ? 15 : 0,
+          hasSpecialReqs: (conversationSummary?.specialRequirements?.length ?? 0) > 0 ? 10 : 0
+        };
+        const completenessScore = Object.values(completeness).reduce((a, b) => a + b, 0);
         
-        const readinessScore = mandatoryQuestions.length > 0 
-          ? (mandatoryAnswered.length / mandatoryQuestions.length) * 100
-          : 0;
+        // FAS 18: Question budget - hard limit
+        const MAX_QUESTIONS = 12;
+        const totalQuestionsAsked = askedQuestions.length;
         
-        console.log('🧠 READINESS CHECK:');
-        console.log('  📊 Readiness score:', `${readinessScore.toFixed(0)}%`);
-        console.log('  ✅ Mandatory answered:', mandatoryAnswered.length, '/', mandatoryQuestions.length);
-        console.log('  📋 Project type:', requirements.projectType);
+        console.log('🧠 FAS 18: COMPLETENESS CHECK:');
+        console.log('  📊 Completeness score:', `${completenessScore}%`);
+        console.log('  ❓ Questions asked:', totalQuestionsAsked, '/', MAX_QUESTIONS);
+        console.log('  📋 Has size:', completeness.hasSize > 0);
+        console.log('  📋 Has scope:', completeness.hasScope > 0);
+        console.log('  📋 Has confirmed work:', completeness.hasConfirmedWork > 0);
         
-        // FAS 16: Generate AI-driven smart questions
-        console.log('🤖 FAS 16: Generating AI-driven smart questions...');
-        const batchQuestions = await generateSmartQuestions(
-          fullDescription,
-          allMessages || [],
-          conversationSummary,
-          askedQuestions,
-          LOVABLE_API_KEY
-        );
+        // FAS 18: Progressive questioning strategy
+        let maxQuestionsToGenerate = 0;
+        let shouldGenerateQuote = false;
         
-        console.log('  ❓ Generated questions:', batchQuestions.length);
-        console.log('  📝 Already asked:', askedQuestions.length, 'questions');
-        
-        // FAS 4: Only return questions if readiness is below threshold (80%)
-        if (batchQuestions.length > 0 && readinessScore < 80) {
-          // Save all questions to the session
-          await supabaseClient
-            .from('conversation_sessions')
-            .update({
-              asked_questions: [...askedQuestions, ...batchQuestions]
-            })
-            .eq('id', sessionId);
-          
-          console.log('  💾 Saved', batchQuestions.length, 'questions to session');
-          console.log('  ⏸️  Blocking quote generation - needs more info');
-          
-          return new Response(
-            JSON.stringify({ 
-              message: savedMessage,
-              suggestedQuestions: batchQuestions, // Plural - array
-              needsMoreInfo: true, // Signal that we need more info
-              readinessScore: Math.round(readinessScore),
-              mandatoryAnswered: mandatoryAnswered.length,
-              mandatoryTotal: mandatoryQuestions.length,
-              projectRequirements: requirements
-            }),
-            { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-          );
+        if (totalQuestionsAsked >= MAX_QUESTIONS) {
+          console.log('⛔ Reached question limit - forcing quote generation');
+          shouldGenerateQuote = true;
+        } else if (completenessScore >= 85) {
+          console.log('✅ High completeness (85%+) - ready to generate quote');
+          shouldGenerateQuote = true;
+        } else if (completenessScore >= 70) {
+          maxQuestionsToGenerate = 2; // Edge case questions only
+          console.log('💡 Good completeness (70-85%) - max 2 detailed questions');
+        } else if (completenessScore >= 40) {
+          maxQuestionsToGenerate = 3; // Detail questions
+          console.log('💡 Medium completeness (40-70%) - max 3 detail questions');
+        } else {
+          maxQuestionsToGenerate = 5; // Basic questions
+          console.log('💡 Low completeness (<40%) - max 5 basic questions');
         }
         
-        console.log('  ✅ Ready to generate quote (readiness:', `${readinessScore.toFixed(0)}%)` );
+        // FAS 18: Generate questions if needed
+        if (!shouldGenerateQuote) {
+          console.log('🤖 FAS 18: Generating AI-driven smart questions...');
+          const batchQuestions = await generateSmartQuestions(
+            fullDescription,
+            allMessages || [],
+            conversationSummary,
+            askedQuestions,
+            LOVABLE_API_KEY
+          );
+          
+          // Limit questions based on strategy
+          const questionsToAsk = batchQuestions.slice(0, maxQuestionsToGenerate);
+          
+          console.log('  ❓ Generated questions:', batchQuestions.length, '→ asking:', questionsToAsk.length);
+          console.log('  📝 Already asked:', totalQuestionsAsked, 'questions');
+          
+          if (questionsToAsk.length > 0) {
+            // Save questions to session
+            await supabaseClient
+              .from('conversation_sessions')
+              .update({
+                asked_questions: [...askedQuestions, ...questionsToAsk]
+              })
+              .eq('id', sessionId);
+            
+            console.log('  💾 Saved', questionsToAsk.length, 'questions to session');
+            console.log('  ⏸️  Blocking quote generation - needs more info');
+            
+            return new Response(
+              JSON.stringify({ 
+                message: savedMessage,
+                suggestedQuestions: questionsToAsk,
+                needsMoreInfo: true,
+                completenessScore: Math.round(completenessScore),
+                questionsAsked: totalQuestionsAsked,
+                maxQuestions: MAX_QUESTIONS,
+                canSkipQuestions: totalQuestionsAsked >= 5 // FAS 18: Allow skip after 5 questions
+              }),
+              { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+            );
+          }
+        }
+        
+        console.log('  ✅ Ready to generate quote (completeness:', `${completenessScore}%)`);
       }
 
       return new Response(
