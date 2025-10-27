@@ -87,6 +87,14 @@ export const useQuoteStatus = () => {
         description: `Offertens status ändrades till "${newStatus}"`,
       });
 
+      // 🤖 AI LEARNING: When quote is accepted, learn from it (fire-and-forget)
+      if (newStatus === 'accepted') {
+        console.log('📚 Triggering learning from accepted quote:', quoteId);
+        supabase.functions.invoke('learn-from-accepted-quote', {
+          body: { quoteId }
+        }).catch(err => console.error('Failed to learn from accepted quote:', err));
+      }
+
       // Trigger user patterns update for accepted/completed/sent quotes (fire-and-forget)
       if (newStatus === 'accepted' || newStatus === 'completed' || newStatus === 'sent') {
         supabase.functions.invoke('update-user-patterns', {

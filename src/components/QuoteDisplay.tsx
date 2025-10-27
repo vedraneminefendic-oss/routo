@@ -130,7 +130,8 @@ const QuoteDisplay = ({
   validationErrors,
   usedReference,
   referenceTitle,
-  bathroomValidation
+  bathroomValidation,
+  aiDecisions
 }: QuoteDisplayProps) => {
   const [companySettings, setCompanySettings] = useState<any>(null);
   const [logoImage, setLogoImage] = useState<string | null>(null);
@@ -724,6 +725,41 @@ const QuoteDisplay = ({
               </AlertDescription>
             </Alert>
           )}
+        </div>
+      )}
+      
+      {/* 🤖 AI Learning Decisions - Show which standard work items AI included */}
+      {aiDecisions && aiDecisions.length > 0 && aiDecisions.some(d => d.isStandard) && (
+        <div className="px-6 pb-4">
+          <Alert className="border-purple-500 bg-purple-50 dark:bg-purple-950">
+            <Sparkles className="h-4 w-4 text-purple-600" />
+            <AlertTitle className="text-purple-900 dark:text-purple-100">
+              🧠 AI-inkluderade standardmoment
+            </AlertTitle>
+            <AlertDescription className="text-purple-800 dark:text-purple-200">
+              <p className="mb-2 text-sm">
+                AI:n har automatiskt inkluderat följande standardmoment som alltid ingår i denna typ av projekt:
+              </p>
+              <ul className="space-y-2 mt-3">
+                {aiDecisions
+                  .filter(d => d.isStandard && d.confidence >= 0.75)
+                  .map((decision, idx) => (
+                    <li key={idx} className="text-sm border-l-2 border-purple-400 pl-3 py-1">
+                      <div className="font-semibold">{decision.itemName}</div>
+                      <div className="text-xs text-purple-700 dark:text-purple-300 mt-1">
+                        {decision.reasoning}
+                      </div>
+                      <Badge variant="outline" className="mt-1 text-xs border-purple-400 text-purple-700">
+                        AI Confidence: {Math.round(decision.confidence * 100)}%
+                      </Badge>
+                    </li>
+                  ))}
+              </ul>
+              <p className="text-xs mt-3 italic">
+                💡 AI:n lär sig av dina accepterade offerter och branschstandarder för att bli bättre över tid.
+              </p>
+            </AlertDescription>
+          </Alert>
         </div>
       )}
       
