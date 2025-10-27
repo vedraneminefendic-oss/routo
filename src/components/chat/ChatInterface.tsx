@@ -8,6 +8,8 @@ import { ChatInput } from "./ChatInput";
 import { ConversationStarter } from "./ConversationStarter";
 import { QuoteSheet } from "./QuoteSheet";
 import { ConversationProgress } from "./ConversationProgress";
+import { TypingIndicator } from "./TypingIndicator";
+import { InlineProgressCard } from "./InlineProgressCard";
 import { CustomerQuickSelect } from "@/components/CustomerQuickSelect";
 import { TemplateQuickAccess } from "@/components/TemplateQuickAccess";
 import { Loader2, RotateCcw, Sparkles, ChevronDown, ChevronUp, User } from "lucide-react";
@@ -28,7 +30,10 @@ export interface Message {
 interface ChatInterfaceProps {
   onQuoteGenerated: (quote: any) => void;
   isGenerating: boolean;
-  onConversationUpdate?: (summary: any) => void; // P1: Send updates to parent for live preview
+  onConversationUpdate?: (data: { 
+    summary?: any; 
+    liveExtraction?: any;
+  }) => void; // P1: Send updates to parent for live preview
 }
 
 export const ChatInterface = ({ onQuoteGenerated, isGenerating, onConversationUpdate }: ChatInterfaceProps) => {
@@ -55,6 +60,10 @@ export const ChatInterface = ({ onQuoteGenerated, isGenerating, onConversationUp
   const [maxQuestions, setMaxQuestions] = useState(4);
   const [answeredCategories, setAnsweredCategories] = useState<string[]>([]);
   const [totalCategories, setTotalCategories] = useState(5);
+  
+  // P1: Live extraction for preview
+  const [liveExtraction, setLiveExtraction] = useState<any>({});
+  const [lastAIQuestion, setLastAIQuestion] = useState<string | null>(null);
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const chatContainerRef = useRef<HTMLDivElement>(null);
@@ -135,6 +144,47 @@ export const ChatInterface = ({ onQuoteGenerated, isGenerating, onConversationUp
     
     setMessages(prev => [...prev, userMessage]);
     setIsTyping(true);
+    
+    // P1: Extract data from user message for live preview
+    const extractData = (text: string) => {
+      const data: any = {};
+      const lowerText = text.toLowerCase();
+      
+      // Extract project type
+      if (lowerText.includes('badrum')) data.projectType = 'Badrumsrenovering';
+      else if (lowerText.includes('kök')) data.projectType = 'Köksrenovering';
+      else if (lowerText.includes('målning') || lowerText.includes('måla')) data.projectType = 'Målning';
+      
+      // Extract area
+      const areaMatch = text.match(/(\d+)\s*(kvm|m2|kvadratmeter)/i);
+      if (areaMatch) data.area = `${areaMatch[1]} kvm`;
+      
+      // Extract rooms
+      const roomMatch = text.match(/(\d+)\s*rum/i);
+      if (roomMatch) data.rooms = `${roomMatch[1]} rum`;
+      
+      // Extract materials
+      const materials = [];
+      if (lowerText.includes('kakel')) materials.push('Kakel');
+      if (lowerText.includes('klinker')) materials.push('Klinker');
+      if (lowerText.includes('parkett')) materials.push('Parkett');
+      if (lowerText.includes('bänkskiva')) materials.push('Bänkskiva');
+      if (materials.length > 0) data.materials = materials;
+      
+      return data;
+    };
+    
+    const extracted = extractData(content);
+    if (Object.keys(extracted).length > 0) {
+      setLiveExtraction((prev: any) => {
+        const newExtraction = { ...prev, ...extracted };
+        // P1: Send to parent for live preview
+        if (onConversationUpdate) {
+          onConversationUpdate({ liveExtraction: newExtraction });
+        }
+        return newExtraction;
+      });
+    }
 
     try {
       const startTime = Date.now();
@@ -216,6 +266,11 @@ export const ChatInterface = ({ onQuoteGenerated, isGenerating, onConversationUp
         };
         
         setMessages(prev => [...prev, aiMessage]);
+        
+        // P1: Store last AI question for dynamic placeholder
+        if (saveResult.data.suggestedQuestions.length > 0) {
+          setLastAIQuestion(saveResult.data.suggestedQuestions[0]);
+        }
         
         // Save AI message
         await supabase.functions.invoke('manage-conversation', {
@@ -1092,14 +1147,22 @@ export const ChatInterface = ({ onQuoteGenerated, isGenerating, onConversationUp
             </div>
           ) : (
             <>
-              {messages.map((message) => (
-                <MessageBubble 
-                  key={message.id} 
-                  message={message} 
-                  onSendMessage={handleSendMessage}
-                  isTyping={isTyping}
-                />
+              {messages.map((message, index) => (
+                <div key={message.id} className="space-y-3">
+                  <MessageBubble 
+                    message={message} 
+                    onSendMessage={handleSendMessage}
+                    isTyping={isTyping}
+                  />
+                  {/* P1: Show inline progress card after user messages */}
+                  {message.role === 'user' && index === messages.length - 1 && Object.keys(liveExtraction).length > 0 && (
+                    <InlineProgressCard data={liveExtraction} />
+                  )}
+                </div>
               ))}
+              
+              {/* P0: Typing Indicator */}
+              {isTyping && <TypingIndicator />}
               
               {/* Quote generated - show button to open sheet */}
               {generatedQuote && (
@@ -1121,21 +1184,6 @@ export const ChatInterface = ({ onQuoteGenerated, isGenerating, onConversationUp
                     >
                       Visa offert
                     </Button>
-                  </div>
-                </div>
-              )}
-
-              {isTyping && (
-                <div className="flex gap-3">
-                  <div className="flex-shrink-0 w-8 h-8 rounded-full bg-accent text-accent-foreground flex items-center justify-center">
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  </div>
-                  <div className="bg-gradient-to-br from-muted to-muted/80 rounded-2xl rounded-tl-sm px-4 py-3 shadow-sm border border-border/50">
-                    <div className="flex gap-1">
-                      <span className="w-2 h-2 bg-primary/60 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
-                      <span className="w-2 h-2 bg-primary/60 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
-                      <span className="w-2 h-2 bg-primary/60 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
-                    </div>
                   </div>
                 </div>
               )}
@@ -1173,7 +1221,18 @@ export const ChatInterface = ({ onQuoteGenerated, isGenerating, onConversationUp
               setUserMessage(message);
               handleSendMessage(message, images, intent);
             }} 
-            disabled={isTyping} 
+            disabled={isTyping}
+            dynamicPlaceholder={
+              lastAIQuestion 
+                ? lastAIQuestion.includes('storlek') || lastAIQuestion.includes('yta')
+                  ? 'Ex: 50 kvm eller 3 rum...'
+                  : lastAIQuestion.includes('material')
+                  ? 'Ex: Standard, mellanklass eller premium...'
+                  : lastAIQuestion.includes('budget')
+                  ? 'Ex: 150 000 kr eller 100-200 tkr...'
+                  : undefined
+                : undefined
+            }
           />
         </div>
       </div>

@@ -307,8 +307,15 @@ const NewQuote = () => {
   };
   
   // P1: Handle conversation updates for live preview
-  const handleConversationUpdate = (summary: any) => {
-    setConversationSummary(summary);
+  const [liveExtraction, setLiveExtraction] = useState<any>({});
+  
+  const handleConversationUpdate = (data: { summary?: any; liveExtraction?: any }) => {
+    if (data.summary) {
+      setConversationSummary(data.summary);
+    }
+    if (data.liveExtraction) {
+      setLiveExtraction(data.liveExtraction);
+    }
   };
 
   const handleLogout = async () => {
@@ -411,6 +418,7 @@ const NewQuote = () => {
                 quote={currentQuote}
                 isGenerating={isGenerating}
                 conversationSummary={conversationSummary}
+                liveExtraction={liveExtraction}
               />
             </div>
           </div>

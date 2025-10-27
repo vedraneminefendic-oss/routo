@@ -8,9 +8,10 @@ import { toast } from "sonner";
 interface ChatInputProps {
   onSendMessage: (message: string, images?: string[], intent?: string) => void;
   disabled?: boolean;
+  dynamicPlaceholder?: string; // P1: Dynamic placeholder based on AI question
 }
 
-export const ChatInput = ({ onSendMessage, disabled }: ChatInputProps) => {
+export const ChatInput = ({ onSendMessage, disabled, dynamicPlaceholder }: ChatInputProps) => {
   const [message, setMessage] = useState("");
   const [isListening, setIsListening] = useState(false);
   const [interimTranscript, setInterimTranscript] = useState("");
@@ -227,6 +228,14 @@ export const ChatInput = ({ onSendMessage, disabled }: ChatInputProps) => {
     textarea.style.height = Math.min(textarea.scrollHeight, 200) + 'px';
   };
 
+  // P1: Smart placeholder based on context
+  const getPlaceholder = () => {
+    if (isListening) return "🎤 Talar...";
+    if (images.length > 0) return "Beskriv bilderna (valfritt)...";
+    if (dynamicPlaceholder) return dynamicPlaceholder;
+    return "Beskriv ditt projekt här... 📝";
+  };
+
   return (
     <div className="flex flex-col gap-3">
       {/* Image previews */}
@@ -280,7 +289,7 @@ export const ChatInput = ({ onSendMessage, disabled }: ChatInputProps) => {
             value={message}
             onChange={handleInput}
             onKeyDown={handleKeyDown}
-            placeholder={isListening ? "🎤 Talar..." : images.length > 0 ? "Beskriv bilderna (valfritt)..." : "Skriv din projektbeskrivning här 📝"}
+            placeholder={getPlaceholder()}
             disabled={disabled}
             className="min-h-[56px] max-h-[200px] resize-none pr-24 border-2 focus:border-primary/50 transition-all duration-300 shadow-sm hover:shadow-md bg-card/50 backdrop-blur-sm"
             rows={1}

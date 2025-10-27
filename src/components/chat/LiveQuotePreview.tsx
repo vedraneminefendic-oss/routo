@@ -12,12 +12,20 @@ interface LiveQuotePreviewProps {
     estimatedCost?: number;
     mentionedItems?: string[];
   };
+  liveExtraction?: {
+    projectType?: string;
+    area?: string;
+    rooms?: string;
+    materials?: string[];
+    timeline?: string;
+  };
 }
 
 export const LiveQuotePreview = ({ 
   quote, 
   isGenerating,
-  conversationSummary 
+  conversationSummary,
+  liveExtraction 
 }: LiveQuotePreviewProps) => {
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('sv-SE', {
@@ -27,6 +35,60 @@ export const LiveQuotePreview = ({
       maximumFractionDigits: 0,
     }).format(amount);
   };
+
+  // P1: Show live extraction during conversation
+  if (liveExtraction && Object.keys(liveExtraction).length > 0) {
+    return (
+      <Card className="sticky top-4 animate-in fade-in-0 slide-in-from-right-4 duration-500 border-primary/30">
+        <CardHeader>
+          <div className="flex items-center gap-2">
+            <Sparkles className="h-5 w-5 text-primary animate-pulse" />
+            <CardTitle className="text-lg">Extraherar data...</CardTitle>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {liveExtraction.projectType && (
+            <div className="flex items-center gap-2 text-sm animate-in fade-in-0 slide-in-from-left-2 duration-300">
+              <Package className="h-4 w-4 text-primary" />
+              <span className="text-muted-foreground">Projekttyp:</span>
+              <Badge variant="secondary">{liveExtraction.projectType}</Badge>
+            </div>
+          )}
+          {liveExtraction.area && (
+            <div className="flex items-center gap-2 text-sm animate-in fade-in-0 slide-in-from-left-2 duration-300" style={{ animationDelay: "100ms" }}>
+              <TrendingUp className="h-4 w-4 text-primary" />
+              <span className="text-muted-foreground">Yta:</span>
+              <span className="font-medium">{liveExtraction.area}</span>
+            </div>
+          )}
+          {liveExtraction.rooms && (
+            <div className="flex items-center gap-2 text-sm animate-in fade-in-0 slide-in-from-left-2 duration-300" style={{ animationDelay: "200ms" }}>
+              <Package className="h-4 w-4 text-primary" />
+              <span className="text-muted-foreground">Rum:</span>
+              <span className="font-medium">{liveExtraction.rooms}</span>
+            </div>
+          )}
+          {liveExtraction.materials && liveExtraction.materials.length > 0 && (
+            <div className="space-y-1 animate-in fade-in-0 slide-in-from-left-2 duration-300" style={{ animationDelay: "300ms" }}>
+              <p className="text-sm text-muted-foreground">Material:</p>
+              <div className="flex flex-wrap gap-1">
+                {liveExtraction.materials.map((mat, i) => (
+                  <Badge key={i} variant="outline" className="text-xs">{mat}</Badge>
+                ))}
+              </div>
+            </div>
+          )}
+          {liveExtraction.timeline && (
+            <div className="flex items-center gap-2 text-sm animate-in fade-in-0 slide-in-from-left-2 duration-300" style={{ animationDelay: "400ms" }}>
+              <Sparkles className="h-4 w-4 text-primary" />
+              <span className="text-muted-foreground">Tidplan:</span>
+              <span className="font-medium">{liveExtraction.timeline}</span>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    );
+  }
 
   // Show skeleton during initial generation
   if (isGenerating && !quote && !conversationSummary) {

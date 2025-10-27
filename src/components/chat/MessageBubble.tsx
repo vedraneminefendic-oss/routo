@@ -1,7 +1,8 @@
 import { cn } from "@/lib/utils";
-import { Bot, User } from "lucide-react";
+import { Bot, User, Info } from "lucide-react";
 import { Message } from "./ChatInterface";
 import { QuickReplies } from "./QuickReplies";
+import { ContextualHelp } from "@/components/ContextualHelp";
 
 interface MessageBubbleProps {
   message: Message;
@@ -11,6 +12,31 @@ interface MessageBubbleProps {
 
 export const MessageBubble = ({ message, onSendMessage, isTyping }: MessageBubbleProps) => {
   const isUser = message.role === 'user';
+  
+  // P1: Detect if AI is asking a question and provide contextual help
+  const getContextualHelp = (content: string): string | null => {
+    const lowerContent = content.toLowerCase();
+    
+    if (lowerContent.includes('storlek') || lowerContent.includes('yta') || lowerContent.includes('kvm')) {
+      return 'Ange ytan i kvadratmeter (t.ex. "50 kvm") eller antal rum (t.ex. "3 rum")';
+    }
+    if (lowerContent.includes('material') || lowerContent.includes('kvalitet')) {
+      return 'Beskriv materialkvalitet som "standard", "mellanklass" eller "premium"';
+    }
+    if (lowerContent.includes('budget') || lowerContent.includes('pris')) {
+      return 'Ange din budget i SEK (t.ex. "150 000 kr") eller intervall (t.ex. "100-200 tkr")';
+    }
+    if (lowerContent.includes('tidplan') || lowerContent.includes('när')) {
+      return 'Ange önskat startdatum eller tidsram (t.ex. "mars 2024" eller "inom 2 månader")';
+    }
+    if (lowerContent.includes('badrum') || lowerContent.includes('kök')) {
+      return 'Beskriv omfattning: "totalrenovering", "delvis renovering" eller specifika delar';
+    }
+    
+    return null;
+  };
+  
+  const contextHelp = !isUser ? getContextualHelp(message.content) : null;
   
   const handleQuickReplySelect = (action: string, label: string) => {
     if (!onSendMessage) return;
@@ -59,21 +85,29 @@ export const MessageBubble = ({ message, onSendMessage, isTyping }: MessageBubbl
         "flex flex-col gap-2 max-w-[80%]",
         isUser ? "items-end" : "items-start"
       )}>
-        <div className={cn(
-          "rounded-2xl px-5 py-3 text-sm leading-relaxed shadow-lg transition-all duration-300 hover:shadow-xl hover:scale-[1.02]",
-          isUser 
-            ? "bg-gradient-to-br from-primary via-primary to-primary/90 text-primary-foreground rounded-tr-sm backdrop-blur-sm" 
-            : "bg-gradient-to-br from-card via-card/95 to-card/90 text-foreground rounded-tl-sm border border-border/50 backdrop-blur-sm"
-        )}>
-          <div 
-            className="prose prose-sm max-w-none dark:prose-invert"
-            dangerouslySetInnerHTML={{
-              __html: message.content
-                .replace(/\*\*(.*?)\*\*/g, '<strong class="font-semibold text-foreground">$1</strong>')
-                .replace(/^- (.+)$/gm, '<span class="inline-block">• $1</span>')
-                .replace(/\n/g, '<br/>')
-            }}
-          />
+        <div className="flex items-start gap-2">
+          <div className={cn(
+            "rounded-2xl px-5 py-3 text-sm leading-relaxed shadow-lg transition-all duration-300 hover:shadow-xl hover:scale-[1.02] flex-1",
+            isUser 
+              ? "bg-gradient-to-br from-primary via-primary to-primary/90 text-primary-foreground rounded-tr-sm backdrop-blur-sm" 
+              : "bg-gradient-to-br from-card via-card/95 to-card/90 text-foreground rounded-tl-sm border border-border/50 backdrop-blur-sm"
+          )}>
+            <div 
+              className="prose prose-sm max-w-none dark:prose-invert"
+              dangerouslySetInnerHTML={{
+                __html: message.content
+                  .replace(/\*\*(.*?)\*\*/g, '<strong class="font-semibold text-foreground">$1</strong>')
+                  .replace(/^- (.+)$/gm, '<span class="inline-block">• $1</span>')
+                  .replace(/\n/g, '<br/>')
+              }}
+            />
+          </div>
+          {/* P1: Contextual Help */}
+          {!isUser && contextHelp && (
+            <div className="flex-shrink-0 mt-1">
+              <ContextualHelp content={contextHelp} side="left" />
+            </div>
+          )}
         </div>
         <span className="text-xs text-muted-foreground px-2 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
           {message.timestamp.toLocaleTimeString('sv-SE', { 
