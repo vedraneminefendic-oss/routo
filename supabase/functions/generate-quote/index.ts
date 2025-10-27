@@ -1520,50 +1520,158 @@ function computeQuoteTotals(
 }
 
 // ============================================
-// ROT/RUT CALCULATION
+// ROT/RUT CALCULATION (FAS 27 Del 2 + 4)
 // ============================================
 
-function calculateROTRUT(quote: any, deductionType: string, recipients: number, quoteDate: Date) {
+// FAS 27 Del 2: Get current deduction rate from database
+async function getCurrentDeductionRate(
+  supabase: any,
+  deductionType: 'rot' | 'rut',
+  quoteDate: Date = new Date()
+): Promise<number> {
+  const dateStr = quoteDate.toISOString().split('T')[0];
+  
+  const { data, error } = await supabase
+    .from('deduction_limits')
+    .select('deduction_percentage')
+    .eq('deduction_type', deductionType)
+    .lte('valid_from', dateStr)
+    .or(`valid_to.is.null,valid_to.gte.${dateStr}`)
+    .order('valid_from', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  
+  if (error || !data) {
+    console.warn(`⚠️ Could not fetch deduction rate for ${deductionType}, using 50% fallback`, error);
+    return 0.50; // Fallback to 50%
+  }
+  
+  console.log(`✅ Deduction rate for ${deductionType}: ${data.deduction_percentage * 100}%`);
+  return data.deduction_percentage;
+}
+
+// FAS 27 Del 4: Multi-recipient deduction calculation
+interface RecipientDeduction {
+  name: string;
+  personnummer: string;
+  ownershipShare: number;
+  maxDeduction: number;
+  allocatedDeduction: number;
+  remainingCapacity: number;
+}
+
+async function calculateMultiRecipientDeduction(
+  supabase: any,
+  workCostWithVAT: number,
+  deductionType: 'rot' | 'rut',
+  deductionRate: number,
+  recipients: Array<{ customer_name: string; customer_personnummer: string; ownership_share: number }>
+): Promise<{
+  totalDeduction: number;
+  recipientBreakdown: RecipientDeduction[];
+  exceedsCapacity: boolean;
+}> {
+  const maxPerPerson = deductionType === 'rut' ? 75000 : 50000;
+  const baseDeduction = Math.round(workCostWithVAT * deductionRate);
+  
+  // Initialize recipients with their share of deduction
+  const recipientBreakdown: RecipientDeduction[] = recipients.map(r => ({
+    name: r.customer_name,
+    personnummer: r.customer_personnummer,
+    ownershipShare: r.ownership_share,
+    maxDeduction: maxPerPerson,
+    allocatedDeduction: Math.round(baseDeduction * r.ownership_share),
+    remainingCapacity: 0,
+  }));
+  
+  // Check if any recipient exceeds their personal cap
+  let totalActualDeduction = 0;
+  let exceedsCapacity = false;
+  
+  for (const recipient of recipientBreakdown) {
+    if (recipient.allocatedDeduction > recipient.maxDeduction) {
+      recipient.allocatedDeduction = recipient.maxDeduction;
+      exceedsCapacity = true;
+    }
+    
+    recipient.remainingCapacity = recipient.maxDeduction - recipient.allocatedDeduction;
+    totalActualDeduction += recipient.allocatedDeduction;
+  }
+  
+  console.log(`💰 Multi-recipient deduction breakdown:`, recipientBreakdown);
+  
+  return {
+    totalDeduction: totalActualDeduction,
+    recipientBreakdown,
+    exceedsCapacity
+  };
+}
+
+async function calculateROTRUT(
+  supabase: any,
+  quote: any, 
+  deductionType: string, 
+  recipients: Array<{ customer_name: string; customer_personnummer: string; ownership_share: number }> | number, 
+  quoteDate: Date
+) {
   if (deductionType === 'none') return;
 
-  const year = quoteDate.getFullYear();
-  const month = quoteDate.getMonth();
+  // FAS 27 Del 2: Get dynamic deduction rate from database
+  const deductionRate = await getCurrentDeductionRate(supabase, deductionType as 'rot' | 'rut', quoteDate);
   
-  // ✅ ÅTGÄRD #1: Korrekt deduction rate baserat på datum
-  // 50% t.o.m. 2025-12-31, sedan 30%
-  const deductionRate = (year < 2026) ? 0.5 : 0.3;
-  
-  // Max amounts per recipient per year
-  const maxROT = 50000;
-  const maxRUT = 75000;
-  const maxDeduction = deductionType === 'rot' ? maxROT : maxRUT;
-  const totalMaxDeduction = maxDeduction * recipients;
-
-  // ✅ ÅTGÄRD #1: FIX - 100% av arbetskostnad (inkl. moms) är berättigad för BÅDE ROT och RUT
   const workCost = quote.summary?.workCost || 0;
-  const workCostWithVAT = workCost * 1.25; // Lägg till 25% moms på arbetskostnaden
-  const eligibleAmount = workCostWithVAT; // 100% av arbetskostnad inkl. moms är underlag
+  const workCostWithVAT = Math.round(workCost * 1.25);
   
-  // Apply deduction rate and cap
-  const calculatedDeduction = eligibleAmount * deductionRate;
-  const actualDeduction = Math.min(calculatedDeduction, totalMaxDeduction);
+  // FAS 27 Del 4: Multi-recipient support
+  let actualDeduction: number;
+  let recipientBreakdown: RecipientDeduction[] | undefined;
+  let exceedsCapacity = false;
+  let numberOfRecipients: number;
+  
+  if (Array.isArray(recipients) && recipients.length > 0) {
+    // Multi-recipient mode
+    numberOfRecipients = recipients.length;
+    
+    const multiCalc = await calculateMultiRecipientDeduction(
+      supabase,
+      workCostWithVAT,
+      deductionType as 'rot' | 'rut',
+      deductionRate,
+      recipients
+    );
+    
+    actualDeduction = multiCalc.totalDeduction;
+    recipientBreakdown = multiCalc.recipientBreakdown;
+    exceedsCapacity = multiCalc.exceedsCapacity;
+    
+    console.log(`💰 Multi-recipient ${deductionType.toUpperCase()}: ${numberOfRecipients} recipients, total deduction: ${actualDeduction} kr`);
+  } else {
+    // Single recipient mode (legacy)
+    numberOfRecipients = typeof recipients === 'number' ? recipients : 1;
+    const maxDeduction = deductionType === 'rot' ? 50000 : 75000;
+    const totalMaxDeduction = maxDeduction * numberOfRecipients;
+    const calculatedDeduction = Math.round(workCostWithVAT * deductionRate);
+    actualDeduction = Math.min(calculatedDeduction, totalMaxDeduction);
+    
+    console.log(`💰 Single recipient ${deductionType.toUpperCase()}: ${actualDeduction} kr`);
+  }
 
-  // Customer pays: Total WITH VAT minus actual deduction
   const customerPays = quote.summary.totalWithVAT - actualDeduction;
 
   // Update quote with detailed deduction breakdown
   quote.summary.deduction = {
     type: deductionType.toUpperCase(),
     deductionRate,
-    maxPerPerson: maxDeduction,
-    numberOfRecipients: recipients,
-    totalMaxDeduction,
-    laborCost: workCost, // ✅ ÄNDRAT från workCost → laborCost (Arbetskostnad före moms)
-    workCostWithVAT, // Arbetskostnad inkl. moms (underlag för avdrag)
-    eligibleAmount, // = workCostWithVAT (100% är berättigad)
-    calculatedDeduction, // = eligibleAmount × deductionRate
-    deductionAmount: actualDeduction, // ✅ ÄNDRAT från actualDeduction → deductionAmount
-    priceAfterDeduction: customerPays, // ✅ ÄNDRAT från customerPays → priceAfterDeduction
+    maxPerPerson: deductionType === 'rot' ? 50000 : 75000,
+    numberOfRecipients,
+    laborCost: workCost,
+    workCostWithVAT,
+    eligibleAmount: workCostWithVAT,
+    calculatedDeduction: Math.round(workCostWithVAT * deductionRate),
+    deductionAmount: actualDeduction,
+    priceAfterDeduction: customerPays,
+    recipientBreakdown, // FAS 27 Del 4: Include breakdown if multi-recipient
+    exceedsCapacity, // FAS 27 Del 4: Warning flag
   };
 
   quote.summary.customerPays = customerPays;
@@ -1571,8 +1679,11 @@ function calculateROTRUT(quote: any, deductionType: string, recipients: number, 
   console.log(`💰 ${deductionType.toUpperCase()}-avdrag detaljer:`, {
     laborCost: workCost,
     workCostWithVAT,
+    deductionRate: `${deductionRate * 100}%`,
     deductionAmount: actualDeduction,
-    priceAfterDeduction: customerPays
+    priceAfterDeduction: customerPays,
+    recipients: numberOfRecipients,
+    breakdown: recipientBreakdown ? 'included' : 'n/a'
   });
 }
 
@@ -4341,11 +4452,11 @@ Svara med **1**, **2** eller **3** (eller "granska", "generera", "mer info")`;
     }
 
     // ============================================
-    // STEP 8: CALCULATE ROT/RUT
+    // STEP 8: CALCULATE ROT/RUT (FAS 27)
     // ============================================
 
     if (finalDeductionType !== 'none') {
-      calculateROTRUT(quote, finalDeductionType, recipients, new Date());
+      await calculateROTRUT(supabaseClient, quote, finalDeductionType, recipients, new Date());
     }
 
     // ============================================

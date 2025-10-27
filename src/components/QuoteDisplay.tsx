@@ -296,8 +296,13 @@ const QuoteDisplay = ({
     }).format(amount);
   };
 
-  // FAS 25: Helper to format values that might be numbers, strings, or ranges
+  // FAS 25 + FAS 27 Del 1: Helper to format values that might be numbers, strings, or ranges
   const formatValue = (value: any): string => {
+    // Handle undefined, null, NaN
+    if (value === undefined || value === null || (typeof value === 'number' && isNaN(value))) {
+      return '0 kr';
+    }
+    
     if (typeof value === 'number') {
       return formatCurrency(value);
     }
