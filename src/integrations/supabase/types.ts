@@ -108,6 +108,7 @@ export type Database = {
           learned_preferences: Json | null
           quote_id: string | null
           readiness_score: number | null
+          refinement_requested: boolean | null
           status: string | null
           user_id: string
         }
@@ -124,6 +125,7 @@ export type Database = {
           learned_preferences?: Json | null
           quote_id?: string | null
           readiness_score?: number | null
+          refinement_requested?: boolean | null
           status?: string | null
           user_id: string
         }
@@ -140,6 +142,7 @@ export type Database = {
           learned_preferences?: Json | null
           quote_id?: string | null
           readiness_score?: number | null
+          refinement_requested?: boolean | null
           status?: string | null
           user_id?: string
         }

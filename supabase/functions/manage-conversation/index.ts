@@ -762,36 +762,59 @@ serve(async (req) => {
         console.log('  📊 Total:', `${answeredCategories}/${totalCategories} (${Math.round(completenessPercentage)}%)`);
         console.log('  ❓ Questions asked:', totalQuestionsAsked, '/', MAX_QUESTIONS);
         
-        // FAS 19: Smart stopping logic based on answered categories
-        let maxQuestionsToGenerate = 0;
-        let shouldGenerateQuote = false;
+        // FAS 20: Two-Stage Quote Generation System
+        const STAGE_1_MAX_QUESTIONS = 4; // Initial round
+        const STAGE_2_MAX_QUESTIONS = 3; // Refinement round
+        const TOTAL_MAX_QUESTIONS = 6;   // Absolute max (down from 10)
         
-        if (totalQuestionsAsked >= MAX_QUESTIONS) {
-          console.log('⛔ Reached max questions (10) - forcing quote generation');
-          shouldGenerateQuote = true;
-        } else if (answeredCategories >= 5) {
-          console.log('✅ All 5 categories answered - ready to generate quote');
-          shouldGenerateQuote = true;
-        } else if (answeredCategories >= 3) {
-          // 3/5 kategorier besvarade → 2 frågor kvar
-          maxQuestionsToGenerate = 2;
-          console.log('💡 3/5 categories answered - max 2 questions left');
-        } else {
-          // < 3 kategorier → 3 frågor per runda
+        let maxQuestionsToGenerate = 0;
+        let shouldGenerateDraftQuote = false;
+        let shouldGenerateFinalQuote = false;
+        const isRefinementRequested = session.refinement_requested || false;
+        
+        // STAGE 1: Initial information gathering (3-4 questions)
+        if (totalQuestionsAsked === 0) {
           maxQuestionsToGenerate = 3;
-          console.log('💡 <3 categories answered - asking 3 questions');
+          console.log('🎯 FAS 20 STAGE 1: Asking initial 3 questions');
+        }
+        // STAGE 1 → DRAFT: After first round OR 2+ categories answered
+        else if (!isRefinementRequested && (totalQuestionsAsked >= STAGE_1_MAX_QUESTIONS || answeredCategories >= 2)) {
+          shouldGenerateDraftQuote = true;
+          console.log('📄 FAS 20: Generating DRAFT QUOTE after initial round');
+          console.log('  ✅ Questions asked:', totalQuestionsAsked);
+          console.log('  ✅ Categories answered:', answeredCategories, '/', totalCategories);
+        }
+        // STAGE 2: Refinement (user clicks "Förfina offerten")
+        else if (isRefinementRequested && totalQuestionsAsked < TOTAL_MAX_QUESTIONS) {
+          maxQuestionsToGenerate = Math.min(2, TOTAL_MAX_QUESTIONS - totalQuestionsAsked);
+          console.log('🔧 FAS 20 STAGE 2: Asking refinement questions (max', maxQuestionsToGenerate, ')');
+        }
+        // STAGE 2 → FINAL: After refinement OR absolute max OR all categories answered
+        else if (totalQuestionsAsked >= TOTAL_MAX_QUESTIONS || answeredCategories >= 4) {
+          shouldGenerateFinalQuote = true;
+          console.log('✅ FAS 20: Generating FINAL QUOTE');
+          console.log('  ✅ Questions asked:', totalQuestionsAsked);
+          console.log('  ✅ Categories answered:', answeredCategories, '/', totalCategories);
+        }
+        // Continue asking questions
+        else if (answeredCategories >= 2) {
+          maxQuestionsToGenerate = 2;
+          console.log('💡 FAS 20: 2+ categories answered - asking 2 more questions');
+        } else {
+          maxQuestionsToGenerate = 3;
+          console.log('💡 FAS 20: <2 categories answered - asking 3 questions');
         }
         
-        // FAS 19: Generate questions if needed
-        if (!shouldGenerateQuote) {
-          console.log('🤖 FAS 19: Generating AI-driven smart questions...');
+        // FAS 20: Generate questions or trigger quote generation
+        if (!shouldGenerateDraftQuote && !shouldGenerateFinalQuote && maxQuestionsToGenerate > 0) {
+          console.log('🤖 FAS 20: Generating AI-driven smart questions (max:', maxQuestionsToGenerate, ')');
           const batchQuestions = await generateSmartQuestions(
             fullDescription,
             allMessages || [],
             conversationSummary,
             askedQuestions,
             LOVABLE_API_KEY,
-            maxQuestionsToGenerate // FAS 19: Pass explicit limit
+            maxQuestionsToGenerate
           );
           
           console.log('  ❓ Generated questions:', batchQuestions.length);
@@ -816,17 +839,50 @@ serve(async (req) => {
                 needsMoreInfo: true,
                 completenessScore: Math.round(completenessPercentage),
                 questionsAsked: totalQuestionsAsked,
-                maxQuestions: MAX_QUESTIONS,
+                maxQuestions: TOTAL_MAX_QUESTIONS,
                 answeredCategories: answeredCategories,
                 totalCategories: totalCategories,
-                canSkipQuestions: totalQuestionsAsked >= 5 // FAS 19: Allow skip after 5 questions
+                isRefinement: isRefinementRequested
               }),
               { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
             );
           }
         }
         
-        console.log('  ✅ Ready to generate quote (categories:', `${answeredCategories}/${totalCategories})`);
+        // FAS 20: Signal draft or final quote readiness
+        if (shouldGenerateDraftQuote) {
+          console.log('  📄 FAS 20: Ready for DRAFT quote (categories:', `${answeredCategories}/${totalCategories})`);
+          
+          return new Response(
+            JSON.stringify({ 
+              message: savedMessage,
+              readyForDraftQuote: true,
+              isDraft: true,
+              answeredCategories: answeredCategories,
+              totalCategories: totalCategories,
+              completenessScore: Math.round(completenessPercentage)
+            }),
+            { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+        
+        if (shouldGenerateFinalQuote) {
+          console.log('  ✅ FAS 20: Ready for FINAL quote (categories:', `${answeredCategories}/${totalCategories})`);
+          
+          return new Response(
+            JSON.stringify({ 
+              message: savedMessage,
+              readyForFinalQuote: true,
+              isDraft: false,
+              answeredCategories: answeredCategories,
+              totalCategories: totalCategories,
+              completenessScore: Math.round(completenessPercentage)
+            }),
+            { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+        
+        console.log('  ✅ FAS 20: Ready to generate quote (categories:', `${answeredCategories}/${totalCategories})`);
       }
 
       return new Response(

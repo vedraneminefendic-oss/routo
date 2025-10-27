@@ -73,6 +73,7 @@ const RequestSchema = z.object({
   imageAnalysis: z.any().optional(),
   intent: z.string().optional(),
   previous_quote_id: z.string().nullish(), // SPRINT 1.5: For delta mode (accepts null/undefined)
+  isDraft: z.boolean().optional().default(false), // FAS 20: Draft mode flag
 });
 
 interface RotRutClassification {
@@ -2229,7 +2230,8 @@ async function generateQuoteWithAI(
   apiKey: string,
   exclusions: Exclusion[] = [],
   previousQuote: any = null, // SPRINT 1.5: For delta mode
-  includeExplanations: boolean = false // FAS 14: Enable explanations
+  includeExplanations: boolean = false, // FAS 14: Enable explanations
+  isDraft: boolean = false // FAS 20: Draft mode flag
 ): Promise<any> {
   
   const historyText = conversationHistory
@@ -2313,6 +2315,48 @@ ${workItems.map((w: any) => `- ${w.name}: ${w.hours}h × ${w.hourlyRate} kr/h = 
     console.log('🎨 Painting project detected! Adding requirements checklist...');
   }
 
+  // FAS 20: Draft mode instructions
+  const draftModeInstructions = isDraft ? `
+🎯 **FAS 20: DRAFT MODE - SNABB OFFERT MED PRISINTERVALL**
+
+Detta är ett FÖRSTA UTKAST som ska genereras snabbt med rimliga antaganden.
+
+**DRAFT MODE REGLER:**
+1. **Använd PRISINTERVALL istället för exakta priser där information saknas**
+   - Exempel: "Kakel: 600-900 kr/kvm (beroende på kvalitet)"
+   - Markera osäkra delar med "(kan justeras efter mer information)"
+
+2. **Gör generösa antaganden baserat på branschstandard**
+   - Om material inte specificerat → använd "Standard" kvalitet
+   - Om arbetsomfattning oklar → använd typiskt intervall för projekttypen
+   - Dokumentera antaganden i assumptions-fältet
+
+3. **Behåll SAMMA STRUKTUR som vanlig offert**
+   - Alla workItems, materials och equipment ska finnas
+   - summary-fältet ska ha korrekt struktur
+   - Men priser kan vara estimerade med större marginal
+
+4. **Markera osäkerheter tydligt**
+   - I description-fält: lägg till "(kan justeras)"
+   - Exempel: "Kakelläggning badrum (kan justeras efter materialval)"
+
+5. **Snabbare generation**
+   - Färre detaljerade beräkningar
+   - Mer fokus på branschstandard och liknande quotes
+   - Bredare prisintervall (±20% istället för ±5%)
+
+**EXEMPEL PÅ DRAFT MODE ITEM:**
+{
+  "name": "Badrumsrenovering 8 kvm",
+  "description": "Total renovering inkl. kakel, VVS, el (kan justeras efter materialval och omfattning)",
+  "hours": 80,
+  "hourlyRate": 850,
+  "subtotal": 68000,
+  "explanation": "Estimerat 80-120 timmar baserat på 8 kvm badrum. Använder mittenpris 850 kr/h. Exakt tid beror på rivningsomfattning och materialval."
+}
+
+` : '';
+
   // SPRINT 1.5: Build delta mode intro (if applicable)
   const deltaModeIntro = isDeltaMode ? `
 **🔄 DELTA MODE - UTÖKA BEFINTLIG OFFERT (KRITISKT!):**
@@ -2340,7 +2384,7 @@ ${JSON.stringify(previousQuote, null, 2)}
 **SPRÅK:**
 - Behåll SAMMA SPRÅK som den befintliga offerten (se workItems och materials ovan)
 
-` : `Du är Handoff AI - en intelligent assistent som hjälper hantverkare skapa professionella offerter.
+` : `${draftModeInstructions}Du är Handoff AI - en intelligent assistent som hjälper hantverkare skapa professionella offerter.
 
 **🎯 VIKTIG KONTEXT - LÄS NOGA:**
 - Du pratar med en HANTVERKARE (arborist/elektriker/målare/rörmokare/snickare etc.)
@@ -3054,6 +3098,7 @@ Deno.serve(async (req) => {
       imageAnalysis,
       intent,
       previous_quote_id,
+      isDraft = false, // FAS 20: Draft mode flag
     } = validatedData;
 
     console.log('Description:', description);
@@ -3847,6 +3892,7 @@ Svara med **1**, **2** eller **3** (eller "granska", "generera", "mer info")`;
     console.log(`📋 Exclusions parsed: ${exclusionsForQuote.length}`);
     
     // ÅTGÄRD 4C: Använd faktisk historik från DB även här
+    // FAS 20: Pass isDraft parameter from request
     let quote = await generateQuoteWithAI(
       completeDescription,
       actualConversationHistory,
@@ -3857,7 +3903,9 @@ Svara med **1**, **2** eller **3** (eller "granska", "generera", "mer info")`;
       finalDeductionType,
       LOVABLE_API_KEY,
       exclusionsForQuote,
-      true // FAS 14: Enable explanations
+      previousQuote, // SPRINT 1.5: For delta mode
+      true, // FAS 14: Enable explanations
+      isDraft // FAS 20: Draft mode flag
     );
     
     // SPRINT 2: Generate smart auto-title

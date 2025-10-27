@@ -184,6 +184,12 @@ export const ChatInterface = ({ onQuoteGenerated, isGenerating }: ChatInterfaceP
         }
       });
 
+      // FAS 20: Handle draft quote readiness
+      if (saveResult.data?.readyForDraftQuote) {
+        console.log('📄 FAS 20: Ready for draft quote, generating...');
+        // Fall through to generate draft quote
+      }
+      
       // FIX 1: If AI wants to ask questions, show them INSTEAD of generating quote
       if (saveResult.data?.suggestedQuestions && saveResult.data.suggestedQuestions.length > 0) {
         console.log('🤔 AI vill ställa frågor först, hoppar över offertgenerering');
@@ -214,11 +220,11 @@ export const ChatInterface = ({ onQuoteGenerated, isGenerating }: ChatInterfaceP
           }
         });
         
-        // Show readiness score if available
-        if (saveResult.data?.readinessScore !== undefined) {
+        // FAS 20: Show progress with categories answered
+        if (saveResult.data?.answeredCategories !== undefined) {
           toast({
-            title: `📊 Beredskap: ${saveResult.data.readinessScore}%`,
-            description: `${saveResult.data.mandatoryAnswered}/${saveResult.data.mandatoryTotal} viktiga frågor besvarade`
+            title: `📊 Progress: ${saveResult.data.answeredCategories}/${saveResult.data.totalCategories} kategorier`,
+            description: `${saveResult.data.questionsAsked}/${saveResult.data.maxQuestions} frågor ställda`
           });
         }
         
@@ -257,7 +263,8 @@ export const ChatInterface = ({ onQuoteGenerated, isGenerating }: ChatInterfaceP
             numberOfRecipients: 1,
             imageAnalysis: imageAnalysis,
             intent: intent,
-            previous_quote_id: currentQuoteId // SPRINT 1.5: Enable delta mode
+            previous_quote_id: currentQuoteId, // SPRINT 1.5: Enable delta mode
+            isDraft: saveResult.data?.isDraft || false // FAS 20: Draft mode
           },
           signal: controller.signal
         });
