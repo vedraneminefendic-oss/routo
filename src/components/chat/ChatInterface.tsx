@@ -12,6 +12,7 @@ import { TypingIndicator } from "./TypingIndicator";
 import { InlineProgressCard } from "./InlineProgressCard";
 import { SmartScroll } from "./SmartScroll";
 import { ConversationHistory } from "./ConversationHistory";
+import { HelpCollapsible } from "./HelpCollapsible";
 import { CustomerQuickSelect } from "@/components/CustomerQuickSelect";
 import { TemplateQuickAccess } from "@/components/TemplateQuickAccess";
 import { Loader2, RotateCcw, Sparkles, ChevronDown, ChevronUp, User } from "lucide-react";
@@ -863,37 +864,30 @@ export const ChatInterface = ({ onQuoteGenerated, isGenerating, onConversationUp
       <Card className="overflow-hidden">
         <div 
           ref={chatContainerRef}
-          className="flex flex-col h-[600px] bg-background relative"
+          className="flex flex-col min-h-[500px] max-h-[calc(100vh-200px)] md:min-h-[600px] md:max-h-[calc(100vh-150px)] bg-background relative"
         >
-          {/* AI Processing Banner - ÅTG 5 */}
+          {/* AI Processing Banner - Compact */}
           {isTyping && (
-            <div className="sticky top-0 z-10 bg-gradient-to-r from-primary/10 via-blue-500/10 to-purple-500/10 border-b border-primary/20 px-4 py-2.5 backdrop-blur-sm">
-              <div className="flex items-center gap-3">
+            <div className="sticky top-0 z-10 bg-gradient-to-r from-primary/10 via-blue-500/10 to-purple-500/10 border-b border-primary/20 px-4 py-2 backdrop-blur-sm">
+              <div className="flex items-center gap-2">
                 <div className="flex gap-1">
                   <span className="w-1.5 h-1.5 bg-primary rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
                   <span className="w-1.5 h-1.5 bg-primary rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
                   <span className="w-1.5 h-1.5 bg-primary rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
                 </div>
                 <p className="text-sm font-medium text-foreground">
-                  AI:n analyserar ditt projekt...
+                  AI:n analyserar...
                 </p>
               </div>
             </div>
           )}
 
-          {/* Guidance Banner - Sticky below typing indicator */}
-          {messages.length > 0 && messages.length <= 3 && !generatedQuote && (
-            <div className="sticky top-0 z-10 bg-amber-50 dark:bg-amber-950/20 border-b border-amber-200 dark:border-amber-900/30 px-4 py-3">
-              <p className="text-sm font-medium text-amber-900 dark:text-amber-100 mb-2">
-                💡 Tips för tydlig kommunikation:
-              </p>
-              <div className="space-y-1 text-xs text-amber-700 dark:text-amber-300">
-                <p>✅ "Vi tar hand om X" = X läggs till i offerten</p>
-                <p>❌ "Kunden tar hand om X" = X tas bort från offerten</p>
-                <p>✏️ "X ska finnas med" = X läggs till</p>
-                <p>🗑️ "X ska inte ingå" = X tas bort</p>
-              </div>
-            </div>
+          {/* Compact Help Collapsible */}
+          {messages.length > 0 && !generatedQuote && (
+            <HelpCollapsible 
+              currentMessageCount={messages.length}
+              autoHideAfterMessages={3}
+            />
           )}
 
           {/* Proactive Ready Banner - Sticky at top */}
@@ -935,96 +929,41 @@ export const ChatInterface = ({ onQuoteGenerated, isGenerating, onConversationUp
             </div>
           )}
 
-          {/* FAS 5: Enhanced readiness panel with progress bar and skip button */}
+          {/* Compact Readiness Panel */}
           {readiness && readiness.readiness_score < 85 && !generatedQuote && messages.length > 0 && (
-            <div className="sticky top-0 z-10 bg-gradient-to-b from-background via-background to-transparent border-b px-4 py-3">
+            <div className="sticky top-0 z-10 bg-background/95 backdrop-blur-sm border-b px-4 py-2">
               <div 
                 className="cursor-pointer select-none"
                 onClick={() => setFeedbackExpanded(!feedbackExpanded)}
               >
-                <div className="flex items-center justify-between gap-3 mb-2">
-                  <div className="flex items-center gap-2">
-                    <Sparkles className="h-4 w-4 text-primary" />
-                    <p className="text-sm font-semibold text-foreground">
-                      {readiness.readiness_score < 30 && "🔍 Samlar information..."}
-                      {readiness.readiness_score >= 30 && readiness.readiness_score < 60 && "📝 Förstår projektet..."}
-                      {readiness.readiness_score >= 60 && readiness.readiness_score < 85 && "✨ Nästan klar!"}
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm font-bold tabular-nums">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2 flex-1">
+                    <Sparkles className="h-3.5 w-3.5 text-primary flex-shrink-0" />
+                    <div className="flex-1 min-w-0">
+                      <Progress value={readiness.readiness_score} className="h-2" />
+                    </div>
+                    <span className="text-xs font-bold tabular-nums flex-shrink-0">
                       {readiness.readiness_score}%
                     </span>
-                    {feedbackExpanded ? (
-                      <ChevronUp className="h-4 w-4 text-muted-foreground" />
-                    ) : (
-                      <ChevronDown className="h-4 w-4 text-muted-foreground" />
-                    )}
                   </div>
+                  {feedbackExpanded ? (
+                    <ChevronUp className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />
+                  ) : (
+                    <ChevronDown className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />
+                  )}
                 </div>
-                
-                {/* FAS 5: Progress bar showing question completion */}
-                <div className="relative mb-3">
-                  <div className="h-3 w-full overflow-hidden rounded-full bg-secondary">
-                    <div 
-                      className="h-full transition-all duration-500 ease-out"
-                      style={{
-                        width: `${readiness.readiness_score}%`,
-                        background: readiness.readiness_score < 30 
-                          ? 'linear-gradient(to right, #ef4444, #f59e0b)'
-                          : readiness.readiness_score < 60
-                          ? 'linear-gradient(to right, #f59e0b, #eab308)'
-                          : 'linear-gradient(to right, #eab308, #22c55e)'
-                      }}
-                    />
-                  </div>
-                  
-                  {/* Milestones */}
-                  {[25, 50, 75, 85].map((milestone) => (
-                    <div 
-                      key={milestone}
-                      className="absolute top-1/2 -translate-y-1/2 w-6 h-6 rounded-full border-2 border-background flex items-center justify-center text-[10px] font-bold transition-all duration-300"
-                      style={{ 
-                        left: `${milestone}%`,
-                        transform: 'translate(-50%, -50%)',
-                        backgroundColor: readiness.readiness_score >= milestone ? '#22c55e' : 'hsl(var(--secondary))',
-                        color: readiness.readiness_score >= milestone ? '#fff' : 'hsl(var(--muted-foreground))'
-                      }}
-                    >
-                      {readiness.readiness_score >= milestone ? '✓' : milestone === 85 ? '🎯' : ''}
-                    </div>
-                  ))}
-                </div>
-                
-                {/* FAS 6: Skip questions button */}
-                {readiness.readiness_score >= 50 && (
-                  <div className="flex justify-end">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleSendMessage("Generera offert med nuvarande information");
-                      }}
-                      className="text-xs gap-1"
-                    >
-                      <Sparkles className="h-3 w-3" />
-                      Hoppa över frågor och generera offert nu
-                    </Button>
-                  </div>
-                )}
               </div>
 
-              {/* SPRINT 2: Expandable details section */}
+              {/* Expandable details */}
               {feedbackExpanded && conversationFeedback && (
-                <div className="mt-4 space-y-3 pt-3 border-t">
+                <div className="mt-3 space-y-2 pt-2 border-t">
                   {/* Understood items */}
                   {conversationFeedback.understood && Object.keys(conversationFeedback.understood).length > 0 && (
                     <div>
-                      <p className="text-xs font-semibold text-foreground mb-2 flex items-center gap-1">
+                      <p className="text-xs font-semibold text-foreground mb-1.5 flex items-center gap-1">
                         ✅ Förstått
                       </p>
-                      <div className="flex flex-wrap gap-1.5">
+                      <div className="flex flex-wrap gap-1">
                         {Object.entries(conversationFeedback.understood).map(([key, val]) => (
                           <Badge 
                             key={key} 
@@ -1041,10 +980,10 @@ export const ChatInterface = ({ onQuoteGenerated, isGenerating, onConversationUp
                   {/* Critical missing items */}
                   {readiness.critical_missing && readiness.critical_missing.length > 0 && (
                     <div>
-                      <p className="text-xs font-semibold text-destructive mb-2 flex items-center gap-1">
+                      <p className="text-xs font-semibold text-destructive mb-1 flex items-center gap-1">
                         ❌ Behövs för offert
                       </p>
-                      <div className="space-y-1">
+                      <div className="space-y-0.5">
                         {readiness.critical_missing.map((item: string, i: number) => (
                           <div key={i} className="flex items-start gap-2 text-xs text-muted-foreground">
                             <span className="text-destructive">•</span>
@@ -1058,10 +997,10 @@ export const ChatInterface = ({ onQuoteGenerated, isGenerating, onConversationUp
                   {/* Optional missing items */}
                   {readiness.optional_missing && readiness.optional_missing.length > 0 && (
                     <div>
-                      <p className="text-xs font-semibold text-amber-600 dark:text-amber-500 mb-2 flex items-center gap-1">
+                      <p className="text-xs font-semibold text-amber-600 dark:text-amber-500 mb-1 flex items-center gap-1">
                         💡 Kan förbättras
                       </p>
-                      <div className="space-y-1">
+                      <div className="space-y-0.5">
                         {readiness.optional_missing.map((item: string, i: number) => (
                           <div key={i} className="flex items-start gap-2 text-xs text-muted-foreground">
                             <span className="text-amber-600 dark:text-amber-500">•</span>
@@ -1074,6 +1013,18 @@ export const ChatInterface = ({ onQuoteGenerated, isGenerating, onConversationUp
                 </div>
               )}
             </div>
+          )}
+          
+          {/* Floating Action Button for Skip Questions */}
+          {readiness && readiness.readiness_score >= 50 && readiness.readiness_score < 85 && !generatedQuote && messages.length > 0 && (
+            <Button
+              size="sm"
+              className="fixed bottom-24 right-6 z-20 shadow-lg gap-2 animate-in fade-in-0 slide-in-from-bottom-4"
+              onClick={() => handleSendMessage("Generera offert med nuvarande information")}
+            >
+              <Sparkles className="h-4 w-4" />
+              Generera nu
+            </Button>
           )}
 
           {/* Header med "Ny konversation"-knapp */}
@@ -1111,8 +1062,8 @@ export const ChatInterface = ({ onQuoteGenerated, isGenerating, onConversationUp
                 <h2 className="text-2xl font-semibold text-foreground">
                   Beskriv ditt projekt
                 </h2>
-                <p className="text-muted-foreground max-w-md">
-                  Berätta vad du vill få hjälp med, så genererar jag en professionell offert åt dig.
+                <p className="text-sm text-muted-foreground max-w-md">
+                  Jag hjälper dig skapa en professionell offert
                 </p>
               </div>
               
