@@ -6,13 +6,15 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { FileText, Zap, TrendingUp, MessageSquare, Brain, Clock } from "lucide-react";
 import { RoutoLandingShapes, RoutoFeatureShapes } from "@/components/RoutoLandingShapes";
 import Footer from "@/components/Footer";
-
 const Landing = () => {
   const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
-
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
+    supabase.auth.getSession().then(({
+      data: {
+        session
+      }
+    }) => {
       if (session) {
         navigate("/dashboard");
       } else {
@@ -20,53 +22,42 @@ const Landing = () => {
       }
     });
   }, [navigate]);
-
   if (loading) {
     return null;
   }
-
-  const features = [
-    {
-      icon: Brain,
-      title: "AI-driven offertgenerering",
-      description: "Vår intelligenta AI skapar skräddarsydda offerter baserat på en kort konversation med dig.",
-    },
-    {
-      icon: MessageSquare,
-      title: "Smart konversation",
-      description: "Svara på några enkla frågor så tar AI:n hand om resten. Inga långa formulär.",
-    },
-    {
-      icon: Zap,
-      title: "ROT/RUT-automatik",
-      description: "Automatisk klassificering och beräkning av avdragsgilla arbeten enligt Skatteverkets regler.",
-    },
-    {
-      icon: TrendingUp,
-      title: "Självlärande system",
-      description: "Ju fler offerter du skapar, desto smartare blir systemet för just ditt företag.",
-    },
-    {
-      icon: Clock,
-      title: "Spara tid",
-      description: "Skapa en komplett offert på 2-3 minuter istället för 30 minuter.",
-    },
-    {
-      icon: FileText,
-      title: "Professionellt resultat",
-      description: "Snygga, professionella offerter med din logotype och alla detaljer på plats.",
-    },
-  ];
-
-  return (
-    <div className="min-h-screen bg-background relative overflow-hidden">
+  const features = [{
+    icon: Brain,
+    title: "AI-driven offertgenerering",
+    description: "Vår intelligenta AI skapar skräddarsydda offerter baserat på en kort konversation med dig."
+  }, {
+    icon: MessageSquare,
+    title: "Smart konversation",
+    description: "Svara på några enkla frågor så tar AI:n hand om resten. Inga långa formulär."
+  }, {
+    icon: Zap,
+    title: "ROT/RUT-automatik",
+    description: "Automatisk klassificering och beräkning av avdragsgilla arbeten enligt Skatteverkets regler."
+  }, {
+    icon: TrendingUp,
+    title: "Självlärande system",
+    description: "Ju fler offerter du skapar, desto smartare blir systemet för just ditt företag."
+  }, {
+    icon: Clock,
+    title: "Spara tid",
+    description: "Skapa en komplett offert på 2-3 minuter istället för 30 minuter."
+  }, {
+    icon: FileText,
+    title: "Professionellt resultat",
+    description: "Snygga, professionella offerter med din logotype och alla detaljer på plats."
+  }];
+  return <div className="min-h-screen bg-background relative overflow-hidden">
       {/* Navigation Header */}
       <header className="relative z-20 border-b border-border/50 bg-background/80 backdrop-blur-sm">
         <div className="container mx-auto px-4 py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
               <img src="/routo-logo.jpeg" alt="Routo" className="h-10 w-10 rounded-lg" />
-              <h1 className="text-2xl font-heading font-black text-foreground">Routo</h1>
+              <h1 className="text-2xl font-heading font-black text-foreground">routo</h1>
             </div>
             <nav className="hidden md:flex items-center gap-8">
               <a href="#features" className="text-muted-foreground hover:text-foreground transition-colors font-medium">
@@ -80,18 +71,10 @@ const Landing = () => {
               </a>
             </nav>
             <div className="flex items-center gap-3">
-              <Button
-                variant="ghost"
-                onClick={() => navigate("/auth")}
-                className="font-medium"
-              >
+              <Button variant="ghost" onClick={() => navigate("/auth")} className="font-medium">
                 Logga in
               </Button>
-              <Button
-                variant="routo"
-                size="lg"
-                onClick={() => navigate("/auth")}
-              >
+              <Button variant="routo" size="lg" onClick={() => navigate("/auth")}>
                 Prova gratis
               </Button>
             </div>
@@ -111,27 +94,14 @@ const Landing = () => {
                   Skapa offerter
                   <span className="block text-primary mt-2">på minuter</span>
                 </h2>
-                <p className="text-xl md:text-2xl text-muted-foreground leading-relaxed">
-                  Med Routo kan du snabbt och smidigt skapa professionella offerter. 
-                  Vår AI hjälper dig hela vägen – från första frågan till färdig offert.
-                </p>
+                <p className="text-xl md:text-2xl text-muted-foreground leading-relaxed">Med routo kan du snabbt och smidigt skapa professionella offerter. Vår AI hjälper dig hela vägen – från första frågan till färdig offert.</p>
               </div>
               
               <div className="flex flex-col sm:flex-row gap-4 pt-4">
-                <Button
-                  variant="routo"
-                  size="xl"
-                  onClick={() => navigate("/auth")}
-                  className="text-lg"
-                >
+                <Button variant="routo" size="xl" onClick={() => navigate("/auth")} className="text-lg">
                   Kom igång gratis
                 </Button>
-                <Button
-                  variant="outline"
-                  size="xl"
-                  onClick={() => navigate("/auth")}
-                  className="text-lg border-2 hover:bg-secondary hover:text-secondary-foreground hover:border-secondary"
-                >
+                <Button variant="outline" size="xl" onClick={() => navigate("/auth")} className="text-lg border-2 hover:bg-secondary hover:text-secondary-foreground hover:border-secondary">
                   Se hur det fungerar
                 </Button>
               </div>
@@ -160,14 +130,12 @@ const Landing = () => {
               <div className="absolute inset-0 flex items-center justify-center">
                 <div className="relative w-full h-full">
                   {/* Abstract illustration area */}
-                  <div 
-                    className="absolute top-0 right-0 w-80 h-80 bg-gradient-to-br from-primary/30 to-secondary/30 rounded-full blur-3xl"
-                    style={{ animation: 'pulse 4s ease-in-out infinite' }}
-                  />
-                  <div 
-                    className="absolute bottom-20 left-10 w-64 h-64 bg-gradient-to-br from-accent/40 to-primary/20 rounded-full blur-2xl"
-                    style={{ animation: 'float 6s ease-in-out infinite' }}
-                  />
+                  <div className="absolute top-0 right-0 w-80 h-80 bg-gradient-to-br from-primary/30 to-secondary/30 rounded-full blur-3xl" style={{
+                  animation: 'pulse 4s ease-in-out infinite'
+                }} />
+                  <div className="absolute bottom-20 left-10 w-64 h-64 bg-gradient-to-br from-accent/40 to-primary/20 rounded-full blur-2xl" style={{
+                  animation: 'float 6s ease-in-out infinite'
+                }} />
                 </div>
               </div>
             </div>
@@ -189,11 +157,7 @@ const Landing = () => {
           </div>
 
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8 max-w-6xl mx-auto">
-            {features.map((feature, index) => (
-              <Card
-                key={index}
-                className="group hover:scale-105 transition-all duration-300 border-2 hover:border-primary/50 bg-card/80 backdrop-blur-sm shadow-lg hover:shadow-2xl rounded-3xl overflow-hidden"
-              >
+            {features.map((feature, index) => <Card key={index} className="group hover:scale-105 transition-all duration-300 border-2 hover:border-primary/50 bg-card/80 backdrop-blur-sm shadow-lg hover:shadow-2xl rounded-3xl overflow-hidden">
                 <CardHeader className="space-y-4">
                   <div className="w-14 h-14 rounded-2xl bg-primary/10 flex items-center justify-center group-hover:bg-primary/20 transition-colors">
                     <feature.icon className="h-7 w-7 text-primary" />
@@ -205,8 +169,7 @@ const Landing = () => {
                     {feature.description}
                   </CardDescription>
                 </CardContent>
-              </Card>
-            ))}
+              </Card>)}
           </div>
         </div>
       </section>
@@ -223,12 +186,7 @@ const Landing = () => {
               Gå med idag och skapa din första offert på 2 minuter. Helt gratis att komma igång.
             </p>
             <div className="pt-6">
-              <Button
-                variant="outline"
-                size="xl"
-                onClick={() => navigate("/auth")}
-                className="text-lg bg-white text-primary hover:bg-white/90 hover:text-primary border-0 shadow-2xl hover:shadow-3xl hover:-translate-y-1 rounded-full font-heading font-bold px-12"
-              >
+              <Button variant="outline" size="xl" onClick={() => navigate("/auth")} className="text-lg bg-white text-primary hover:bg-white/90 hover:text-primary border-0 shadow-2xl hover:shadow-3xl hover:-translate-y-1 rounded-full font-heading font-bold px-12">
                 Kom igång nu – helt gratis
               </Button>
             </div>
@@ -237,8 +195,6 @@ const Landing = () => {
       </section>
 
       <Footer />
-    </div>
-  );
+    </div>;
 };
-
 export default Landing;
