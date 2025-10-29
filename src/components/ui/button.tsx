@@ -15,11 +15,13 @@ const buttonVariants = cva(
         outline: "border-2 border-input bg-background hover:bg-primary/10 hover:text-primary hover:border-primary/50 transition-all",
         ghost: "hover:bg-primary/10 hover:text-primary transition-all",
         link: "text-primary underline-offset-4 hover:underline",
+        routo: "bg-primary text-primary-foreground hover:bg-primary/90 shadow-lg hover:shadow-2xl hover:-translate-y-1 rounded-full font-semibold",
       },
       size: {
         default: "h-10 px-4 py-2",
         sm: "h-9 rounded-lg px-3 text-xs",
         lg: "h-12 rounded-xl px-8 text-base",
+        xl: "h-14 px-10 text-lg",
         icon: "h-10 w-10",
       },
     },
