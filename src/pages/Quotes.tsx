@@ -262,10 +262,10 @@ const Quotes = () => {
             )}
 
             {!currentQuote && (
-              <Card className="h-full flex items-center justify-center min-h-[400px]">
+              <Card className="h-full flex items-center justify-center min-h-[400px] bg-[hsl(36,45%,98%)] border-2 border-primary/10">
                 <div className="text-center p-8">
                   <p className="text-muted-foreground mb-4">Välj en offert från listan för att visa den här</p>
-                  <Button onClick={() => navigate('/quotes/new')}>
+                  <Button onClick={() => navigate('/quotes/new')} className="bg-primary hover:bg-primary/90 shadow-routo hover:shadow-routo-lg transition-all">
                     <Plus className="h-4 w-4 mr-2" />
                     Skapa ny offert
                   </Button>
@@ -276,14 +276,14 @@ const Quotes = () => {
 
           {/* Right Column - Quote List */}
           <div>
-            <Card>
+            <Card className="bg-[hsl(36,45%,98%)] border-2 border-primary/10 shadow-routo">
               <CardHeader className="pb-3">
                 <div className="flex items-center justify-between mb-2">
                   <div className="flex items-center gap-2">
-                    <CardTitle className="text-lg text-secondary">Dina offerter</CardTitle>
+                    <CardTitle className="text-lg font-heading text-primary">Dina offerter</CardTitle>
                     <ContextualHelp content="Här ser du alla dina sparade offerter. Klicka på en offert för att visa, redigera eller skicka den. Du kan också söka och filtrera på status." />
                   </div>
-                  <Button size="sm" onClick={() => navigate('/quotes/new')}>
+                  <Button size="sm" onClick={() => navigate('/quotes/new')} className="bg-primary hover:bg-primary/90 shadow-sm">
                     <Plus className="h-4 w-4 mr-2" />
                     Ny offert
                   </Button>

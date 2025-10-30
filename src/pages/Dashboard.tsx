@@ -159,13 +159,13 @@ const Dashboard = () => {
       <main className="container mx-auto px-4 py-8">
         {/* Hero Section with Routo organic shapes */}
         <div className="mb-10 animate-in fade-in-0 slide-in-from-top-4 duration-700">
-          <div className="relative overflow-hidden bg-gradient-to-br from-primary/10 via-secondary/5 to-background rounded-2xl p-6 md:p-8 border-2 border-primary/20 shadow-xl group">
-            {/* Decorative organic shapes */}
-            <div className="absolute top-0 right-0 w-40 h-40 bg-primary/10 rounded-full blur-3xl pointer-events-none" />
-            <div className="absolute bottom-0 left-0 w-32 h-32 bg-secondary/10 rounded-full blur-2xl pointer-events-none" />
-            <div className="absolute inset-0 bg-gradient-to-r from-primary/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-700 pointer-events-none" />
+          <div className="relative overflow-hidden bg-gradient-to-br from-primary/10 via-secondary/5 to-background rounded-3xl p-6 md:p-8 border-2 border-primary/10 shadow-routo-lg hover:shadow-routo transition-all duration-500 group">
+            {/* Decorative organic shapes using semi-circles */}
+            <div className="absolute top-0 right-0 w-64 h-64 bg-primary/20 rounded-full blur-3xl pointer-events-none" style={{ clipPath: 'circle(50% at 100% 0)' }} />
+            <div className="absolute bottom-0 left-0 w-48 h-48 bg-secondary/20 rounded-full blur-2xl pointer-events-none" style={{ clipPath: 'circle(50% at 0 100%)' }} />
+            <div className="absolute right-1/3 top-1/4 w-32 h-32 bg-accent/15 rounded-full blur-2xl pointer-events-none animate-pulse" />
             <div className="relative z-10">
-              <h2 className="text-3xl md:text-4xl font-bold mb-3 text-foreground">Välkommen till routo! 👋</h2>
+              <h2 className="text-3xl md:text-4xl font-heading font-bold mb-3 text-foreground">Välkommen till routo! 👋</h2>
               <p className="text-lg text-muted-foreground">
                 Här är en översikt över din verksamhet
               </p>
@@ -206,16 +206,16 @@ const Dashboard = () => {
 
         {/* Quick Actions Grid */}
         <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6 mb-10">
-          <Card className="group cursor-pointer hover:shadow-2xl transition-all duration-500 border-2 hover:border-primary/50 hover:scale-105 overflow-hidden animate-in fade-in-0 slide-in-from-bottom-4" style={{
+          <Card className="group cursor-pointer hover:shadow-routo-lg transition-all duration-500 border-2 border-primary/10 hover:border-primary/30 hover:-translate-y-1 overflow-hidden animate-in fade-in-0 slide-in-from-bottom-4 bg-[hsl(36,45%,98%)]" style={{
           animationDelay: '100ms'
         }} onClick={() => navigate('/quotes/new')}>
-            <div className="absolute inset-0 bg-gradient-to-br from-primary/10 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none" />
+            <div className="absolute inset-0 bg-gradient-to-br from-primary/5 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none" />
             <CardHeader className="relative">
               <div className="flex items-center gap-3 mb-2">
-                <div className="p-3 bg-gradient-to-br from-primary/20 to-primary/10 rounded-xl group-hover:scale-110 transition-transform duration-300 shadow-md">
-                  <Plus className="h-6 w-6 text-primary group-hover:animate-pulse" />
+                <div className="p-3 bg-primary/10 rounded-2xl group-hover:scale-110 group-hover:bg-primary/20 transition-all duration-300 shadow-sm">
+                  <Plus className="h-6 w-6 text-primary" />
                 </div>
-                <CardTitle className="text-lg group-hover:text-primary transition-colors duration-300">Skapa ny offert</CardTitle>
+                <CardTitle className="text-lg font-heading group-hover:text-primary transition-colors duration-300">Skapa ny offert</CardTitle>
               </div>
               <CardDescription>
                 Generera en professionell offert med AI på några sekunder
@@ -223,16 +223,16 @@ const Dashboard = () => {
             </CardHeader>
           </Card>
 
-          <Card className="group cursor-pointer hover:shadow-2xl transition-all duration-500 border-2 hover:border-secondary/50 hover:scale-105 overflow-hidden animate-in fade-in-0 slide-in-from-bottom-4" style={{
+          <Card className="group cursor-pointer hover:shadow-routo-lg transition-all duration-500 border-2 border-secondary/10 hover:border-secondary/30 hover:-translate-y-1 overflow-hidden animate-in fade-in-0 slide-in-from-bottom-4 bg-[hsl(36,45%,98%)]" style={{
           animationDelay: '200ms'
         }} onClick={() => navigate('/quotes/new?templates=true')}>
-            <div className="absolute inset-0 bg-gradient-to-br from-secondary/10 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none" />
+            <div className="absolute inset-0 bg-gradient-to-br from-secondary/5 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none" />
             <CardHeader className="relative">
               <div className="flex items-center gap-3 mb-2">
-                <div className="p-3 bg-gradient-to-br from-secondary/20 to-secondary/10 rounded-xl group-hover:scale-110 transition-transform duration-300 shadow-md">
-                  <Layout className="h-6 w-6 text-secondary group-hover:animate-pulse" />
+                <div className="p-3 bg-secondary/10 rounded-2xl group-hover:scale-110 group-hover:bg-secondary/20 transition-all duration-300 shadow-sm">
+                  <Layout className="h-6 w-6 text-secondary" />
                 </div>
-                <CardTitle className="text-lg group-hover:text-secondary transition-colors duration-300">Använd mall</CardTitle>
+                <CardTitle className="text-lg font-heading group-hover:text-secondary transition-colors duration-300">Använd mall</CardTitle>
               </div>
               <CardDescription>
                 Börja snabbt med färdiga mallar för vanliga ROT/RUT-jobb
@@ -240,16 +240,16 @@ const Dashboard = () => {
             </CardHeader>
           </Card>
 
-          <Card className="group cursor-pointer hover:shadow-2xl transition-all duration-500 border-2 hover:border-accent/50 hover:scale-105 overflow-hidden animate-in fade-in-0 slide-in-from-bottom-4" style={{
+          <Card className="group cursor-pointer hover:shadow-routo-lg transition-all duration-500 border-2 border-accent/10 hover:border-accent/30 hover:-translate-y-1 overflow-hidden animate-in fade-in-0 slide-in-from-bottom-4 bg-[hsl(36,45%,98%)]" style={{
           animationDelay: '300ms'
         }} onClick={() => navigate('/quotes')}>
-            <div className="absolute inset-0 bg-gradient-to-br from-accent/10 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none" />
+            <div className="absolute inset-0 bg-gradient-to-br from-accent/5 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none" />
             <CardHeader className="relative">
               <div className="flex items-center gap-3 mb-2">
-                <div className="p-3 bg-gradient-to-br from-accent/20 to-accent/10 rounded-xl group-hover:scale-110 transition-transform duration-300 shadow-md">
-                  <FileText className="h-6 w-6 text-accent group-hover:animate-pulse" />
+                <div className="p-3 bg-accent/10 rounded-2xl group-hover:scale-110 group-hover:bg-accent/20 transition-all duration-300 shadow-sm">
+                  <FileText className="h-6 w-6 text-accent" />
                 </div>
-                <CardTitle className="text-lg group-hover:text-accent transition-colors duration-300">Alla offerter</CardTitle>
+                <CardTitle className="text-lg font-heading group-hover:text-accent transition-colors duration-300">Alla offerter</CardTitle>
               </div>
               <CardDescription>
                 Visa, redigera och hantera alla dina sparade offerter
@@ -259,12 +259,12 @@ const Dashboard = () => {
         </div>
 
         {/* Recent Activity */}
-        <Card className="border-2 shadow-xl hover:shadow-2xl transition-all duration-500 overflow-hidden group">
+        <Card className="border-2 border-primary/10 shadow-routo-lg hover:shadow-routo transition-all duration-500 overflow-hidden group bg-[hsl(36,45%,98%)]">
           <div className="absolute inset-0 bg-gradient-to-br from-primary/5 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none" />
           <CardHeader className="relative">
             <div className="flex items-center justify-between">
-              <CardTitle className="text-xl font-bold">Senaste offerterna</CardTitle>
-              <Button variant="ghost" size="sm" onClick={() => navigate('/quotes')} className="hover:bg-primary/10 hover:text-primary transition-colors duration-300">
+              <CardTitle className="text-xl font-heading font-bold">Senaste offerterna</CardTitle>
+              <Button variant="ghost" size="sm" onClick={() => navigate('/quotes')} className="hover:bg-primary/10 hover:text-primary transition-all duration-300">
                 Visa alla
               </Button>
             </div>
@@ -274,9 +274,9 @@ const Dashboard = () => {
           </CardHeader>
           <CardContent className="relative">
             {quotes.length === 0 ? <div className="text-center py-12 animate-in fade-in-0 zoom-in-95 duration-500">
-                <FileText className="h-16 w-16 text-muted-foreground mx-auto mb-4 opacity-50" />
+                <FileText className="h-16 w-16 text-primary/30 mx-auto mb-4" />
                 <p className="text-muted-foreground mb-6 text-lg">Inga offerter ännu</p>
-                <Button onClick={() => navigate('/quotes/new')} className="bg-gradient-to-br from-primary to-primary/80 hover:from-primary/90 hover:to-primary/70 shadow-lg hover:shadow-xl transition-all duration-300 hover:scale-105">
+                <Button onClick={() => navigate('/quotes/new')} className="bg-primary hover:bg-primary/90 shadow-routo hover:shadow-routo-lg transition-all duration-300 hover:-translate-y-0.5">
                   <Plus className="h-4 w-4 mr-2" />
                   Skapa din första offert
                 </Button>
@@ -285,11 +285,11 @@ const Dashboard = () => {
               const quoteData = quote.edited_quote || quote.generated_quote;
               const summary = quoteData?.summary;
               const totalAmount = summary?.customerPays || 0;
-              return <div key={quote.id} className="group/item flex items-center justify-between p-5 border-2 rounded-xl hover:bg-gradient-to-r hover:from-muted/50 hover:to-transparent cursor-pointer transition-all duration-300 hover:shadow-md hover:scale-[1.02] hover:border-primary/30 animate-in fade-in-0 slide-in-from-left-4" style={{
+              return <div key={quote.id} className="group/item flex items-center justify-between p-5 border-2 border-primary/10 rounded-2xl hover:bg-primary/5 cursor-pointer transition-all duration-300 hover:shadow-routo hover:-translate-y-0.5 hover:border-primary/20 animate-in fade-in-0 slide-in-from-left-4" style={{
                 animationDelay: `${index * 75}ms`
               }} onClick={() => navigate(`/quotes?id=${quote.id}`)}>
                       <div className="flex-1 min-w-0">
-                        <p className="font-bold text-base text-foreground truncate mb-1 group-hover/item:text-primary transition-colors duration-300">
+                        <p className="font-heading font-bold text-base text-foreground truncate mb-1 group-hover/item:text-primary transition-colors duration-300">
                           {quote.title}
                         </p>
                         <p className="text-sm text-muted-foreground">

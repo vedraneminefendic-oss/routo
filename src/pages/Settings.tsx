@@ -136,9 +136,9 @@ const Settings = () => {
           </Alert>
         )}
 
-        <Card className="mb-6">
+        <Card className="mb-6 bg-[hsl(36,45%,98%)] border-2 border-primary/10 shadow-routo">
           <CardHeader>
-            <CardTitle className="text-secondary flex items-center gap-2">
+            <CardTitle className="font-heading text-primary flex items-center gap-2">
               <Brain className="h-5 w-5" />
               AI-profil
             </CardTitle>
@@ -165,7 +165,7 @@ const Settings = () => {
                   toast.error('Kunde inte uppdatera AI-profil');
                 }
               }}
-              className="flex items-center gap-2"
+              className="flex items-center gap-2 bg-primary hover:bg-primary/90 shadow-routo hover:shadow-routo-lg transition-all"
             >
               <Brain className="h-4 w-4" />
               Uppdatera AI-profil
@@ -173,9 +173,9 @@ const Settings = () => {
           </CardContent>
         </Card>
 
-        <Card className="mb-6">
+        <Card className="mb-6 bg-[hsl(36,45%,98%)] border-2 border-primary/10 shadow-routo">
           <CardHeader>
-            <CardTitle className="text-secondary flex items-center gap-2">
+            <CardTitle className="font-heading text-primary flex items-center gap-2">
               <TrendingUp className="h-5 w-5" />
               Branschdata & Marknadsinsikter
             </CardTitle>
@@ -263,24 +263,24 @@ const Settings = () => {
           className="space-y-6"
         >
           <div className="sticky top-0 bg-background z-10 pb-4">
-            <TabsList className="grid w-full max-w-3xl grid-cols-5">
-            <TabsTrigger value="company" className="flex items-center gap-2">
+            <TabsList className="grid w-full max-w-3xl grid-cols-5 bg-[hsl(36,45%,98%)]">
+            <TabsTrigger value="company" className="flex items-center gap-2 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
               <Building2 className="h-4 w-4" />
               Företag
             </TabsTrigger>
-            <TabsTrigger value="rates" className="flex items-center gap-2">
+            <TabsTrigger value="rates" className="flex items-center gap-2 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
               <Clock className="h-4 w-4" />
               Timpriser
             </TabsTrigger>
-            <TabsTrigger value="equipment" className="flex items-center gap-2">
+            <TabsTrigger value="equipment" className="flex items-center gap-2 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
               <Wrench className="h-4 w-4" />
               Maskiner
             </TabsTrigger>
-            <TabsTrigger value="templates" className="flex items-center gap-2">
+            <TabsTrigger value="templates" className="flex items-center gap-2 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
               <FileText className="h-4 w-4" />
               Mallar
             </TabsTrigger>
-            <TabsTrigger value="market" className="flex items-center gap-2">
+            <TabsTrigger value="market" className="flex items-center gap-2 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
               <DollarSign className="h-4 w-4" />
               Marknad
             </TabsTrigger>
@@ -288,9 +288,9 @@ const Settings = () => {
           </div>
 
           <TabsContent value="company">
-            <Card>
+            <Card className="bg-[hsl(36,45%,98%)] border-2 border-primary/10 shadow-routo">
               <CardHeader>
-                <CardTitle className="text-secondary">Företagsinformation</CardTitle>
+                <CardTitle className="font-heading text-primary">Företagsinformation</CardTitle>
                 <CardDescription>
                   Dessa uppgifter visas på alla dina offerter
                 </CardDescription>
@@ -302,9 +302,9 @@ const Settings = () => {
           </TabsContent>
 
           <TabsContent value="rates">
-            <Card>
+            <Card className="bg-[hsl(36,45%,98%)] border-2 border-primary/10 shadow-routo">
               <CardHeader>
-                <CardTitle className="text-secondary">Timpriser</CardTitle>
+                <CardTitle className="font-heading text-primary">Timpriser</CardTitle>
                 <CardDescription>
                   Ange timpriser för olika typer av arbeten. AI:n använder dessa när den skapar offerter.
                 </CardDescription>
@@ -316,9 +316,9 @@ const Settings = () => {
           </TabsContent>
 
           <TabsContent value="equipment">
-            <Card>
+            <Card className="bg-[hsl(36,45%,98%)] border-2 border-primary/10 shadow-routo">
               <CardHeader>
-                <CardTitle className="text-secondary">Maskiner & Utrustning</CardTitle>
+                <CardTitle className="font-heading text-primary">Maskiner & Utrustning</CardTitle>
                 <CardDescription>
                   Ange priser för maskiner och utrustning. AI:n lägger till dessa i offerter när de behövs.
                 </CardDescription>
@@ -330,9 +330,9 @@ const Settings = () => {
           </TabsContent>
 
           <TabsContent value="templates">
-            <Card>
+            <Card className="bg-[hsl(36,45%,98%)] border-2 border-primary/10 shadow-routo">
               <CardHeader>
-                <CardTitle className="text-secondary">Offertmallar</CardTitle>
+                <CardTitle className="font-heading text-primary">Offertmallar</CardTitle>
                 <CardDescription>
                   Skapa återanvändbara mallar för vanliga typer av offerter. Spara tid genom att använda mallar när du skapar nya offerter.
                 </CardDescription>

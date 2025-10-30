@@ -216,4 +216,41 @@ All colors MUST be HSL.
       opacity: 0.8;
     }
   }
+
+  /* Organic animations for internal pages */
+  @keyframes organic-float {
+    0%, 100% {
+      transform: translateY(0) rotate(0deg);
+    }
+    50% {
+      transform: translateY(-10px) rotate(2deg);
+    }
+  }
+
+  @keyframes warm-pulse {
+    0%, 100% {
+      box-shadow: 0 0 0 0 rgba(212, 145, 94, 0.4);
+    }
+    50% {
+      box-shadow: 0 0 0 10px rgba(212, 145, 94, 0);
+    }
+  }
+
+  /* Warm shadows for Routo design */
+  .shadow-routo {
+    box-shadow: 0 4px 20px rgba(212, 145, 94, 0.15);
+  }
+
+  .shadow-routo-lg {
+    box-shadow: 0 10px 40px rgba(212, 145, 94, 0.2);
+  }
+
+  /* Routo organic shapes utility classes */
+  .routo-shape-primary {
+    background: linear-gradient(135deg, hsl(28 52% 60%) 0%, hsl(28 52% 50%) 100%);
+  }
+
+  .routo-shape-secondary {
+    background: linear-gradient(135deg, hsl(202 48% 30%) 0%, hsl(202 48% 25%) 100%);
+  }
 }

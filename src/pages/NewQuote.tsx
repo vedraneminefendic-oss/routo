@@ -335,35 +335,35 @@ const NewQuote = () => {
   return (
     <div className="min-h-screen bg-background">
       {/* Header */}
-      <header className="sticky top-0 z-50 border-b bg-card/95 backdrop-blur supports-[backdrop-filter]:bg-card/80 shadow-sm">
+      <header className="sticky top-0 z-50 border-b border-primary/10 bg-[hsl(36,33%,95%)]/95 backdrop-blur supports-[backdrop-filter]:bg-[hsl(36,33%,95%)]/90 shadow-routo">
         <div className="container mx-auto px-4 py-3">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <Button variant="ghost" size="sm" onClick={() => navigate('/')}>
+              <Button variant="ghost" size="sm" onClick={() => navigate('/')} className="hover:bg-primary/10">
                 <ArrowLeft className="h-4 w-4" />
               </Button>
-              <div className="p-2 bg-primary rounded-lg shadow-md">
+              <div className="p-2 bg-primary rounded-xl shadow-routo">
                 <Wrench className="h-6 w-6 text-primary-foreground" />
               </div>
               <div className="hidden sm:block">
-                <h1 className="text-xl md:text-2xl font-bold text-secondary">Skapa ny offert</h1>
+                <h1 className="text-xl md:text-2xl font-heading font-bold text-primary">Skapa ny offert</h1>
                 <p className="text-xs md:text-sm text-muted-foreground hidden md:block">Generera en professionell offert med AI</p>
               </div>
             </div>
             <nav className="flex gap-1 md:gap-2">
-              <Button variant="ghost" size="sm" onClick={() => navigate("/customers")} className="hidden md:flex">
+              <Button variant="ghost" size="sm" onClick={() => navigate("/customers")} className="hidden md:flex hover:bg-primary/10 hover:text-primary">
                 <Users className="h-4 w-4 md:mr-2" />
                 <span className="hidden lg:inline">Kunder</span>
               </Button>
-              <Button variant="ghost" size="sm" onClick={() => navigate("/settings")} className="hidden md:flex">
+              <Button variant="ghost" size="sm" onClick={() => navigate("/settings")} className="hidden md:flex hover:bg-primary/10 hover:text-primary">
                 <SettingsIcon className="h-4 w-4 md:mr-2" />
                 <span className="hidden lg:inline">Inställningar</span>
               </Button>
-              <Button variant="ghost" size="sm" onClick={() => navigate("/reports")} className="hidden md:flex">
+              <Button variant="ghost" size="sm" onClick={() => navigate("/reports")} className="hidden md:flex hover:bg-primary/10 hover:text-primary">
                 <BarChart3 className="h-4 w-4 md:mr-2" />
                 <span className="hidden lg:inline">Rapporter</span>
               </Button>
-              <Button variant="outline" size="sm" onClick={handleLogout}>
+              <Button variant="outline" size="sm" onClick={handleLogout} className="border-primary/20 hover:bg-primary/10">
                 <LogOut className="h-4 w-4 md:mr-2" />
                 <span className="hidden lg:inline">Logga ut</span>
               </Button>
@@ -384,12 +384,12 @@ const NewQuote = () => {
 
               {/* SPRINT 2: Tabs for AI-assisted vs Express mode */}
               <Tabs defaultValue="ai" className="w-full">
-                <TabsList className="grid w-full grid-cols-2 mb-6">
-                  <TabsTrigger value="ai" className="flex items-center gap-2">
+                <TabsList className="grid w-full grid-cols-2 mb-6 bg-[hsl(36,45%,98%)]">
+                  <TabsTrigger value="ai" className="flex items-center gap-2 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
                     <MessageSquare className="h-4 w-4" />
                     AI-assisterad (rekommenderas)
                   </TabsTrigger>
-                  <TabsTrigger value="express" className="flex items-center gap-2">
+                  <TabsTrigger value="express" className="flex items-center gap-2 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
                     <Zap className="h-4 w-4" />
                     Snabbläge (erfaren)
                   </TabsTrigger>
