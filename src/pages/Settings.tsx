@@ -7,7 +7,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Building2, Clock, Wrench, FileText, PlayCircle, Brain, TrendingUp, RefreshCw, DollarSign } from "lucide-react";
+import { Building2, Clock, Wrench, FileText, PlayCircle, Brain, TrendingUp, RefreshCw, DollarSign, Download, Shield } from "lucide-react";
 import CompanySettings from "@/components/CompanySettings";
 import HourlyRatesManager from "@/components/HourlyRatesManager";
 import EquipmentRatesManager from "@/components/EquipmentRatesManager";
@@ -107,6 +107,47 @@ const Settings = () => {
     setTimeout(() => navigate("/"), 500);
   };
 
+  const handleExportData = async () => {
+    try {
+      toast.info('Förbereder din dataexport...');
+      
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        toast.error('Du måste vara inloggad för att exportera data');
+        return;
+      }
+
+      const { data, error } = await supabase.functions.invoke('export-user-data', {
+        headers: {
+          Authorization: `Bearer ${session.access_token}`
+        }
+      });
+
+      if (error) {
+        console.error('Export error:', error);
+        toast.error('Misslyckades att exportera data');
+        return;
+      }
+
+      // Create downloadable JSON file
+      const jsonString = typeof data === 'string' ? data : JSON.stringify(data, null, 2);
+      const blob = new Blob([jsonString], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `routo-data-export-${new Date().toISOString().split('T')[0]}.json`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+
+      toast.success('✅ Din data har exporterats och laddats ner!');
+    } catch (error) {
+      console.error('Export exception:', error);
+      toast.error('Ett fel uppstod vid dataexporten');
+    }
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -135,6 +176,37 @@ const Settings = () => {
             </AlertDescription>
           </Alert>
         )}
+
+        <Card className="mb-6 bg-[hsl(36,45%,98%)] border-2 border-primary/10 shadow-routo">
+          <CardHeader>
+            <CardTitle className="font-heading text-primary flex items-center gap-2">
+              <Shield className="h-5 w-5" />
+              Integritet & Data (GDPR)
+            </CardTitle>
+            <CardDescription>
+              Hantera dina personuppgifter enligt GDPR Article 20 - Rätt till dataportabilitet
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-3">
+              <p className="text-sm text-muted-foreground">
+                Du har rätt att få en kopia av all din personliga data i ett strukturerat format. 
+                Detta inkluderar företagsinställningar, offerter, kunder, mallar och konversationshistorik.
+              </p>
+              <Button 
+                onClick={handleExportData}
+                variant="outline"
+                className="flex items-center gap-2"
+              >
+                <Download className="h-4 w-4" />
+                Exportera all min data (JSON)
+              </Button>
+              <p className="text-xs text-muted-foreground">
+                Observera: Personnummer exporteras som "[ENCRYPTED]" av säkerhetsskäl
+              </p>
+            </div>
+          </CardContent>
+        </Card>
 
         <Card className="mb-6 bg-[hsl(36,45%,98%)] border-2 border-primary/10 shadow-routo">
           <CardHeader>

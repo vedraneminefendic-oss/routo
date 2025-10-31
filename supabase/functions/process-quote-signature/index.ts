@@ -42,6 +42,79 @@ serve(async (req: Request): Promise<Response> => {
     
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
+    // ===== IP-BASED RATE LIMITING =====
+    // Check rate limit: max 3 signature attempts per IP per hour per quote
+    const { data: rateLimit, error: rateLimitError } = await supabase
+      .from("signature_rate_limits")
+      .select("*")
+      .eq("ip_address", clientIP)
+      .eq("quote_id", quoteId)
+      .single();
+
+    const now = new Date();
+    const oneHourAgo = new Date(now.getTime() - 60 * 60 * 1000);
+
+    if (rateLimit) {
+      // Check if blocked
+      if (rateLimit.blocked_until && new Date(rateLimit.blocked_until) > now) {
+        console.warn(`[SECURITY AUDIT] Blocked IP attempting signature - IP: ${clientIP}, QuoteID: ${quoteId}`);
+        return new Response(
+          JSON.stringify({ error: "För många försök. Försök igen senare." }),
+          { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      // Check if within rate limit window
+      if (new Date(rateLimit.first_attempt_at) > oneHourAgo) {
+        if (rateLimit.attempt_count >= 3) {
+          // Block for 1 hour
+          await supabase
+            .from("signature_rate_limits")
+            .update({ 
+              blocked_until: new Date(now.getTime() + 60 * 60 * 1000).toISOString(),
+              attempt_count: rateLimit.attempt_count + 1,
+              last_attempt_at: now.toISOString()
+            })
+            .eq("id", rateLimit.id);
+
+          console.warn(`[SECURITY AUDIT] Rate limit exceeded - IP: ${clientIP}, QuoteID: ${quoteId}`);
+          return new Response(
+            JSON.stringify({ error: "För många försök. Försök igen om 1 timme." }),
+            { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
+        // Increment attempt count
+        await supabase
+          .from("signature_rate_limits")
+          .update({ 
+            attempt_count: rateLimit.attempt_count + 1,
+            last_attempt_at: now.toISOString()
+          })
+          .eq("id", rateLimit.id);
+      } else {
+        // Reset counter if outside window
+        await supabase
+          .from("signature_rate_limits")
+          .update({ 
+            attempt_count: 1,
+            first_attempt_at: now.toISOString(),
+            last_attempt_at: now.toISOString(),
+            blocked_until: null
+          })
+          .eq("id", rateLimit.id);
+      }
+    } else {
+      // Create new rate limit record
+      await supabase.from("signature_rate_limits").insert({
+        ip_address: clientIP,
+        quote_id: quoteId,
+        attempt_count: 1,
+        first_attempt_at: now.toISOString(),
+        last_attempt_at: now.toISOString()
+      });
+    }
+
     // Get the quote
     const { data: quote, error: quoteError } = await supabase
       .from("quotes")

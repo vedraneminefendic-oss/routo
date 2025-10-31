@@ -932,6 +932,14 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      decrypt_customer_personnummer: {
+        Args: { customer_id_param: string }
+        Returns: string
+      }
+      decrypt_recipient_personnummer: {
+        Args: { recipient_id_param: string }
+        Returns: string
+      }
       find_similar_quotes: {
         Args: {
           description_param: string
