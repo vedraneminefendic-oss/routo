@@ -29,6 +29,9 @@ import { isKitchenProject, getKitchenPromptAddition } from './helpers/kitchenReq
 import { isPaintingProject, getPaintingPromptAddition } from './helpers/paintingRequirements.ts';
 // FAS 2 & 5: Import project standards and intent detection
 import { detectProjectType, getProjectPromptAddition, PROJECT_STANDARDS, normalizeKeyword, detectScope, detectProjectIntent, type ProjectIntent } from './helpers/projectStandards.ts';
+// FAS 1, 2, 4: Import layered prompt and material pricing
+import { buildLayeredPrompt } from './helpers/layeredPrompt.ts';
+import { searchMaterialPriceLive } from './helpers/materialPricing.ts';
 
 // Brand dictionary and synonyms for better language understanding
 const KEYWORD_SYNONYMS: Record<string, string[]> = {
@@ -2690,28 +2693,41 @@ Returnera JSON:
   }
 }
 
-// ============================================
-// AI: GENERATE QUOTE
-// ============================================
-
-async function generateQuoteWithAI(
-  description: string,
-  conversationHistory: ConversationMessage[],
-  userRates: any[],
-  equipment: any[],
-  similarQuotes: any[],
-  learningContext: LearningContext,
-  deductionType: string,
-  apiKey: string,
-  exclusions: Exclusion[] = [],
-  previousQuote: any = null, // SPRINT 1.5: For delta mode
-  includeExplanations: boolean = false, // FAS 14: Enable explanations
-  isDraft: boolean = false // FAS 20: Draft mode flag
-): Promise<any> {
+  // ============================================
+  // AI: GENERATE QUOTE
+  // ============================================
   
-  const historyText = conversationHistory
-    .map(m => `${m.role === 'user' ? 'Användare' : 'AI'}: ${m.content}`)
-    .join('\n');
+  async function generateQuoteWithAI(
+    description: string,
+    conversationHistory: ConversationMessage[],
+    userRates: any[],
+    equipment: any[],
+    similarQuotes: any[],
+    learningContext: LearningContext,
+    deductionType: string,
+    apiKey: string,
+    exclusions: Exclusion[] = [],
+    previousQuote: any = null, // SPRINT 1.5: For delta mode
+    includeExplanations: boolean = false, // FAS 14: Enable explanations
+    isDraft: boolean = false, // FAS 20: Draft mode flag
+    userId: string = '' // FAS 1: För buildLayeredPrompt
+  ): Promise<any> {
+    
+    console.log('🏗️ FAS 1: Building layered prompt structure...');
+    
+    // FAS 1: Bygg tredelad prompt
+    const supabaseClient = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+    const layeredContext = await buildLayeredPrompt(
+      userId,
+      description,
+      conversationHistory,
+      { area: undefined }, // measurements från beskrivning extraheras i layeredPrompt
+      supabaseClient
+    );
+    
+    const historyText = conversationHistory
+      .map(m => `${m.role === 'user' ? 'Användare' : 'AI'}: ${m.content}`)
+      .join('\n');
 
   // SPRINT 1.5: Delta Mode detection
   const isDeltaMode = !!previousQuote;
@@ -2990,7 +3006,7 @@ ${JSON.stringify(previousQuote, null, 2)}
 **SPRÅK:**
 - Behåll SAMMA SPRÅK som den befintliga offerten (se workItems och materials ovan)
 
-` : `${draftModeInstructions}Du är Handoff AI - en intelligent assistent som hjälper hantverkare skapa professionella offerter.
+  ` : `${draftModeInstructions}Du är Handoff AI - en intelligent assistent som hjälper hantverkare skapa professionella offerter.
 
 **🎯 VIKTIG KONTEXT - LÄS NOGA:**
 - Du pratar med en HANTVERKARE (arborist/elektriker/målare/rörmokare/snickare etc.)
@@ -3003,6 +3019,18 @@ ${JSON.stringify(previousQuote, null, 2)}
 ✅ "Bortforsling ska finnas med" → Lägg till workItem: "Bortforsling"
 ❌ "Kunden tar hand om bortforsling" → Lägg till i exclusions: {item: "bortforsling", reason: "Kunden ordnar själv"}
 ❌ "Bortforsling behövs inte" → Lägg inte till något
+
+---
+
+${layeredContext.layer1}
+
+---
+
+${layeredContext.layer2}
+
+---
+
+${layeredContext.layer3}
 
 `;
 
@@ -3414,7 +3442,10 @@ ALLA texter i offerten MÅSTE vara på SVENSKA:
       "description": "Detaljerad beskrivning (PÅ SVENSKA)",
       "hours": 8,
       "hourlyRate": 850,
-      "subtotal": 6800
+      "subtotal": 6800,
+      "reasoning": "Förklara VARFÖR och HUR beräknat",
+      "confidence": 0.9,
+      "sourceOfTruth": "user_patterns"
     }
   ],
   "materials": [
@@ -3424,7 +3455,10 @@ ALLA texter i offerten MÅSTE vara på SVENSKA:
       "quantity": 16,
       "unit": "kvm",
       "pricePerUnit": 800,
-      "subtotal": 12800
+      "subtotal": 12800,
+      "reasoning": "Förklara val av material och pris",
+      "confidence": 0.8,
+      "sourceOfTruth": "industry_benchmarks"
     }
   ],
   "equipment": [
@@ -3434,22 +3468,36 @@ ALLA texter i offerten MÅSTE vara på SVENSKA:
       "quantity": 3,
       "unit": "dagar",
       "pricePerUnit": 450,
-      "subtotal": 1350
+      "subtotal": 1350,
+      "reasoning": "Förklara behov och hyrtid",
+      "confidence": 0.85,
+      "sourceOfTruth": "user_patterns"
     }
   ],
   "summary": {
-    "workCost": 6800,           // ✅ Number, inte string
-    "materialCost": 12800,       // ✅ Number
-    "equipmentCost": 1350,       // ✅ Number
-    "totalBeforeVAT": 20950,     // ✅ Number
-    "vatAmount": 5237.5,         // ✅ VIKTIGT: Heter "vatAmount" (INTE "vat")
-    "totalWithVAT": 26187.5,     // ✅ Number
-    "customerPays": 26187.5      // ✅ Number
+    "workCost": 6800,
+    "materialCost": 12800,
+    "equipmentCost": 1350,
+    "totalBeforeVAT": 20950,
+    "vatAmount": 5237.5,
+    "totalWithVAT": 26187.5,
+    "customerPays": 26187.5
   },
   "assumptions": [
     "Antagande 1 om du gjorde ett (eller tom array [])"
-  ]
+  ],
+  "deductions": {
+    "type": "rot",
+    "percentage": 30,
+    "amount": 4250,
+    "reasoning": "ROT-avdrag tillämpligt eftersom det gäller renovering i bostad"
+  }
 }
+
+**FAS 2: TRANSPARENSFÄLT (KRITISKT!):**
+- **reasoning**: Förklara VARFÖR posten ingår och HUR beloppet räknades
+- **confidence**: 0.0-1.0 (Lager 1: 0.9-1.0, Lager 2: 0.7-0.9, Lager 3: 0.5-0.7)
+- **sourceOfTruth**: "user_patterns" | "industry_benchmarks" | "live_search" | "assumption"
 
 **🚨 KRITISKT - summary-fältet:**
 - ALLA värden MÅSTE vara Number (inte string, inte object)
@@ -4501,6 +4549,7 @@ Svara med **1**, **2** eller **3** (eller "granska", "generera", "mer info")`;
     
     // ÅTGÄRD 4C: Använd faktisk historik från DB även här
     // FAS 20: Pass isDraft parameter from request
+    // FAS 1: Pass userId for layered prompt
     let quote = await generateQuoteWithAI(
       completeDescription,
       actualConversationHistory,
@@ -4511,10 +4560,53 @@ Svara med **1**, **2** eller **3** (eller "granska", "generera", "mer info")`;
       finalDeductionType,
       LOVABLE_API_KEY,
       exclusionsForQuote,
-      previousQuote, // SPRINT 1.5: For delta mode
-      true, // FAS 14: Enable explanations
-      isDraft // FAS 20: Draft mode flag
+      previousQuote,
+      false, // includeExplanations
+      isDraft,
+      user_id // FAS 1: userId för layered prompt
     );
+    
+    // FAS 4: Material pricing fallback efter quote-generering
+    console.log('🔍 FAS 4: Checking for missing material prices...');
+    for (const material of quote.materials || []) {
+      if (!material.pricePerUnit || material.pricePerUnit === 0 || material.pricePerUnit === 'price_unknown') {
+        console.log(`🔍 Missing price for: ${material.name}`);
+        const priceResult = await searchMaterialPriceLive(
+          material.name,
+          material.unit,
+          LOVABLE_API_KEY,
+          supabaseClient
+        );
+        
+        if (priceResult) {
+          material.pricePerUnit = priceResult.price;
+          material.subtotal = material.quantity * priceResult.price;
+          material.sourceOfTruth = priceResult.source === 'cached_industry_benchmarks' 
+            ? 'industry_benchmarks' 
+            : 'live_search';
+          material.confidence = priceResult.confidence;
+          material.reasoning = material.reasoning 
+            ? `${material.reasoning} (Pris från ${priceResult.source})`
+            : `Pris uppskattat från ${priceResult.source}`;
+          console.log(`✅ Updated price: ${material.name} = ${priceResult.price} kr`);
+        } else {
+          console.warn(`⚠️ No price found for: ${material.name}`);
+          material.confidence = 0.3;
+          material.reasoning = material.reasoning 
+            ? `${material.reasoning} (VARNING: Pris ej verifierat)`
+            : 'VARNING: Pris ej verifierat, använd med försiktighet';
+        }
+      }
+    }
+    
+    // Räkna om summary om material uppdaterades
+    if (quote.materials && quote.materials.length > 0) {
+      quote.summary.materialCost = quote.materials.reduce((sum: number, m: any) => sum + (m.subtotal || 0), 0);
+      quote.summary.totalBeforeVAT = (quote.summary.workCost || 0) + quote.summary.materialCost + (quote.summary.equipmentCost || 0);
+      quote.summary.vatAmount = quote.summary.totalBeforeVAT * 0.25;
+      quote.summary.totalWithVAT = quote.summary.totalBeforeVAT + quote.summary.vatAmount;
+      quote.summary.customerPays = quote.summary.totalWithVAT;
+    }
     
     // SPRINT 2: Generate smart auto-title
     const smartTitle = generateQuoteTitle(conversationFeedback, description);

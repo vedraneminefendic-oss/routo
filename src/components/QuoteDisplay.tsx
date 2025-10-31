@@ -1,7 +1,7 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
-import { FileText, Download, Save, Edit, Send, ChevronDown, Trash2, Copy, Hammer, Sparkles, AlertCircle, BookTemplate, Info } from "lucide-react";
+import { FileText, Download, Save, Edit, Send, ChevronDown, Trash2, Copy, Hammer, Sparkles, AlertCircle, BookTemplate, Info, Package, Wrench } from "lucide-react";
 import { AIInsightBadge } from "@/components/AIInsightBadge";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
