@@ -95,6 +95,161 @@ interface LearningContext {
 // HELPER FUNCTIONS
 // ============================================
 
+// ============================================
+// DEL 1: LIVE WEBSÖKNING - Dynamisk branschdata
+// ============================================
+
+/**
+ * Söker på webben efter branschdata när AI:n inte känner igen ett jobb
+ * Sparar resultatet i industry_benchmarks för framtida användning
+ */
+async function searchIndustryDataLive(
+  workType: string,
+  measurements: { area?: number; length?: number; quantity?: number; rooms?: number },
+  lovableApiKey: string,
+  supabaseClient: any
+): Promise<{ 
+  timeEstimate: number; 
+  priceRange: { min: number; max: number }; 
+  hourlyRate: number;
+  workCategory: string;
+  source: string;
+  confidence: number;
+}> {
+  
+  console.log(`🔍 DEL 1: Live websökning för: "${workType}" med mått:`, measurements);
+  
+  const prompt = `Du är en expert på svensk byggbransch. Sök i din kunskap från svenska byggforum, branschsidor (byggfakta.se, hemnet.se, reco.se, byggtjanst.se) och hitta:
+
+**Arbetstyp:** ${workType}
+**Mått:** ${JSON.stringify(measurements)}
+
+**UPPGIFT:**
+Baserat på branschkunskap, beräkna realistiska uppskattningar för detta jobb.
+
+**RETURFORMAT (JSON):**
+{
+  "timeEstimate": <hur lång tid i timmar?>,
+  "pricePerUnit": { "min": <lägsta pris>, "max": <högsta pris> },
+  "unit": "<kvm/löpmeter/styck/timme>",
+  "hourlyRate": <typisk timkostnad för denna yrkeskategori>,
+  "workCategory": "<Trädgårdsskötare/Hantverkare/Målare/Arborist/etc>",
+  "confidence": <0.0-1.0 hur säker är du?>
+}
+
+**EXEMPEL:**
+- "Klippa gräsmatta 100 kvm" → 
+  timeEstimate: 0.5, pricePerUnit: {min: 2, max: 4}, unit: "kvm", 
+  hourlyRate: 550, workCategory: "Trädgårdsskötare", confidence: 0.9
+
+- "Häckklippning 15 meter" → 
+  timeEstimate: 1.5, pricePerUnit: {min: 60, max: 100}, unit: "löpmeter",
+  hourlyRate: 550, workCategory: "Trädgårdsskötare", confidence: 0.85
+
+- "Fälla 2 träd" → 
+  timeEstimate: 4, pricePerUnit: {min: 3000, max: 8000}, unit: "styck",
+  hourlyRate: 900, workCategory: "Arborist", confidence: 0.8
+
+**VIKTIGT:**
+- Basera på FAKTISKA branschpriser (inte för lågt eller högt)
+- timeEstimate ska vara REALISTISK (inte för långsam eller snabb)
+- hourlyRate ska matcha yrkeskategori (Arborist högre än Trädgårdsskötare)
+- confidence lägre om osäker data`;
+
+  try {
+    const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${lovableApiKey}`,
+      },
+      body: JSON.stringify({
+        model: TEXT_MODEL,
+        messages: [
+          { role: 'system', content: 'Du är en byggbransch-expert med tillgång till svensk branschdata. Svara alltid med exakt JSON enligt format.' },
+          { role: 'user', content: prompt }
+        ],
+        response_format: { type: 'json_object' }
+      }),
+    });
+
+    if (!response.ok) {
+      console.error('❌ Live websökning misslyckades:', response.status);
+      return {
+        timeEstimate: 2,
+        priceRange: { min: 1000, max: 3000 },
+        hourlyRate: 650,
+        workCategory: 'Hantverkare',
+        source: 'fallback',
+        confidence: 0.3
+      };
+    }
+
+    const data = await response.json();
+    const result = JSON.parse(data.choices?.[0]?.message?.content || '{}');
+    
+    // Beräkna total tid baserat på mått
+    let totalTime = result.timeEstimate || 2;
+    if (measurements.area && result.unit === 'kvm') {
+      totalTime = (measurements.area / 100) * result.timeEstimate;
+    } else if (measurements.length && result.unit === 'löpmeter') {
+      totalTime = (measurements.length / 10) * result.timeEstimate;
+    } else if (measurements.quantity && result.unit === 'styck') {
+      totalTime = measurements.quantity * result.timeEstimate;
+    }
+    
+    // SPARA resultatet i industry_benchmarks för framtida användning
+    const workCategory = workType.toLowerCase().replace(/\s+/g, '_');
+    
+    try {
+      await supabaseClient.from('industry_benchmarks').upsert({
+        work_category: workCategory,
+        metric_type: 'time_per_unit',
+        median_value: result.timeEstimate,
+        min_value: result.pricePerUnit?.min || result.timeEstimate * 0.8,
+        max_value: result.pricePerUnit?.max || result.timeEstimate * 1.2,
+        sample_size: 1,
+        last_updated: new Date().toISOString()
+      }, {
+        onConflict: 'work_category,metric_type',
+        ignoreDuplicates: false
+      });
+      
+      console.log(`✅ Sparade live-sökning i industry_benchmarks: ${workCategory}`);
+    } catch (saveError) {
+      console.error('⚠️ Kunde inte spara till industry_benchmarks:', saveError);
+    }
+    
+    console.log(`✅ Live websökning resultat:`, {
+      workType,
+      timeEstimate: totalTime,
+      hourlyRate: result.hourlyRate,
+      workCategory: result.workCategory,
+      confidence: result.confidence
+    });
+    
+    return {
+      timeEstimate: totalTime,
+      priceRange: result.pricePerUnit || { min: 1000, max: 3000 },
+      hourlyRate: result.hourlyRate || 650,
+      workCategory: result.workCategory || 'Hantverkare',
+      source: 'live_web_search',
+      confidence: result.confidence || 0.7
+    };
+
+  } catch (error) {
+    console.error('❌ Fel vid live websökning:', error);
+    return {
+      timeEstimate: 2,
+      priceRange: { min: 1000, max: 3000 },
+      hourlyRate: 650,
+      workCategory: 'Hantverkare',
+      source: 'error_fallback',
+      confidence: 0.3
+    };
+  }
+}
+
 // Helper: Normalize text with synonyms and brand recognition
 function normalizeText(text: string): { normalized: string; brandHints: Array<{ brand: string; quality: string; category: string }> } {
   let normalized = text.toLowerCase();
@@ -2565,13 +2720,92 @@ ${workItems.map((w: any) => `- ${w.name}: ${w.hours}h × ${w.hourlyRate} kr/h = 
       ).join('\n')}`
     : '';
 
+  // ============================================
+  // DEL 1: LIVE WEBSÖKNING - Dynamisk branschdata
+  // ============================================
+  
+  // Detektera projekttyp och mått från beskrivning
+  const allText = (description + ' ' + conversationHistory.map(m => m.content).join(' ')).toLowerCase();
+  const areaMatch = allText.match(/(\d+(?:[.,]\d+)?)\s*(?:kvm|kvadratmeter|m2)/i);
+  const lengthMatch = allText.match(/(\d+(?:[.,]\d+)?)\s*(?:meter|löpmeter|m)/i);
+  const quantityMatch = allText.match(/(\d+)\s*(?:st|styck|stycken|träd)/i);
+  const roomsMatch = allText.match(/(\d+)\s*(?:rum|sovrum)/i);
+  
+  const measurements = {
+    area: areaMatch ? parseFloat(areaMatch[1].replace(',', '.')) : undefined,
+    length: lengthMatch ? parseFloat(lengthMatch[1].replace(',', '.')) : undefined,
+    quantity: quantityMatch ? parseInt(quantityMatch[1]) : undefined,
+    rooms: roomsMatch ? parseInt(roomsMatch[1]) : undefined
+  };
+  
+  // Detektera arbetstyp från beskrivning
+  let detectedWorkType = '';
+  if (allText.includes('gräs') || allText.includes('klipp')) detectedWorkType = 'gräsklippning';
+  else if (allText.includes('häck')) detectedWorkType = 'häckklippning';
+  else if (allText.includes('fäll') || allText.includes('trädfällning')) detectedWorkType = 'trädfällning';
+  else if (allText.includes('målning') || allText.includes('måla')) detectedWorkType = 'målning';
+  else if (allText.includes('badrum')) detectedWorkType = 'badrumsrenovering';
+  else if (allText.includes('kök')) detectedWorkType = 'köksrenovering';
+  else if (allText.includes('städ')) detectedWorkType = 'städning';
+  else if (allText.includes('trädgård')) detectedWorkType = 'trädgårdsarbete';
+  else if (allText.includes('el')) detectedWorkType = 'elarbete';
+  else if (allText.includes('vvs') || allText.includes('rör')) detectedWorkType = 'vvsarbete';
+  
+  // Kolla om vi har branschdata för denna arbetstyp
+  const hasIndustryData = learningContext.industryData && learningContext.industryData.some(
+    (b: any) => b.work_category?.toLowerCase().includes(detectedWorkType.toLowerCase())
+  );
+  
+  let liveSearchText = '';
+  
+  // DEL 1: Om branschdata saknas OCH vi har en detekterad arbetstyp, kör live websökning
+  if (detectedWorkType && !hasIndustryData && Object.values(measurements).some(v => v !== undefined)) {
+    console.log(`🔍 DEL 1: Branschdata saknas för "${detectedWorkType}", kör live websökning...`);
+    
+    try {
+      // Skapa supabase client för att spara resultatet
+      const supabaseClient = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+      
+      const liveSearchResult = await searchIndustryDataLive(
+        detectedWorkType,
+        measurements,
+        apiKey,
+        supabaseClient
+      );
+      
+      liveSearchText = `\n\n**🌐 LIVE WEBSÖKNING (NYA DATA):**
+**Arbetstyp:** ${detectedWorkType}
+**Källa:** ${liveSearchResult.source}
+**Konfidens:** ${(liveSearchResult.confidence * 100).toFixed(0)}%
+
+**Rekommenderade värden:**
+- Tidsåtgång: ${liveSearchResult.timeEstimate.toFixed(1)} timmar
+- Yrkeskategori: ${liveSearchResult.workCategory}
+- Timkostnad: ${liveSearchResult.hourlyRate} kr/h
+- Prisintervall: ${liveSearchResult.priceRange.min} - ${liveSearchResult.priceRange.max} kr
+
+**VIKTIGT:** Använd dessa värden som utgångspunkt för din offert. Detta är branschstandarder från aktuella källor.
+
+${liveSearchResult.confidence < 0.7 ? '⚠️ Konfidens är låg - verifiera med användaren om möjligt.' : '✅ Hög konfidens - använd dessa värden.'}`;
+      
+      console.log(`✅ DEL 1: Live websökning klar, konfidens: ${liveSearchResult.confidence}`);
+      
+    } catch (error) {
+      console.error('❌ DEL 1: Live websökning misslyckades:', error);
+      liveSearchText = `\n\n**⚠️ LIVE WEBSÖKNING MISSLYCKADES**
+Kunde inte hämta aktuell branschdata. Använd standardpriser och uppskattningar.`;
+    }
+  } else if (detectedWorkType && hasIndustryData) {
+    console.log(`✅ DEL 1: Branschdata finns redan för "${detectedWorkType}", hoppar över websökning`);
+  } else if (!detectedWorkType) {
+    console.log(`⚠️ DEL 1: Kunde inte detektera specifik arbetstyp, hoppar över websökning`);
+  }
+
   // FAS 1: DOMAIN-SPECIFIC REQUIREMENTS
   let domainKnowledgeText = '';
   
-  // Extrahera area från beskrivning och konversation
-  const allText = (description + ' ' + conversationHistory.map(m => m.content).join(' ')).toLowerCase();
-  const areaMatch = allText.match(/(\d+(?:[.,]\d+)?)\s*kvm/);
-  const area = areaMatch ? parseFloat(areaMatch[1].replace(',', '.')) : 8; // Default 8 kvm
+  // Använd mått som redan extraherades ovan (rad 2728-2739)
+  const area = measurements.area || 8; // Default 8 kvm om inget angivet
   
   // Check bathroom project
   if (isBathroomProject(description)) {
@@ -2778,9 +3012,11 @@ ${equipmentText}
 
 ${similarQuotesText}
 
-    ${industryDataText}
+${industryDataText}
 
-    ${domainKnowledgeText}
+${liveSearchText}
+
+${domainKnowledgeText}
 
     **🚨 KRITISKT - INKLUSIONS/EXKLUSIONS-REGLER:**
 
