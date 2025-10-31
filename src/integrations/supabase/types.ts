@@ -287,6 +287,27 @@ export type Database = {
         }
         Relationships: []
       }
+      encryption_keys: {
+        Row: {
+          created_at: string | null
+          id: string
+          key_data: string
+          key_version: number | null
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          key_data: string
+          key_version?: number | null
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          key_data?: string
+          key_version?: number | null
+        }
+        Relationships: []
+      }
       equipment_rates: {
         Row: {
           created_at: string
@@ -437,6 +458,36 @@ export type Database = {
           records_updated?: number | null
           source?: string
           status?: string
+        }
+        Relationships: []
+      }
+      personnummer_access_log: {
+        Row: {
+          accessed_at: string | null
+          action: string
+          id: string
+          ip_address: string | null
+          record_id: string
+          table_name: string
+          user_id: string
+        }
+        Insert: {
+          accessed_at?: string | null
+          action: string
+          id?: string
+          ip_address?: string | null
+          record_id: string
+          table_name: string
+          user_id: string
+        }
+        Update: {
+          accessed_at?: string | null
+          action?: string
+          id?: string
+          ip_address?: string | null
+          record_id?: string
+          table_name?: string
+          user_id?: string
         }
         Relationships: []
       }
@@ -849,6 +900,44 @@ export type Database = {
           },
         ]
       }
+      signature_rate_limits: {
+        Row: {
+          attempt_count: number | null
+          blocked_until: string | null
+          first_attempt_at: string | null
+          id: string
+          ip_address: string
+          last_attempt_at: string | null
+          quote_id: string
+        }
+        Insert: {
+          attempt_count?: number | null
+          blocked_until?: string | null
+          first_attempt_at?: string | null
+          id?: string
+          ip_address: string
+          last_attempt_at?: string | null
+          quote_id: string
+        }
+        Update: {
+          attempt_count?: number | null
+          blocked_until?: string | null
+          first_attempt_at?: string | null
+          id?: string
+          ip_address?: string
+          last_attempt_at?: string | null
+          quote_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "signature_rate_limits_quote_id_fkey"
+            columns: ["quote_id"]
+            isOneToOne: false
+            referencedRelation: "quotes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       user_onboarding: {
         Row: {
           completed: boolean
@@ -932,6 +1021,7 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      cleanup_old_rate_limits: { Args: never; Returns: undefined }
       decrypt_customer_personnummer: {
         Args: { customer_id_param: string }
         Returns: string
