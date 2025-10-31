@@ -83,6 +83,46 @@ interface RotRutClassification {
   source: string;
 }
 
+// FAS 2: Enhanced interfaces with transparency fields
+interface WorkItemEnhanced {
+  name: string;
+  hours: number;
+  hourlyRate: number;
+  subtotal: number;
+  description?: string;
+  reasoning: string;
+  confidence: number;
+  sourceOfTruth: 'user_patterns' | 'industry_benchmarks' | 'live_search' | 'assumption';
+}
+
+interface MaterialEnhanced {
+  name: string;
+  quantity: number;
+  unit: string;
+  unitPrice: number;
+  subtotal: number;
+  reasoning: string;
+  confidence: number;
+  sourceOfTruth: 'user_patterns' | 'industry_benchmarks' | 'live_search' | 'assumption';
+}
+
+interface EquipmentEnhanced {
+  name: string;
+  days: number;
+  dailyRate: number;
+  subtotal: number;
+  reasoning: string;
+  confidence: number;
+  sourceOfTruth: 'user_patterns' | 'industry_benchmarks' | 'live_search' | 'assumption';
+}
+
+// FAS 1: Layered context structure
+interface LayeredContext {
+  layer1: string; // Användarspecifik
+  layer2: string; // Global branschdata
+  layer3: string; // Extern kunskap
+}
+
 type ConversationMessage = z.infer<typeof ConversationMessageSchema>;
 
 interface LearningContext {

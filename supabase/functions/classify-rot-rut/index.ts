@@ -58,6 +58,22 @@ Deno.serve(async (req) => {
   - Trädfällning (endast beskärning är RUT)
   - Dränering och markanläggning
 
+**ROT-UNDANTAG (klassas som "none"):**
+❌ Nybyggnation av helt ny byggnad
+❌ Fritidshus som INTE är permanentbostad
+❌ Arbete i lokaler (kontor, butiker) - endast bostäder
+❌ Material som kunden köper själv (endast arbete berättigas)
+❌ Byggnation av helt ny pool, garage som inte är i anslutning till befintlig byggnad
+
+**RUT-UNDANTAG (klassas som "none"):**
+❌ Trädfällning (endast beskärning av levande träd berättigas)
+❌ Trädfällning på ANNANS fastighet
+❌ Stubbfräsning (är markarbete, inte trädgårdsskötsel)
+❌ Läxhjälp, språkundervisning
+❌ Djurskötsel utöver hushållsarbete
+❌ Arbete utanför bostaden (t.ex. gräsklippning i en park)
+❌ Dränering och markanläggning
+
 **VIKTIGA DETALJER:**
 - Stubbfräsning = INGET avdrag (är markarbete, inte trädgårdsskötsel)
 - Trädfällning = INGET avdrag (endast beskärning av levande träd är RUT)
@@ -89,7 +105,8 @@ Svara med JSON:
   "source": "Skatteverket 2025 - [specifik regel]"
 }
 
-**EXEMPEL:**
+**EXEMPEL PÅ KORREKT KLASSIFICERING:**
+
 För "Renovera badrum 8 kvm":
 {
   "deductionType": "rot",
@@ -105,6 +122,24 @@ För "Fälla 3 granar":
   "reasoning": "Trädfällning berättigar inte till skatteavdrag. Endast beskärning av levande träd är RUT-berättigat.",
   "source": "Skatteverket 2025 - RUT-avdrag för trädgårdsskötsel"
 }
+
+För "Bygga nytt garage 50 kvm":
+{
+  "deductionType": "none",
+  "confidence": 95,
+  "reasoning": "Nybyggnation av garage klassas inte som ROT enligt Skatteverket. ROT gäller endast renovering, ombyggnad eller underhåll av BEFINTLIG byggnad.",
+  "source": "Skatteverket SKV 399"
+}
+
+För "Fälla 2 träd i min grannes trädgård":
+{
+  "deductionType": "none",
+  "confidence": 90,
+  "reasoning": "RUT-avdrag gäller endast hushållsarbete på den egna fastigheten. Arbete på annans fastighet berättigar inte till avdrag.",
+  "source": "Skatteverket SKV 410"
+}
+
+**VIKTIGT:** Om deductionType = "none", MÅSTE du ge en tydlig förklaring i reasoning!
 
 Returnera bara JSON, inget annat.`;
 

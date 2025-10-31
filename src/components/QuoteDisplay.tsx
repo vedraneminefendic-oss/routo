@@ -1,7 +1,7 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
-import { FileText, Download, Save, Edit, Send, ChevronDown, Trash2, Copy, Hammer, Sparkles, AlertCircle, BookTemplate } from "lucide-react";
+import { FileText, Download, Save, Edit, Send, ChevronDown, Trash2, Copy, Hammer, Sparkles, AlertCircle, BookTemplate, Info } from "lucide-react";
 import { AIInsightBadge } from "@/components/AIInsightBadge";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
@@ -38,6 +38,8 @@ import { AIProgressIndicator } from "./AIProgressIndicator";
 import { QuoteVariants } from "./QuoteVariants";
 import { FollowupSettings } from "./FollowupSettings";
 import { QuoteValidationWarnings, ValidationIssue } from "./QuoteValidationWarnings";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
 interface WorkItem {
   name: string;
@@ -45,6 +47,10 @@ interface WorkItem {
   hours: number;
   hourlyRate: number;
   subtotal: number;
+  // FAS 2: Transparency fields
+  reasoning?: string;
+  confidence?: number;
+  sourceOfTruth?: 'user_patterns' | 'industry_benchmarks' | 'live_search' | 'assumption';
 }
 
 interface Material {
@@ -53,6 +59,10 @@ interface Material {
   unit: string;
   pricePerUnit: number;
   subtotal: number;
+  // FAS 2: Transparency fields
+  reasoning?: string;
+  confidence?: number;
+  sourceOfTruth?: 'user_patterns' | 'industry_benchmarks' | 'live_search' | 'assumption';
 }
 
 interface Summary {
@@ -75,6 +85,8 @@ interface Quote {
   summary: Summary;
   notes?: string;
   deductionType?: 'rot' | 'rut' | 'none';
+  // FAS 3: Assumptions log
+  assumptions?: string[];
 }
 
 interface QuoteDisplayProps {

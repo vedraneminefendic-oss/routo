@@ -47,3 +47,7 @@ verify_jwt = true
 
 [functions.update-industry-standards]
 verify_jwt = false
+
+[functions.aggregate-global-patterns]
+schedule = "0 3 * * *"  # Kör varje natt kl 03:00
+verify_jwt = false
