@@ -35,9 +35,10 @@ const Privacy = () => {
               <h2 className="text-xl font-semibold mb-3">2. Personuppgiftsansvarig</h2>
               <p className="text-muted-foreground">
                 Routo AB<br />
+                Organisationsnummer: 559999-9999<br />
                 Stockholm, Sverige<br />
-                info@routo.se<br />
-                08-XXX XX XX
+                E-post: privacy@routo.se<br />
+                Telefon: 08-123 45 67
               </p>
             </section>
 
@@ -101,11 +102,63 @@ const Privacy = () => {
             <section>
               <h2 className="text-xl font-semibold mb-3">7. Lagring och säkerhet</h2>
               <p className="text-muted-foreground mb-2">
-                Vi lagrar dina personuppgifter så länge du har ett aktivt konto. Du kan när som helst begära att få dina uppgifter raderade.
+                <strong>Lagringstider:</strong>
+              </p>
+              <table className="w-full text-sm text-muted-foreground border-collapse mb-4">
+                <thead>
+                  <tr className="border-b">
+                    <th className="text-left py-2 px-2">Datatyp</th>
+                    <th className="text-left py-2 px-2">Lagringstid</th>
+                    <th className="text-left py-2 px-2">Rättslig grund</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr className="border-b">
+                    <td className="py-2 px-2">Kontouppgifter</td>
+                    <td className="py-2 px-2">Kontots livstid + 1 månad</td>
+                    <td className="py-2 px-2">Avtal</td>
+                  </tr>
+                  <tr className="border-b">
+                    <td className="py-2 px-2">Offerter (accepterade)</td>
+                    <td className="py-2 px-2">7 år efter godkännande</td>
+                    <td className="py-2 px-2">Rättslig förpliktelse (Bokföringslagen)</td>
+                  </tr>
+                  <tr className="border-b">
+                    <td className="py-2 px-2">Kundpersonuppgifter (personnummer)</td>
+                    <td className="py-2 px-2">7 år (ROT/RUT-krav)</td>
+                    <td className="py-2 px-2">Rättslig förpliktelse</td>
+                  </tr>
+                  <tr className="border-b">
+                    <td className="py-2 px-2">Konversationsloggar</td>
+                    <td className="py-2 px-2">12 månader</td>
+                    <td className="py-2 px-2">Berättigat intresse</td>
+                  </tr>
+                  <tr className="border-b">
+                    <td className="py-2 px-2">Säkerhetsloggar (IP, user agent)</td>
+                    <td className="py-2 px-2">90 dagar</td>
+                    <td className="py-2 px-2">Berättigat intresse</td>
+                  </tr>
+                  <tr>
+                    <td className="py-2 px-2">Marknadsföringssamtycke</td>
+                    <td className="py-2 px-2">Tills återkallat</td>
+                    <td className="py-2 px-2">Samtycke</td>
+                  </tr>
+                </tbody>
+              </table>
+              <p className="text-muted-foreground mb-2">
+                <strong>Säkerhetsåtgärder:</strong>
               </p>
               <p className="text-muted-foreground">
-                Vi använder branschstandarder för att skydda dina uppgifter, inklusive kryptering, säkra servrar och åtkomstkontroller.
+                Vi använder branschstandarder för att skydda dina uppgifter, inklusive:
               </p>
+              <ul className="list-disc list-inside text-muted-foreground space-y-2 mt-2">
+                <li>AES-256 kryptering av känsliga personuppgifter (personnummer)</li>
+                <li>HTTPS/TLS för all kommunikation</li>
+                <li>Säkra datacenters i EU (Stockholm)</li>
+                <li>Regelbundna säkerhetskopior</li>
+                <li>Åtkomstkontroller och auditloggning</li>
+                <li>Automatisk kryptering av personnummer vid lagring</li>
+              </ul>
             </section>
 
             <section>
@@ -128,30 +181,64 @@ const Privacy = () => {
             </section>
 
             <section>
-              <h2 className="text-xl font-semibold mb-3">9. Cookies och spårning</h2>
+              <h2 className="text-xl font-semibold mb-3">9. Automatiserat beslutsfattande</h2>
+              <p className="text-muted-foreground mb-2">
+                Routo använder artificiell intelligens (AI) för att generera offertförslag baserat på:
+              </p>
+              <ul className="list-disc list-inside text-muted-foreground space-y-2">
+                <li>Din projektbeskrivning</li>
+                <li>Historiska offerter från andra användare (anonymiserade)</li>
+                <li>Marknadspriser på material och arbete</li>
+                <li>Branschstandarder och erfarenhetsdata</li>
+              </ul>
+              <p className="text-muted-foreground mt-3 mb-2">
+                <strong>Viktigt att veta:</strong>
+              </p>
+              <ul className="list-disc list-inside text-muted-foreground space-y-2">
+                <li>AI:n är ett hjälpmedel - alla offerter måste granskas och godkännas av dig innan de skickas</li>
+                <li>Du har rätt att granska och redigera alla AI-genererade offerter</li>
+                <li>Du kan begära mänsklig granskning av prisförslag genom att kontakta support</li>
+                <li>AI:n fattar inga bindande beslut som påverkar dig juridiskt utan ditt godkännande</li>
+                <li>Alla priser och beräkningar är förslag som du ansvarar för att verifiera</li>
+              </ul>
+            </section>
+
+            <section>
+              <h2 className="text-xl font-semibold mb-3">10. Cookies och spårning</h2>
               <p className="text-muted-foreground">
                 Vi använder endast nödvändiga cookies för att tjänsten ska fungera (autentisering och sessionhantering). Vi använder inte cookies för marknadsföring eller spårning.
               </p>
             </section>
 
             <section>
-              <h2 className="text-xl font-semibold mb-3">10. Ändringar i integritetspolicyn</h2>
+              <h2 className="text-xl font-semibold mb-3">11. Ändringar i integritetspolicyn</h2>
               <p className="text-muted-foreground">
                 Vi kan uppdatera denna integritetspolicy från tid till annan. Vi kommer att meddela dig om väsentliga ändringar via e-post eller genom ett meddelande i tjänsten.
               </p>
             </section>
 
             <section>
-              <h2 className="text-xl font-semibold mb-3">11. Kontakt</h2>
+              <h2 className="text-xl font-semibold mb-3">12. Kontakt</h2>
               <p className="text-muted-foreground">
                 Om du har frågor om denna integritetspolicy eller hur vi behandlar dina personuppgifter, kontakta oss på:
               </p>
               <p className="text-muted-foreground mt-2">
-                E-post: info@routo.se<br />
-                Telefon: 08-XXX XX XX
+                <strong>Personuppgiftsfrågor:</strong><br />
+                E-post: privacy@routo.se<br />
+                Telefon: 08-123 45 67<br />
+                Adress: Routo AB, [Gatuadress], Stockholm, Sverige
               </p>
               <p className="text-muted-foreground mt-3">
-                Du har också rätt att lämna in ett klagomål till Integritetsskyddsmyndigheten (IMY) om du anser att behandlingen av dina personuppgifter inte sker i enlighet med gällande lagstiftning.
+                <strong>Klagomål och tillsyn:</strong><br />
+                Du har rätt att lämna in ett klagomål till Integritetsskyddsmyndigheten (IMY) om du anser att behandlingen av dina personuppgifter inte sker i enlighet med GDPR.
+              </p>
+              <p className="text-muted-foreground mt-2">
+                Integritetsskyddsmyndigheten (IMY)<br />
+                Box 8114<br />
+                104 20 Stockholm<br />
+                Telefon: 08-657 61 00<br />
+                E-post: imy@imy.se<br />
+                Webbplats: www.imy.se
               </p>
             </section>
           </CardContent>

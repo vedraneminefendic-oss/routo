@@ -145,13 +145,45 @@ const PublicQuote = () => {
 
   const logView = async (quoteId: string) => {
     try {
-      await supabase.from("quote_views").insert({
-        quote_id: quoteId,
-        ip_address: "unknown", // Could be enhanced with a service to get real IP
-        user_agent: navigator.userAgent,
-      });
+      const userAgent = navigator.userAgent;
+      const clientIP = "unknown"; // Browser can't access real IP for security reasons
+      
+      // Check if this IP/user-agent combo has viewed this quote in the last hour
+      const oneHourAgo = new Date(Date.now() - 3600000).toISOString();
+      
+      const { data: recentView } = await supabase
+        .from("quote_views")
+        .select("id")
+        .eq("quote_id", quoteId)
+        .eq("ip_address", clientIP)
+        .eq("user_agent", userAgent)
+        .gte("viewed_at", oneHourAgo)
+        .single();
+      
+      // Only log if no recent view from same IP/user-agent
+      if (!recentView) {
+        await supabase.from("quote_views").insert({
+          quote_id: quoteId,
+          ip_address: clientIP,
+          user_agent: userAgent,
+        });
+      }
     } catch (error) {
-      console.error("Error logging view:", error);
+      // Ignore errors for deduplication check (single() throws if no match)
+      if (error && typeof error === 'object' && 'code' in error && error.code === 'PGRST116') {
+        // No recent view found, insert new view
+        try {
+          await supabase.from("quote_views").insert({
+            quote_id: quoteId,
+            ip_address: "unknown",
+            user_agent: navigator.userAgent,
+          });
+        } catch (insertError) {
+          console.error("Error logging view:", insertError);
+        }
+      } else {
+        console.error("Error checking recent views:", error);
+      }
     }
   };
 

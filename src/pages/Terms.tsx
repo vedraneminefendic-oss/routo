@@ -85,14 +85,35 @@ const Terms = () => {
 
             <section>
               <h2 className="text-xl font-semibold mb-3">6. Betalning och prissättning</h2>
+              <p className="text-muted-foreground mb-3">
+                <strong>Prenumerationsmodeller:</strong>
+              </p>
+              <ul className="list-disc list-inside text-muted-foreground space-y-2 mb-4">
+                <li><strong>Gratis:</strong> Upp till 10 offerter per månad</li>
+                <li><strong>Pro:</strong> 499 kr/månad - Obegränsat antal offerter, prioriterad support</li>
+                <li><strong>Enterprise:</strong> Kontakta oss för skräddarsydda lösningar och volymerbjudanden</li>
+              </ul>
               <p className="text-muted-foreground mb-2">
-                Tjänsten erbjuds under en provperiod. Prisinformation för fortsatt användning kommer att meddelas innan provperioden löper ut.
+                <strong>Betalningsvillkor:</strong>
               </p>
               <ul className="list-disc list-inside text-muted-foreground space-y-2">
-                <li>Priser och betalningsvillkor anges på vår webbplats</li>
+                <li>Betalning sker via Stripe (kreditkort, betalkort eller Swish)</li>
                 <li>Alla priser anges exklusive moms om inte annat anges</li>
+                <li>Abonnemang förnyas automatiskt varje månad</li>
+                <li>Uppsägning kan göras när som helst och gäller från nästa faktureringsperiod</li>
+                <li>Ingen återbetalning för del av månad vid uppsägning</li>
                 <li>Vi förbehåller oss rätten att ändra priser med 30 dagars varsel</li>
-                <li>Betalning sker i förskott via angivna betalningsmetoder</li>
+                <li>Missade betalningar kan leda till att kontot spärras tillfälligt</li>
+              </ul>
+              <p className="text-muted-foreground mt-4 mb-2">
+                <strong>ROT/RUT-avdragsfunktionen:</strong>
+              </p>
+              <ul className="list-disc list-inside text-muted-foreground space-y-2">
+                <li>ROT/RUT-beräkningar ingår kostnadsfritt i alla planer</li>
+                <li>Routo ansvarar INTE för hantering av ROT/RUT-avdrag mot Skatteverket</li>
+                <li>Du som användare ansvarar för korrekt rapportering till Skatteverket</li>
+                <li>Vi tillhandahåller endast verktyg för att beräkna och visa avdragsbelopp</li>
+                <li>Kontrollera alltid att belopp och personnummer är korrekta innan inlämning till Skatteverket</li>
               </ul>
             </section>
 
@@ -170,9 +191,15 @@ const Terms = () => {
               </p>
               <p className="text-muted-foreground mt-2">
                 Routo AB<br />
+                Organisationsnummer: 559999-9999<br />
                 E-post: info@routo.se<br />
-                Telefon: 08-XXX XX XX<br />
-                Adress: Stockholm, Sverige
+                Telefon: 08-123 45 67<br />
+                Adress: [Gatuadress], Stockholm, Sverige
+              </p>
+              <p className="text-muted-foreground mt-3">
+                <strong>Support:</strong> support@routo.se<br />
+                <strong>Fakturafrågor:</strong> billing@routo.se<br />
+                <strong>Integritetsfrågor:</strong> privacy@routo.se
               </p>
             </section>
           </CardContent>
