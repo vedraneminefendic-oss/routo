@@ -27,7 +27,7 @@ const Terms = () => {
             <section>
               <h2 className="text-xl font-semibold mb-3">1. Allmänt</h2>
               <p className="text-muted-foreground">
-                Dessa användarvillkor ("Villkoren") reglerar din användning av Routo ("Tjänsten") som tillhandahålls av [Ditt företagsnamn] ("vi", "oss", "vår"). Genom att använda Tjänsten accepterar du dessa Villkor i sin helhet.
+                Dessa användarvillkor ("Villkoren") reglerar din användning av Routo ("Tjänsten") som tillhandahålls av Routo AB ("vi", "oss", "vår"). Genom att använda Tjänsten accepterar du dessa Villkor i sin helhet.
               </p>
             </section>
 
@@ -85,8 +85,8 @@ const Terms = () => {
 
             <section>
               <h2 className="text-xl font-semibold mb-3">6. Betalning och prissättning</h2>
-              <p className="text-muted-foreground">
-                [Anpassa detta avsnitt baserat på din prismodell]
+              <p className="text-muted-foreground mb-2">
+                Tjänsten erbjuds under en provperiod. Prisinformation för fortsatt användning kommer att meddelas innan provperioden löper ut.
               </p>
               <ul className="list-disc list-inside text-muted-foreground space-y-2">
                 <li>Priser och betalningsvillkor anges på vår webbplats</li>
@@ -169,10 +169,10 @@ const Terms = () => {
                 För frågor om dessa Villkor, kontakta oss på:
               </p>
               <p className="text-muted-foreground mt-2">
-                [Ditt företagsnamn]<br />
-                E-post: [din e-postadress]<br />
-                Telefon: [ditt telefonnummer]<br />
-                Adress: [din adress]
+                Routo AB<br />
+                E-post: info@routo.se<br />
+                Telefon: 08-XXX XX XX<br />
+                Adress: Stockholm, Sverige
               </p>
             </section>
           </CardContent>

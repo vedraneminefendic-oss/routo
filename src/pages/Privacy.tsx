@@ -34,10 +34,10 @@ const Privacy = () => {
             <section>
               <h2 className="text-xl font-semibold mb-3">2. Personuppgiftsansvarig</h2>
               <p className="text-muted-foreground">
-                [Ditt företagsnamn]<br />
-                [Din adress]<br />
-                [Din e-postadress]<br />
-                [Ditt telefonnummer]
+                Routo AB<br />
+                Stockholm, Sverige<br />
+                info@routo.se<br />
+                08-XXX XX XX
               </p>
             </section>
 
@@ -123,7 +123,7 @@ const Privacy = () => {
                 <li><strong>Återkalla samtycke:</strong> När behandlingen baseras på samtycke</li>
               </ul>
               <p className="text-muted-foreground mt-3">
-                För att utöva dina rättigheter, kontakta oss på [din e-postadress].
+                För att utöva dina rättigheter, kontakta oss på info@routo.se.
               </p>
             </section>
 
@@ -147,8 +147,8 @@ const Privacy = () => {
                 Om du har frågor om denna integritetspolicy eller hur vi behandlar dina personuppgifter, kontakta oss på:
               </p>
               <p className="text-muted-foreground mt-2">
-                E-post: [din e-postadress]<br />
-                Telefon: [ditt telefonnummer]
+                E-post: info@routo.se<br />
+                Telefon: 08-XXX XX XX
               </p>
               <p className="text-muted-foreground mt-3">
                 Du har också rätt att lämna in ett klagomål till Integritetsskyddsmyndigheten (IMY) om du anser att behandlingen av dina personuppgifter inte sker i enlighet med gällande lagstiftning.
