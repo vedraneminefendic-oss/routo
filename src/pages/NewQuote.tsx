@@ -4,7 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Wrench, LogOut, Settings as SettingsIcon, BarChart3, Users, ArrowLeft, MessageSquare, Zap } from "lucide-react";
+import { Wrench, LogOut, Settings as SettingsIcon, BarChart3, Users, ArrowLeft, MessageSquare, Zap, Eye } from "lucide-react";
 import { toast } from "sonner";
 import QuoteDisplay from "@/components/QuoteDisplay";
 import QuoteEditor from "@/components/QuoteEditor";
@@ -449,44 +449,86 @@ const NewQuote = () => {
             </div>
           </div>
         ) : (
-          // Show full-width when quote is generated
+          // Show tabs when quote is generated
           <div className="max-w-4xl mx-auto space-y-6">
-            {/* Show chat interface during generation if quote exists */}
-            <ChatInterface 
-              onQuoteGenerated={handleChatGenerateQuote}
-              isGenerating={isGenerating}
-              onConversationUpdate={handleConversationUpdate}
-            />
-            
-            {/* Generated Quote Display */}
-            {!isEditing && (
-              <QuoteDisplay 
-                quote={currentQuote} 
-                onSave={handleSaveQuote}
-                onEdit={handleEditQuote}
-                isSaving={isSaving}
-                hasCustomRates={hasCustomRates}
-                hourlyRate={hourlyRate}
-                qualityWarning={qualityWarning}
-                warningMessage={warningMessage}
-                realismWarnings={realismWarnings}
-                validationErrors={validationErrors}
-                usedReference={usedReference}
-                referenceTitle={referenceTitle}
-                bathroomValidation={bathroomValidation}
-                aiDecisions={aiDecisions}
-              />
-            )}
+            <Card className="border-2 border-primary/20 bg-card shadow-routo">
+              <Tabs defaultValue="view" className="w-full">
+                <div className="border-b px-6 pt-4">
+                  <TabsList className="grid w-full max-w-md grid-cols-2">
+                    <TabsTrigger value="view" className="gap-2">
+                      <Eye className="h-4 w-4" />
+                      Granska offert
+                    </TabsTrigger>
+                    <TabsTrigger value="chat" className="gap-2">
+                      <MessageSquare className="h-4 w-4" />
+                      Förbättra
+                    </TabsTrigger>
+                  </TabsList>
+                </div>
 
-            {/* Quote Editor */}
-            {isEditing && (
-              <QuoteEditor
-                quote={currentQuote}
-                onSave={handleSaveEdit}
-                onCancel={handleCancelEdit}
-                isSaving={isSaving}
-              />
-            )}
+                <TabsContent value="view" className="m-0 p-6">
+                  {isEditing ? (
+                    <QuoteEditor
+                      quote={currentQuote}
+                      onSave={handleSaveEdit}
+                      onCancel={handleCancelEdit}
+                      isSaving={isSaving}
+                    />
+                  ) : (
+                    <div className="space-y-4">
+                      <QuoteDisplay 
+                        quote={currentQuote}
+                        onEdit={handleEditQuote}
+                        onClose={() => {
+                          setCurrentQuote(null);
+                          setIsEditing(false);
+                        }}
+                        isSaving={isSaving}
+                        qualityWarning={qualityWarning}
+                        warningMessage={warningMessage}
+                        realismWarnings={realismWarnings}
+                        validationErrors={validationErrors}
+                        bathroomValidation={bathroomValidation}
+                        aiDecisions={aiDecisions}
+                        usedReference={usedReference}
+                        referenceTitle={referenceTitle}
+                      />
+                      <div className="flex gap-3">
+                        <Button 
+                          onClick={handleSaveQuote}
+                          disabled={isSaving}
+                          className="flex-1 bg-primary hover:bg-primary/90 shadow-routo hover:shadow-routo-lg"
+                        >
+                          {isSaving ? "Sparar..." : "Spara offert"}
+                        </Button>
+                        <Button 
+                          onClick={handleEditQuote}
+                          variant="outline"
+                          className="flex-1"
+                        >
+                          Redigera
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+                </TabsContent>
+
+                <TabsContent value="chat" className="m-0 p-6">
+                  <div className="space-y-4">
+                    <div className="p-4 bg-muted/30 rounded-lg border">
+                      <p className="text-sm text-muted-foreground">
+                        💡 <strong>Tips:</strong> Offerten är inte sparad ännu. Du kan förbättra den här innan du sparar.
+                      </p>
+                    </div>
+                    <ChatInterface 
+                      onQuoteGenerated={handleChatGenerateQuote}
+                      isGenerating={isGenerating}
+                      onConversationUpdate={handleConversationUpdate}
+                    />
+                  </div>
+                </TabsContent>
+              </Tabs>
+            </Card>
           </div>
         )}
       </main>

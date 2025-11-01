@@ -1,10 +1,17 @@
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { FileText, Calendar, Send, Eye, CheckCircle, XCircle, Check, Hammer, Sparkles, Droplet, CookingPot, Paintbrush, Scissors, Trees, Zap, Wrench, Home } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { FileText, Calendar, Send, Eye, CheckCircle, XCircle, Check, Hammer, Sparkles, Droplet, CookingPot, Paintbrush, Scissors, Trees, Zap, Wrench, Home, MessageSquare } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { sv } from "date-fns/locale";
 import { QuoteStatus } from "@/hooks/useQuoteStatus";
 import { EmptyState } from "@/components/EmptyState";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 interface Quote {
   id: string;
@@ -152,7 +159,7 @@ const QuoteList = ({ quotes, onQuoteClick }: QuoteListProps) => {
             <CardContent className="p-4">
               <div className="space-y-2">
                 {/* Header row */}
-                <div className="flex items-start justify-between">
+                <div className="flex items-start justify-between gap-2">
                   <div className="flex-1">
                     <h3 className="font-semibold text-base text-foreground mb-1">{quote.title}</h3>
                     
@@ -175,8 +182,31 @@ const QuoteList = ({ quotes, onQuoteClick }: QuoteListProps) => {
                     )}
                   </div>
                   
-                  {/* Status badges */}
+                  {/* Status badges and actions */}
                   <div className="flex flex-col items-end gap-2">
+                    {/* Quick improve button for non-completed/accepted quotes */}
+                    {quote.status !== 'completed' && quote.status !== 'accepted' && (
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-8 w-8 p-0"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                onQuoteClick?.(quote);
+                              }}
+                            >
+                              <MessageSquare className="h-4 w-4" />
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            <p>Förbättra med AI</p>
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                    )}
                     <Badge className={`${statusConfig.color} text-white flex items-center gap-1 text-xs px-2 py-0.5`}>
                       <StatusIcon className="h-3 w-3" />
                       {statusConfig.label}

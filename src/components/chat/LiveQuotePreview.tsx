@@ -2,6 +2,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Sparkles, TrendingUp, Package, Wrench } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
+import { normalizeDeduction } from "@/lib/utils";
 
 interface LiveQuotePreviewProps {
   quote?: any;
@@ -171,8 +172,9 @@ export const LiveQuotePreview = ({
 
   // Show full quote preview when available
   if (quote) {
+    const { deductionType, deductionAmount, deductionPercentage } = normalizeDeduction(quote);
+    const hasDeduction = deductionAmount > 0 && deductionType !== 'none';
     const totalCost = quote.summary?.customerPays || quote.summary?.totalWithVAT || 0;
-    const hasDeduction = quote.summary?.deduction?.deductionAmount > 0;
     
     return (
       <Card className="sticky top-4 animate-in fade-in-0 slide-in-from-right-4 duration-500">
@@ -204,13 +206,13 @@ export const LiveQuotePreview = ({
                 </div>
                 <div className="flex justify-between text-sm">
                   <span className="text-muted-foreground flex items-center gap-1">
-                    {quote.summary.deduction.type.toUpperCase()}-avdrag
+                    {deductionType.toUpperCase()}-avdrag
                     <Badge variant="secondary" className="text-xs">
-                      -{Math.round(quote.summary.deduction.deductionRate * 100)}%
+                      -{deductionPercentage}%
                     </Badge>
                   </span>
                   <span className="text-green-600 font-medium">
-                    -{formatCurrency(quote.summary.deduction.deductionAmount)}
+                    -{formatCurrency(deductionAmount)}
                   </span>
                 </div>
               </>

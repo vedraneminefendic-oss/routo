@@ -244,9 +244,10 @@ const Quotes = () => {
       {/* Main Content */}
       <main className="container mx-auto px-4 py-8">
         <div className="grid lg:grid-cols-2 gap-6">
-          {/* Left Column - Quote Display/Editor with Tabs for Draft */}
+          {/* Left Column - Quote Display/Editor with Tabs */}
           <div className="space-y-6">
-            {currentQuote && !isEditing && viewingQuote?.status === 'draft' && (
+            {/* Show tabs for all non-completed/accepted quotes */}
+            {currentQuote && !isEditing && viewingQuote?.status !== 'completed' && viewingQuote?.status !== 'accepted' && (
               <Card className="border-2 border-primary/20 bg-card shadow-routo">
                 <Tabs defaultValue="view" className="w-full">
                   <div className="border-b px-6 pt-4">
@@ -280,14 +281,12 @@ const Quotes = () => {
                     <ChatInterface
                       existingQuoteId={viewingQuote.id}
                       onQuoteGenerated={(updatedQuote) => {
-                        // Update the current quote when AI updates it
                         setCurrentQuote(updatedQuote);
                         setIsGeneratingQuote(false);
                       }}
                       isGenerating={isGeneratingQuote}
                       onQuoteUpdated={async () => {
                         await loadQuotes();
-                        // Refresh current quote
                         const updated = await supabase
                           .from('quotes')
                           .select('*')
@@ -310,7 +309,8 @@ const Quotes = () => {
               </Card>
             )}
 
-            {currentQuote && !isEditing && viewingQuote?.status !== 'draft' && (
+            {/* Show regular display for completed/accepted quotes */}
+            {currentQuote && !isEditing && (viewingQuote?.status === 'completed' || viewingQuote?.status === 'accepted') && (
               <QuoteDisplay 
                 quote={currentQuote} 
                 onEdit={handleEditQuote}
