@@ -87,7 +87,13 @@ const Quotes = () => {
     try {
       const { data, error } = await supabase
         .from('quotes')
-        .select('*')
+        .select(`
+          *,
+          customers (
+            name,
+            address
+          )
+        `)
         .order('created_at', { ascending: false });
 
       if (error) throw error;

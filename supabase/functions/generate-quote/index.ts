@@ -5174,6 +5174,7 @@ Svara med **1**, **2** eller **3** (eller "granska", "generera", "mer info")`;
         type: 'complete_quote',
         quote,
         deductionType: finalDeductionType,
+        projectType: conversationFeedback?.understood?.project_type || detectedProject?.projectType || 'övrigt',
         confidence: confidenceScore,
         conversationFeedback,
         readiness,

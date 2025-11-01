@@ -1,6 +1,6 @@
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { FileText, Calendar, Send, Eye, CheckCircle, XCircle, Check, Hammer, Sparkles } from "lucide-react";
+import { FileText, Calendar, Send, Eye, CheckCircle, XCircle, Check, Hammer, Sparkles, Droplet, CookingPot, Paintbrush, Scissors, Trees, Zap, Wrench, Home } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { sv } from "date-fns/locale";
 import { QuoteStatus } from "@/hooks/useQuoteStatus";
@@ -13,6 +13,12 @@ interface Quote {
   created_at: string;
   generated_quote: any;
   edited_quote?: any;
+  project_type?: string;
+  customer_id?: string;
+  customers?: {
+    name: string;
+    address?: string;
+  };
 }
 
 interface QuoteListProps {
@@ -75,6 +81,41 @@ const QuoteList = ({ quotes, onQuoteClick }: QuoteListProps) => {
     return quoteData?.deductionType || quoteData?.summary?.deductionType || null;
   };
 
+  const getProjectTypeIcon = (projectType?: string) => {
+    if (!projectType) return null;
+    
+    const iconMap: Record<string, any> = {
+      'badrum': Droplet,
+      'kök': CookingPot,
+      'målning': Paintbrush,
+      'städning': Scissors,
+      'trädgård': Trees,
+      'el': Zap,
+      'vvs': Wrench,
+      'fönster': Home,
+    };
+    
+    return iconMap[projectType.toLowerCase()] || FileText;
+  };
+
+  const getProjectTypeLabel = (projectType?: string) => {
+    if (!projectType) return null;
+    
+    const labelMap: Record<string, string> = {
+      'badrum': 'Badrum',
+      'kök': 'Kök',
+      'målning': 'Målning',
+      'städning': 'Städning',
+      'trädgård': 'Trädgård',
+      'el': 'El',
+      'vvs': 'VVS',
+      'fönster': 'Fönster',
+      'övrigt': 'Övrigt',
+    };
+    
+    return labelMap[projectType.toLowerCase()] || projectType;
+  };
+
   if (quotes.length === 0) {
     return (
       <EmptyState
@@ -90,6 +131,8 @@ const QuoteList = ({ quotes, onQuoteClick }: QuoteListProps) => {
       {quotes.map((quote) => {
         const statusConfig = getStatusConfig(quote.status);
         const StatusIcon = statusConfig.icon;
+        const ProjectIcon = getProjectTypeIcon(quote.project_type);
+        const projectLabel = getProjectTypeLabel(quote.project_type);
         
         return (
           <Card 
@@ -106,53 +149,76 @@ const QuoteList = ({ quotes, onQuoteClick }: QuoteListProps) => {
               }
             }}
           >
-            <CardContent className="p-3">
-              <div className="flex items-start justify-between">
-                <div className="flex-1">
-                  <div className="flex items-center gap-2 mb-0.5">
-                    <FileText className="h-3.5 w-3.5 text-primary" />
-                    <h3 className="font-semibold text-sm text-foreground">{quote.title}</h3>
-                  </div>
-                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                    <span className="flex items-center gap-1">
-                      <Calendar className="h-3 w-3" />
-                      {formatDistanceToNow(new Date(quote.created_at), { 
-                        addSuffix: true, 
-                        locale: sv 
-                      })}
-                    </span>
-                    {quote.generated_quote?.summary && (
-                      <span className="font-medium text-primary">
-                        {formatCurrency(quote.generated_quote.summary.customerPays)}
-                      </span>
+            <CardContent className="p-4">
+              <div className="space-y-2">
+                {/* Header row */}
+                <div className="flex items-start justify-between">
+                  <div className="flex-1">
+                    <h3 className="font-semibold text-base text-foreground mb-1">{quote.title}</h3>
+                    
+                    {/* Customer info */}
+                    {quote.customers && (
+                      <div className="text-sm text-muted-foreground mb-1">
+                        <span className="font-medium">{quote.customers.name}</span>
+                        {quote.customers.address && (
+                          <span className="ml-2">• {quote.customers.address}</span>
+                        )}
+                      </div>
+                    )}
+                    
+                    {/* Project type */}
+                    {ProjectIcon && projectLabel && (
+                      <div className="flex items-center gap-1.5 text-sm text-muted-foreground mb-2">
+                        <ProjectIcon className="h-4 w-4 text-primary" />
+                        <span>{projectLabel}</span>
+                      </div>
                     )}
                   </div>
+                  
+                  {/* Status badges */}
+                  <div className="flex flex-col items-end gap-2">
+                    <Badge className={`${statusConfig.color} text-white flex items-center gap-1 text-xs px-2 py-0.5`}>
+                      <StatusIcon className="h-3 w-3" />
+                      {statusConfig.label}
+                    </Badge>
+                    
+                    {(() => {
+                      const deductionType = getDeductionType(quote);
+                      if (deductionType === 'rot') {
+                        return (
+                          <Badge variant="outline" className="text-blue-600 border-blue-600 text-xs px-2 py-0.5">
+                            <Hammer className="h-3 w-3 mr-1" />
+                            ROT
+                          </Badge>
+                        );
+                      }
+                      if (deductionType === 'rut') {
+                        return (
+                          <Badge variant="outline" className="text-green-600 border-green-600 text-xs px-2 py-0.5">
+                            <Sparkles className="h-3 w-3 mr-1" />
+                            RUT
+                          </Badge>
+                        );
+                      }
+                      return null;
+                    })()}
+                  </div>
                 </div>
-                <div className="flex items-center gap-2">
-                  {(() => {
-                    const deductionType = getDeductionType(quote);
-                    if (deductionType === 'rot') {
-                      return (
-                        <Badge variant="outline" className="text-blue-600 border-blue-600 text-xs px-2 py-0.5">
-                          <Hammer className="h-3 w-3 mr-1" />
-                          ROT
-                        </Badge>
-                      );
-                    }
-                    if (deductionType === 'rut') {
-                      return (
-                        <Badge variant="outline" className="text-green-600 border-green-600 text-xs px-2 py-0.5">
-                          <Sparkles className="h-3 w-3 mr-1" />
-                          RUT
-                        </Badge>
-                      );
-                    }
-                    return null;
-                  })()}
-                  <Badge className={`${statusConfig.color} text-white flex items-center gap-1 text-xs px-2 py-0.5`}>
-                    <StatusIcon className="h-3 w-3" />
-                    {statusConfig.label}
-                  </Badge>
+                
+                {/* Footer row */}
+                <div className="flex items-center justify-between pt-2 border-t border-border/50">
+                  <span className="flex items-center gap-1 text-xs text-muted-foreground">
+                    <Calendar className="h-3 w-3" />
+                    {formatDistanceToNow(new Date(quote.created_at), { 
+                      addSuffix: true, 
+                      locale: sv 
+                    })}
+                  </span>
+                  {quote.generated_quote?.summary && (
+                    <span className="font-semibold text-sm text-primary">
+                      {formatCurrency(quote.generated_quote.summary.customerPays)}
+                    </span>
+                  )}
                 </div>
               </div>
             </CardContent>

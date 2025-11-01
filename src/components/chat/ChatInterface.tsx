@@ -57,6 +57,7 @@ export const ChatInterface = ({ onQuoteGenerated, isGenerating, onConversationUp
   const [userMessage, setUserMessage] = useState<string>("");
   const [suggestedQuestion, setSuggestedQuestion] = useState<string | null>(null);
   const [isDraftQuote, setIsDraftQuote] = useState(false); // FAS 22: Track if current quote is draft
+  const [projectType, setProjectType] = useState<string>('övrigt'); // Track project type from backend
   
   // P1: Progress tracking
   const [questionsAsked, setQuestionsAsked] = useState(0);
@@ -559,6 +560,7 @@ export const ChatInterface = ({ onQuoteGenerated, isGenerating, onConversationUp
           setReadiness(data.readiness);
           setShowQuoteSheet(true);
           setIsDraftQuote(data.isDraft || false); // FAS 22: Track if draft quote
+          setProjectType(data.projectType || 'övrigt'); // Save project type from backend
           
           // SPRINT 1.5: Track delta mode state
           if (data.is_delta_mode) {
@@ -766,6 +768,7 @@ export const ChatInterface = ({ onQuoteGenerated, isGenerating, onConversationUp
           description: messages.find(m => m.role === 'user')?.content || '',
           generated_quote: generatedQuote,
           deduction_type: deductionType,
+          project_type: projectType,
           status: 'draft',
           customer_id: null
         })
@@ -813,6 +816,7 @@ export const ChatInterface = ({ onQuoteGenerated, isGenerating, onConversationUp
           description: messages.find(m => m.role === 'user')?.content || '',
           generated_quote: generatedQuote,
           deduction_type: deductionType,
+          project_type: projectType,
           status: 'draft',
           customer_id: null
         })

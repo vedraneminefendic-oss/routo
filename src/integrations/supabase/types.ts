@@ -827,6 +827,7 @@ export type Database = {
           is_edited: boolean | null
           locked: boolean | null
           next_followup_at: string | null
+          project_type: string | null
           quote_status: Database["public"]["Enums"]["quote_status"] | null
           responded_at: string | null
           sent_at: string | null
@@ -853,6 +854,7 @@ export type Database = {
           is_edited?: boolean | null
           locked?: boolean | null
           next_followup_at?: string | null
+          project_type?: string | null
           quote_status?: Database["public"]["Enums"]["quote_status"] | null
           responded_at?: string | null
           sent_at?: string | null
@@ -879,6 +881,7 @@ export type Database = {
           is_edited?: boolean | null
           locked?: boolean | null
           next_followup_at?: string | null
+          project_type?: string | null
           quote_status?: Database["public"]["Enums"]["quote_status"] | null
           responded_at?: string | null
           sent_at?: string | null

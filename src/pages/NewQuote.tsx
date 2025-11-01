@@ -238,6 +238,18 @@ const NewQuote = () => {
 
     setIsSaving(true);
     try {
+      // Determine project type from description
+      const description = currentDescription.toLowerCase();
+      let projectType = 'övrigt';
+      if (description.includes('badrum')) projectType = 'badrum';
+      else if (description.includes('kök')) projectType = 'kök';
+      else if (description.includes('målning') || description.includes('måla')) projectType = 'målning';
+      else if (description.includes('städ')) projectType = 'städning';
+      else if (description.includes('trädgård')) projectType = 'trädgård';
+      else if (description.includes('el') || description.includes('elektr')) projectType = 'el';
+      else if (description.includes('vvs') || description.includes('rör')) projectType = 'vvs';
+      else if (description.includes('fönster')) projectType = 'fönster';
+
       const { error } = await supabase
         .from('quotes')
         .insert({
@@ -245,6 +257,7 @@ const NewQuote = () => {
           title: currentQuote.title,
           description: currentDescription,
           generated_quote: currentQuote,
+          project_type: projectType,
           status: 'draft',
           customer_id: currentCustomerId || null
         });
@@ -270,6 +283,18 @@ const NewQuote = () => {
 
     setIsSaving(true);
     try {
+      // Determine project type from description
+      const description = currentDescription.toLowerCase();
+      let projectType = 'övrigt';
+      if (description.includes('badrum')) projectType = 'badrum';
+      else if (description.includes('kök')) projectType = 'kök';
+      else if (description.includes('målning') || description.includes('måla')) projectType = 'målning';
+      else if (description.includes('städ')) projectType = 'städning';
+      else if (description.includes('trädgård')) projectType = 'trädgård';
+      else if (description.includes('el') || description.includes('elektr')) projectType = 'el';
+      else if (description.includes('vvs') || description.includes('rör')) projectType = 'vvs';
+      else if (description.includes('fönster')) projectType = 'fönster';
+
       const { error } = await supabase
         .from('quotes')
         .insert({
@@ -279,6 +304,7 @@ const NewQuote = () => {
           generated_quote: currentQuote,
           edited_quote: editedQuote,
           is_edited: true,
+          project_type: projectType,
           status: 'draft',
           customer_id: currentCustomerId || null
         });
