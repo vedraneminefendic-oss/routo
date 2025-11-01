@@ -5,11 +5,13 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Search, AlertCircle, Plus } from "lucide-react";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Search, AlertCircle, Plus, Eye, MessageSquare } from "lucide-react";
 import { toast } from "sonner";
 import QuoteDisplay from "@/components/QuoteDisplay";
 import QuoteEditor from "@/components/QuoteEditor";
 import QuoteList from "@/components/QuoteList";
+import { ChatInterface } from "@/components/chat/ChatInterface";
 import { ContextualHelp } from "@/components/ContextualHelp";
 import { AppHeader } from "@/components/AppHeader";
 
@@ -30,6 +32,7 @@ const Quotes = () => {
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState(filterParam || "all");
   const [pendingQuotesCount, setPendingQuotesCount] = useState(0);
+  const [isGeneratingQuote, setIsGeneratingQuote] = useState(false);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -241,9 +244,73 @@ const Quotes = () => {
       {/* Main Content */}
       <main className="container mx-auto px-4 py-8">
         <div className="grid lg:grid-cols-2 gap-6">
-          {/* Left Column - Quote Display/Editor */}
+          {/* Left Column - Quote Display/Editor with Tabs for Draft */}
           <div className="space-y-6">
-            {currentQuote && !isEditing && (
+            {currentQuote && !isEditing && viewingQuote?.status === 'draft' && (
+              <Card className="border-2 border-primary/20 bg-card shadow-routo">
+                <Tabs defaultValue="view" className="w-full">
+                  <div className="border-b px-6 pt-4">
+                    <TabsList className="grid w-full max-w-md grid-cols-2">
+                      <TabsTrigger value="view" className="gap-2">
+                        <Eye className="h-4 w-4" />
+                        Visa offert
+                      </TabsTrigger>
+                      <TabsTrigger value="chat" className="gap-2">
+                        <MessageSquare className="h-4 w-4" />
+                        Chatta & förbättra
+                      </TabsTrigger>
+                    </TabsList>
+                  </div>
+
+                  <TabsContent value="view" className="m-0 p-6">
+                    <QuoteDisplay 
+                      quote={currentQuote} 
+                      onEdit={handleEditQuote}
+                      onClose={handleCloseQuote}
+                      onDelete={handleDeleteQuote}
+                      onDuplicate={handleDuplicateQuote}
+                      isSaving={isSaving}
+                      quoteId={viewingQuote?.id}
+                      currentStatus={viewingQuote?.status}
+                      onStatusChanged={loadQuotes}
+                    />
+                  </TabsContent>
+
+                  <TabsContent value="chat" className="m-0 p-6">
+                    <ChatInterface
+                      existingQuoteId={viewingQuote.id}
+                      onQuoteGenerated={(updatedQuote) => {
+                        // Update the current quote when AI updates it
+                        setCurrentQuote(updatedQuote);
+                        setIsGeneratingQuote(false);
+                      }}
+                      isGenerating={isGeneratingQuote}
+                      onQuoteUpdated={async () => {
+                        await loadQuotes();
+                        // Refresh current quote
+                        const updated = await supabase
+                          .from('quotes')
+                          .select('*')
+                          .eq('id', viewingQuote.id)
+                          .single();
+                        if (updated.data) {
+                          const updatedQuoteData = updated.data.edited_quote || updated.data.generated_quote;
+                          if (updatedQuoteData && typeof updatedQuoteData === 'object') {
+                            setCurrentQuote({
+                              ...(updatedQuoteData as any),
+                              deductionType: updated.data.deduction_type || (updatedQuoteData as any).deductionType || 'none'
+                            });
+                            setViewingQuote(updated.data);
+                          }
+                        }
+                      }}
+                    />
+                  </TabsContent>
+                </Tabs>
+              </Card>
+            )}
+
+            {currentQuote && !isEditing && viewingQuote?.status !== 'draft' && (
               <QuoteDisplay 
                 quote={currentQuote} 
                 onEdit={handleEditQuote}
