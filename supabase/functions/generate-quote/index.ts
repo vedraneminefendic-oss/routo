@@ -421,14 +421,24 @@ function buildEnhancedDescriptionFromSummary(
   if (summary.budget) parts.push(`**Budget:** ${summary.budget}`);
   if (summary.timeline) parts.push(`**Tidsplan:** ${summary.timeline}`);
   
-  // Add special requirements
-  if (summary.specialRequirements && summary.specialRequirements.length > 0) {
-    parts.push(`**Speciella krav:** ${summary.specialRequirements.join(', ')}`);
+  // Add special requirements (handle both string and array)
+  if (summary.specialRequirements) {
+    const specialReqStr = Array.isArray(summary.specialRequirements)
+      ? summary.specialRequirements.join(', ')
+      : String(summary.specialRequirements);
+    if (specialReqStr && specialReqStr.length > 0 && specialReqStr !== 'undefined') {
+      parts.push(`**Speciella krav:** ${specialReqStr}`);
+    }
   }
   
-  // Add exclusions
-  if (summary.exclusions && summary.exclusions.length > 0) {
-    parts.push(`**Exkluderat:** ${summary.exclusions.join(', ')}`);
+  // Add exclusions (handle both string and array)
+  if (summary.exclusions) {
+    const exclusionsStr = Array.isArray(summary.exclusions)
+      ? summary.exclusions.join(', ')
+      : String(summary.exclusions);
+    if (exclusionsStr && exclusionsStr.length > 0 && exclusionsStr !== 'undefined') {
+      parts.push(`**Exkluderat:** ${exclusionsStr}`);
+    }
   }
   
   // Add specific customer answers
