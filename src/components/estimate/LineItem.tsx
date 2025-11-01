@@ -9,6 +9,10 @@ export interface LineItemData {
   quantity: number;
   unit: string;
   unitPrice: number;
+  description?: string; // Optional description for work items
+  workerType?: string; // Optional worker type (e.g., "Elektriker", "Rörmokare")
+  rotEligible?: boolean; // Optional ROT/RUT eligibility flag
+  rotAmount?: number; // Optional ROT/RUT eligible amount
 }
 
 interface LineItemProps {

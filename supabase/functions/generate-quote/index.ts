@@ -32,6 +32,8 @@ import { detectProjectType, getProjectPromptAddition, PROJECT_STANDARDS, normali
 // FAS 1, 2, 4: Import layered prompt and material pricing
 import { buildLayeredPrompt } from './helpers/layeredPrompt.ts';
 import { searchMaterialPriceLive } from './helpers/materialPricing.ts';
+// Import assumption engine
+import { generateAssumptions, getHistoricalPatterns, calculateCompleteness } from './helpers/assumptionEngine.ts';
 
 // Brand dictionary and synonyms for better language understanding
 const KEYWORD_SYNONYMS: Record<string, string[]> = {
@@ -4962,6 +4964,121 @@ Svara med **1**, **2** eller **3** (eller "granska", "generera", "mer info")`;
       } else {
         console.log('✅ Bathroom quote passed validation');
       }
+    }
+
+    // ============================================
+    // NEW: GENERATE ASSUMPTIONS FROM HISTORY
+    // ============================================
+    console.log('🧠 Generating assumptions from conversation and history...');
+    
+    const historicalPattern = await getHistoricalPatterns(
+      supabaseClient,
+      user_id,
+      detectedProject?.displayName || 'unknown',
+      conversationSummary?.measurements?.area || 1
+    );
+    
+    const assumptions = generateAssumptions(
+      conversationSummary || conversationFeedback,
+      historicalPattern,
+      detectedProject?.displayName || 'unknown'
+    );
+    
+    console.log(`✅ Generated ${assumptions.length} assumptions`);
+    assumptions.forEach(a => console.log(`   - ${a.text} (${a.confidence}% confidence)`));
+    
+    // Add assumptions to quote
+    quote.assumptions = assumptions;
+    
+    // ============================================
+    // NEW: ADD CUSTOMER RESPONSIBILITIES
+    // ============================================
+    if (isBathroomProject(completeDescription) || isKitchenProject(completeDescription)) {
+      quote.customerResponsibilities = [];
+      
+      // Check if customer mentioned buying materials themselves
+      const conversationText = actualConversationHistory.map(m => m.content).join(' ').toLowerCase();
+      
+      if (conversationText.includes('själv') && (conversationText.includes('kakel') || conversationText.includes('inredning'))) {
+        if (isBathroomProject(completeDescription)) {
+          quote.customerResponsibilities.push({
+            item: 'Kakel/klinker',
+            estimatedCost: '15 000 - 30 000 kr',
+            note: 'Kunden köper själv enligt eget val av stil och kvalitet. Vi monterar det ni väljer.'
+          });
+          quote.customerResponsibilities.push({
+            item: 'Badrumsinredning (WC, dusch, tvättställ, skåp)',
+            estimatedCost: '20 000 - 50 000 kr',
+            note: 'Kunden köper själv. Vi monterar och ansluter inredningen.'
+          });
+        }
+        
+        if (isKitchenProject(completeDescription)) {
+          quote.customerResponsibilities.push({
+            item: 'Köksluckor och bänkskiva',
+            estimatedCost: '40 000 - 80 000 kr',
+            note: 'Kunden väljer och köper själv från t.ex. IKEA. Vi monterar kök et.'
+          });
+          quote.customerResponsibilities.push({
+            item: 'Vitvaror (spis, ugn, kyl, diskmaskin)',
+            estimatedCost: '30 000 - 60 000 kr',
+            note: 'Kunden köper själv. Vi ansluter och installerar vitvarorna.'
+          });
+        }
+        
+        console.log(`✅ Added ${quote.customerResponsibilities.length} customer responsibility items`);
+      }
+    }
+    
+    // ============================================
+    // NEW: CLASSIFY ROT/RUT PER WORK ITEM
+    // ============================================
+    console.log('🔍 Classifying ROT/RUT eligibility per work item...');
+    
+    for (const workItem of quote.workItems || []) {
+      // Simple classification based on work type
+      const workName = workItem.name.toLowerCase();
+      
+      // ROT-eligible work
+      const rotKeywords = ['rivning', 'vvs', 'el-', 'elektr', 'kakel', 'målning', 'golvläggning', 
+                          'tätskikt', 'ventilation', 'fönster', 'renovering', 'montering'];
+      
+      // RUT-eligible work
+      const rutKeywords = ['städ', 'trädgård', 'gräsklipp', 'beskär', 'sn öröj'];
+      
+      const isROT = rotKeywords.some(kw => workName.includes(kw));
+      const isRUT = rutKeywords.some(kw => workName.includes(kw));
+      
+      if (isROT || isRUT) {
+        workItem.rotEligible = true;
+        workItem.rotAmount = workItem.subtotal; // Full work cost is eligible
+        workItem.sourceOfTruth = 'ROT-lista (Skatteverket)';
+        console.log(`   ✅ ${workItem.name}: ROT/RUT-berättigad (${workItem.subtotal} kr)`);
+      } else {
+        workItem.rotEligible = false;
+        console.log(`   ❌ ${workItem.name}: Ej ROT/RUT-berättigad`);
+      }
+    }
+    
+    // ============================================
+    // NEW: CALCULATE RISK MARGIN (Optional)
+    // ============================================
+    const lowConfidenceAssumptions = assumptions.filter(a => a.confidence < 60).length;
+    const projectValue = quote.summary?.totalWithVAT || 0;
+    
+    if (projectValue > 100000 && lowConfidenceAssumptions > 3) {
+      const riskMargin = Math.round(projectValue * 0.05);
+      console.log(`⚠️ Adding 5% risk margin (${riskMargin} kr) due to ${lowConfidenceAssumptions} low-confidence assumptions`);
+      
+      quote.riskMargin = {
+        amount: riskMargin,
+        percentage: 5,
+        reason: `Projektet innehåller ${lowConfidenceAssumptions} osäkra antaganden och är värt över 100 000 kr`
+      };
+      
+      // Optionally add to summary
+      // quote.summary.totalWithVAT += riskMargin;
+      // quote.summary.customerPays += riskMargin;
     }
 
     // ============================================

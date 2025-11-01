@@ -66,11 +66,38 @@ export const EstimateSection = ({
                 className="animate-in fade-in-0 slide-in-from-top-2"
                 style={{ animationDelay: `${index * 50}ms` }}
               >
-                <LineItem
-                  item={item}
-                  onUpdate={(updatedItem) => onItemUpdate(index, updatedItem)}
-                  onDelete={() => onItemDelete(index)}
-                />
+                <div className="p-4 hover:bg-muted/30 transition-colors">
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2 mb-1">
+                        <h4 className="font-semibold text-foreground">{item.name}</h4>
+                        {(item as any).workerType && (
+                          <span className="text-xs px-2 py-0.5 bg-primary/10 text-primary rounded-full font-medium">
+                            {(item as any).workerType}
+                          </span>
+                        )}
+                        {(item as any).rotEligible && (
+                          <span className="text-xs px-2 py-0.5 bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 rounded-full font-medium">
+                            ROT/RUT
+                          </span>
+                        )}
+                      </div>
+                      {item.description && (
+                        <p className="text-sm text-muted-foreground mb-2">{item.description}</p>
+                      )}
+                      <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                        <span>{item.quantity} {item.unit}</span>
+                        <span>×</span>
+                        <span>{item.unitPrice.toLocaleString('sv-SE')} kr/{item.unit}</span>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <div className="text-lg font-bold text-primary">
+                        {(item.quantity * item.unitPrice).toLocaleString('sv-SE')} kr
+                      </div>
+                    </div>
+                  </div>
+                </div>
               </div>
             ))}
           </div>

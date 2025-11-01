@@ -9,6 +9,7 @@ interface EstimateSummaryProps {
   workCost?: number;
   materialCost?: number;
   vat?: number;
+  vatAmount?: number; // New standard field
   totalWithVAT?: number;
   rotRutDeduction?: {
     type: 'ROT' | 'RUT';
@@ -25,10 +26,13 @@ export const EstimateSummary = ({
   workCost = 0,
   materialCost = 0,
   vat = 0,
+  vatAmount,
   totalWithVAT = 0,
   rotRutDeduction,
   total = 0
 }: EstimateSummaryProps) => {
+  // Fix: Support both 'vat' (legacy) and 'vatAmount' (new standard)
+  const displayVat = vatAmount !== undefined ? vatAmount : vat;
   // ÅTGÄRD 2A: Säkerställ att ROT/RUT-data alltid har värden (med backwards compatibility)
   const safeRotRutDeduction = rotRutDeduction ? {
     ...rotRutDeduction,
@@ -67,10 +71,10 @@ export const EstimateSummary = ({
           </div>
 
           {/* VAT */}
-          {vat !== undefined && (
+          {(vat !== undefined || vatAmount !== undefined) && displayVat > 0 && (
             <div className="flex items-center justify-between text-muted-foreground text-sm">
               <span>Moms (25%)</span>
-              <span>{vat.toLocaleString('sv-SE')} kr</span>
+              <span>{displayVat.toLocaleString('sv-SE')} kr</span>
             </div>
           )}
 

@@ -2,6 +2,9 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.0";
 import { getProjectRequirements, ProjectRequirements } from "./helpers/smartQuestions.ts";
 
+// Import completeness calculation
+import { calculateCompleteness } from '../generate-quote/helpers/assumptionEngine.ts';
+
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
@@ -35,6 +38,23 @@ async function generateSmartQuestions(
   const missingCategories = Object.entries(checklist)
     .filter(([_, covered]) => !covered)
     .map(([cat, _]) => cat);
+  
+  // NEW: Calculate conversation completeness
+  const completeness = calculateCompleteness(conversationSummary);
+  console.log(`📊 Conversation completeness: ${completeness.completeness}%`);
+  console.log(`   Missing critical: ${completeness.missingCritical.join(', ') || 'None'}`);
+  console.log(`   Missing optional: ${completeness.missingOptional.join(', ') || 'None'}`);
+  
+  // Adjust max questions based on completeness
+  if (completeness.completeness < 30) {
+    maxQuestionsToGenerate = 3; // Ask more when completeness is low
+  } else if (completeness.completeness < 70) {
+    maxQuestionsToGenerate = 2;
+  } else {
+    maxQuestionsToGenerate = 1; // Just confirm when almost complete
+  }
+  
+  console.log(`🎯 Adjusted question budget: ${maxQuestionsToGenerate} questions`);
   
   // FAS 24: Different prompt for refinement vs initial questions
   const refinementPrompt = isRefinement ? `

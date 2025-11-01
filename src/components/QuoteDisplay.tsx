@@ -40,6 +40,8 @@ import { FollowupSettings } from "./FollowupSettings";
 import { QuoteValidationWarnings, ValidationIssue } from "./QuoteValidationWarnings";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { ROTSummary } from "@/components/ROTSummary";
+import { AssumptionsList } from "@/components/AssumptionsList";
 
 interface WorkItem {
   name: string;
@@ -85,8 +87,20 @@ interface Quote {
   summary: Summary;
   notes?: string;
   deductionType?: 'rot' | 'rut' | 'none';
-  // FAS 3: Assumptions log
-  assumptions?: string[];
+  // New: Assumptions from assumptionEngine
+  assumptions?: Array<{
+    text: string;
+    confidence: number;
+    sourceOfTruth: string;
+    canConfirm: boolean;
+    field: string;
+  }>;
+  // New: Customer responsibilities
+  customerResponsibilities?: Array<{
+    item: string;
+    estimatedCost: string;
+    note: string;
+  }>;
 }
 
 interface QuoteDisplayProps {
@@ -897,6 +911,65 @@ const QuoteDisplay = ({
         )}
 
         <Separator />
+
+        {/* ROT/RUT Summary - New component for detailed breakdown */}
+        {deductionAmount > 0 && quote.deductionType && quote.deductionType !== 'none' && (
+          <div className="my-6">
+            <ROTSummary
+              workCost={quote.summary.workCost}
+              materialCost={quote.summary.materialCost}
+              rotEligibleAmount={quote.summary.workCost}
+              deductionType={quote.deductionType}
+              totalWithVAT={quote.summary.totalWithVAT}
+            />
+          </div>
+        )}
+
+        {/* Customer Responsibilities - What customer needs to buy themselves */}
+        {quote.customerResponsibilities && quote.customerResponsibilities.length > 0 && (
+          <div className="my-6">
+            <Card className="border-2 border-blue-200 dark:border-blue-800">
+              <CardContent className="pt-6">
+                <div className="flex items-center gap-2 mb-4">
+                  <Package className="h-5 w-5 text-blue-600" />
+                  <h3 className="font-semibold text-lg">Material kunden ansvarar för själv</h3>
+                </div>
+                <p className="text-sm text-muted-foreground mb-4">
+                  Följande ingår INTE i offerten (kunden köper själv):
+                </p>
+                <div className="space-y-3">
+                  {quote.customerResponsibilities.map((item, index) => (
+                    <div key={index} className="flex items-start justify-between p-3 bg-muted/50 rounded-lg">
+                      <div>
+                        <p className="font-medium">{item.item}</p>
+                        <p className="text-sm text-muted-foreground mt-1">{item.note}</p>
+                      </div>
+                      <Badge variant="outline">{item.estimatedCost}</Badge>
+                    </div>
+                  ))}
+                </div>
+                <p className="text-xs text-muted-foreground mt-4 p-3 bg-yellow-50 dark:bg-yellow-950/20 rounded-lg border border-yellow-200 dark:border-yellow-800">
+                  💡 <strong>Tips:</strong> Dessa kostnader tillkommer utöver offerten. Vi monterar de material ni köper.
+                </p>
+              </CardContent>
+            </Card>
+          </div>
+        )}
+
+        {/* Assumptions List - Show AI assumptions with confidence */}
+        {quote.assumptions && quote.assumptions.length > 0 && (
+          <div className="my-6">
+            <AssumptionsList
+              assumptions={quote.assumptions}
+              onConfirm={(field) => {
+                toast.success(`Antagande bekräftat: ${field}`);
+              }}
+              onEdit={(field) => {
+                toast.info(`Öppnar redigering för: ${field}`);
+              }}
+            />
+          </div>
+        )}
 
         {/* Summary */}
         <div className="bg-muted/30 rounded-lg p-6">
