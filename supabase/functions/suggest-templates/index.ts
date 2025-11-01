@@ -29,7 +29,7 @@ serve(async (req) => {
       .from("quote_templates")
       .select("*")
       .eq("user_id", userId)
-      .order("usage_count", { ascending: false });
+      .order("created_at", { ascending: false });
 
     if (templatesError) throw templatesError;
 

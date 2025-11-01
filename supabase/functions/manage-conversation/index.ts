@@ -593,12 +593,11 @@ serve(async (req) => {
       );
     }
 
-    const { action, sessionId, message, status, learnedPreferences } = await req.json();
+    const body = await req.json();
+    const { action, sessionId, message, status, learnedPreferences, projectDescription = 'New quote', quoteId = null } = body;
 
     // CREATE SESSION
     if (action === 'create_session') {
-      const body = await req.json();
-      const { projectDescription = 'New quote', quoteId = null } = body;
 
       const { data: session, error } = await supabaseClient
         .from('conversation_sessions')
