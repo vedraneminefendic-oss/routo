@@ -4532,12 +4532,23 @@ Svara med **1**, **2** eller **3** (eller "granska", "generera", "mer info")`;
     // Check if user has a budget constraint
     if (conversationSummary?.budget || conversationFeedback?.understood?.budget) {
       const userBudget = conversationSummary?.budget || conversationFeedback?.understood?.budget;
-      console.log(`💡 FAS 13: User mentioned budget: ${userBudget}`);
+      console.log(`💡 FAS 13: User mentioned budget: ${JSON.stringify(userBudget)}`);
       
       // If estimate exceeds user budget, warn them
       if (priceEstimate.max > 0 && userBudget) {
-        const budgetNumber = parseInt(userBudget.replace(/[^\d]/g, ''));
-        if (!isNaN(budgetNumber) && priceEstimate.min > budgetNumber) {
+        // Handle different budget types (string, number, object)
+        let budgetNumber: number | null = null;
+        
+        if (typeof userBudget === 'string') {
+          budgetNumber = parseInt(userBudget.replace(/[^\d]/g, ''));
+        } else if (typeof userBudget === 'number') {
+          budgetNumber = userBudget;
+        } else if (typeof userBudget === 'object' && userBudget !== null) {
+          // Handle object case - could be { min, max } or other structure
+          budgetNumber = (userBudget as any).max || (userBudget as any).min || (userBudget as any).amount || null;
+        }
+        
+        if (budgetNumber && !isNaN(budgetNumber) && priceEstimate.min > budgetNumber) {
           console.log(`⚠️ FAS 13: Estimated price (${priceEstimate.min} kr) exceeds budget (${budgetNumber} kr)`);
           
           return new Response(
