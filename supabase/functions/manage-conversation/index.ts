@@ -597,11 +597,15 @@ serve(async (req) => {
 
     // CREATE SESSION
     if (action === 'create_session') {
+      const body = await req.json();
+      const { projectDescription = 'New quote', quoteId = null } = body;
+
       const { data: session, error } = await supabaseClient
         .from('conversation_sessions')
         .insert({
           user_id: user.id,
-          status: 'active'
+          status: 'active',
+          quote_id: quoteId
         })
         .select()
         .single();

@@ -815,6 +815,7 @@ export type Database = {
         Row: {
           auto_followup_enabled: boolean | null
           completed_at: string | null
+          conversation_session_id: string | null
           created_at: string
           customer_id: string | null
           deduction_type: string | null
@@ -842,6 +843,7 @@ export type Database = {
         Insert: {
           auto_followup_enabled?: boolean | null
           completed_at?: string | null
+          conversation_session_id?: string | null
           created_at?: string
           customer_id?: string | null
           deduction_type?: string | null
@@ -869,6 +871,7 @@ export type Database = {
         Update: {
           auto_followup_enabled?: boolean | null
           completed_at?: string | null
+          conversation_session_id?: string | null
           created_at?: string
           customer_id?: string | null
           deduction_type?: string | null
@@ -894,6 +897,13 @@ export type Database = {
           viewed_at?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "quotes_conversation_session_id_fkey"
+            columns: ["conversation_session_id"]
+            isOneToOne: false
+            referencedRelation: "conversation_sessions"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "quotes_customer_id_fkey"
             columns: ["customer_id"]

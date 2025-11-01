@@ -77,8 +77,9 @@ const RequestSchema = z.object({
   referenceQuoteId: z.string().optional(),
   imageAnalysis: z.any().optional(),
   intent: z.string().optional(),
-  previous_quote_id: z.string().nullish(), // SPRINT 1.5: For delta mode (accepts null/undefined)
-  isDraft: z.boolean().optional().default(false), // FAS 20: Draft mode flag
+  previous_quote_id: z.string().nullish(),
+  isDraft: z.boolean().optional().default(false),
+  conversation_session_id: z.string().optional(),
 });
 
 interface RotRutClassification {
@@ -3756,7 +3757,8 @@ Deno.serve(async (req) => {
       imageAnalysis,
       intent,
       previous_quote_id,
-      isDraft = false, // FAS 20: Draft mode flag
+      isDraft = false,
+      conversation_session_id,
     } = validatedData;
 
     console.log('Description:', description);
@@ -3850,19 +3852,16 @@ Deno.serve(async (req) => {
 
     console.log('Using equipment:', equipmentRates || []);
 
-    // ============================================
-    // SPRINT 1.5: FETCH PREVIOUS QUOTE (DELTA MODE)
-    // ============================================
-
+    // SPRINT 1.5: FETCH PREVIOUS QUOTE (DELTA MODE / DRAFT UPDATE)
     let previousQuote = null;
     let previousQuoteTotal = 0;
     let isDeltaMode = false;
     
     if (previous_quote_id) {
-      console.log(`🔄 DELTA MODE: Fetching previous quote: ${previous_quote_id}`);
+      console.log(`🔄 Fetching previous quote for update: ${previous_quote_id}`);
       const { data: prevQuoteData, error: prevQuoteError } = await supabaseClient
         .from('quotes')
-        .select('generated_quote, edited_quote')
+        .select('generated_quote, edited_quote, status, title, description')
         .eq('id', previous_quote_id)
         .eq('user_id', user_id)
         .single();
@@ -3871,8 +3870,14 @@ Deno.serve(async (req) => {
         previousQuote = prevQuoteData.edited_quote || prevQuoteData.generated_quote;
         previousQuoteTotal = parseFloat(previousQuote?.summary?.customerPays || '0');
         isDeltaMode = true;
-        console.log(`✅ Previous quote loaded. Total: ${previousQuoteTotal} SEK`);
-        console.log(`📝 Mode: EXTENDING existing quote (not creating new)`);
+        
+        if (isDraft && prevQuoteData.status === 'draft') {
+          console.log(`✅ Draft mode: Updating existing draft quote`);
+        } else {
+          console.log(`✅ Delta mode: Creating variation of existing quote`);
+        }
+        
+        console.log(`📝 Previous total: ${previousQuoteTotal} SEK`);
       } else {
         console.error('❌ Failed to fetch previous quote:', prevQuoteError);
       }
@@ -5092,11 +5097,61 @@ Svara med **1**, **2** eller **3** (eller "granska", "generera", "mer info")`;
     }
 
     // ============================================
-    // STEP 8: CALCULATE ROT/RUT (FAS 27)
+    // STEP 15: SAVE OR UPDATE QUOTE
     // ============================================
 
-    if (finalDeductionType !== 'none') {
-      await calculateROTRUT(supabaseClient, quote, finalDeductionType, recipients, new Date());
+    console.log('💾 Saving quote to database...');
+    
+    let savedQuote;
+    
+    if (isDraft && previous_quote_id) {
+      // Update existing draft
+      const { data: updated, error: updateError } = await supabaseClient
+        .from('quotes')
+        .update({
+          edited_quote: quote,
+          is_edited: true,
+          title: quote.title,
+          updated_at: new Date().toISOString(),
+          conversation_session_id: conversation_session_id || sessionId,
+          project_type: quote.projectType || 'other'
+        })
+        .eq('id', previous_quote_id)
+        .eq('user_id', user_id)
+        .select()
+        .single();
+      
+      if (updateError) {
+        console.error('❌ Error updating draft:', updateError);
+        throw new Error('Failed to update draft quote');
+      }
+      
+      savedQuote = updated;
+      console.log('✅ Updated draft quote:', savedQuote.id);
+    } else {
+      // Insert new quote
+      const { data: inserted, error: saveError } = await supabaseClient
+        .from('quotes')
+        .insert({
+          user_id: user_id,
+          title: quote.title,
+          description: description,
+          generated_quote: quote,
+          status: 'draft',
+          unique_token: crypto.randomUUID(),
+          conversation_session_id: conversation_session_id || sessionId,
+          project_type: quote.projectType || 'other'
+        })
+        .select()
+        .single();
+
+      if (saveError) {
+        console.error('❌ Error saving quote:', saveError);
+        throw new Error('Failed to save quote');
+      }
+      
+      savedQuote = inserted;
+      console.log('✅ Created new quote:', savedQuote.id);
     }
 
     // ============================================

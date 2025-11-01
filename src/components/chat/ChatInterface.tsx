@@ -37,13 +37,27 @@ interface ChatInterfaceProps {
     summary?: any; 
     liveExtraction?: any;
   }) => void; // P1: Send updates to parent for live preview
+  existingQuoteId?: string;
+  existingQuote?: any;
+  isDraftMode?: boolean;
+  sessionId?: string;
+  onQuoteUpdated?: (updatedQuote: any) => void;
 }
 
-export const ChatInterface = ({ onQuoteGenerated, isGenerating, onConversationUpdate }: ChatInterfaceProps) => {
+export const ChatInterface = ({ 
+  onQuoteGenerated, 
+  isGenerating, 
+  onConversationUpdate,
+  existingQuoteId,
+  existingQuote,
+  isDraftMode = false,
+  sessionId: externalSessionId,
+  onQuoteUpdated
+}: ChatInterfaceProps) => {
   const navigate = useNavigate();
   const [messages, setMessages] = useState<Message[]>([]);
   const [isTyping, setIsTyping] = useState(false);
-  const [sessionId, setSessionId] = useState<string | null>(null);
+  const [sessionId, setSessionId] = useState<string | null>(externalSessionId || null);
   const [generatedQuote, setGeneratedQuote] = useState<any>(null);
   const [conversationFeedback, setConversationFeedback] = useState<any>(null);
   const [readiness, setReadiness] = useState<any>(null);
@@ -344,8 +358,9 @@ export const ChatInterface = ({ onQuoteGenerated, isGenerating, onConversationUp
             numberOfRecipients: 1,
             imageAnalysis: imageAnalysis,
             intent: intent,
-            previous_quote_id: currentQuoteId, // SPRINT 1.5: Enable delta mode
-            isDraft: saveResult.data?.isDraft || false // FAS 20: Draft mode
+            previous_quote_id: existingQuoteId || currentQuoteId,
+            isDraft: isDraftMode || saveResult.data?.isDraft || false,
+            conversation_session_id: sessionId
           },
           signal: controller.signal
         });
@@ -559,8 +574,16 @@ export const ChatInterface = ({ onQuoteGenerated, isGenerating, onConversationUp
           setConversationFeedback(data.conversationFeedback);
           setReadiness(data.readiness);
           setShowQuoteSheet(true);
-          setIsDraftQuote(data.isDraft || false); // FAS 22: Track if draft quote
-          setProjectType(data.projectType || 'övrigt'); // Save project type from backend
+          setIsDraftQuote(data.isDraft || false);
+          setProjectType(data.projectType || 'övrigt');
+          
+          if (isDraftMode && onQuoteUpdated) {
+            onQuoteUpdated(data);
+            toast({
+              title: "Offerten har uppdaterats!",
+              description: "Dina ändringar har sparats"
+            });
+          }
           
           // SPRINT 1.5: Track delta mode state
           if (data.is_delta_mode) {
@@ -673,6 +696,44 @@ export const ChatInterface = ({ onQuoteGenerated, isGenerating, onConversationUp
     }
   };
 
+  const loadConversationHistory = async (sessionIdToLoad: string) => {
+    try {
+      const { data: messagesData, error } = await supabase
+        .from('conversation_messages')
+        .select('*')
+        .eq('session_id', sessionIdToLoad)
+        .order('created_at', { ascending: true });
+
+      if (error) {
+        console.error('Error loading conversation history:', error);
+        toast({
+          title: "Fel",
+          description: "Kunde inte ladda konversationshistorik",
+          variant: "destructive"
+        });
+        return;
+      }
+
+      if (messagesData && messagesData.length > 0) {
+        const loadedMessages: Message[] = messagesData.map(msg => ({
+          id: msg.id,
+          role: msg.role as 'user' | 'assistant',
+          content: msg.content,
+          timestamp: new Date(msg.created_at)
+        }));
+        setMessages(loadedMessages);
+        setSessionId(sessionIdToLoad);
+      }
+    } catch (error) {
+      console.error('Error loading conversation:', error);
+      toast({
+        title: "Fel",
+        description: "Ett fel uppstod när konversationen skulle laddas",
+        variant: "destructive"
+      });
+    }
+  };
+
   const handleNewConversation = async () => {
     if (sessionId) {
       try {
@@ -687,7 +748,13 @@ export const ChatInterface = ({ onQuoteGenerated, isGenerating, onConversationUp
     // Skapa ny session
     try {
       const { data, error } = await supabase.functions.invoke('manage-conversation', {
-        body: { action: 'create_session' }
+        body: { 
+          action: 'create_session',
+          projectDescription: isDraftMode && existingQuote 
+            ? `Uppdatering av offert: ${existingQuote.title || 'Utan titel'}`
+            : 'New quote request',
+          quoteId: existingQuoteId || null
+        }
       });
       
       if (error) throw error;
