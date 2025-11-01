@@ -15,6 +15,7 @@ import { ConversationHistory } from "./ConversationHistory";
 import { HelpCollapsible } from "./HelpCollapsible";
 import { CustomerQuickSelect } from "@/components/CustomerQuickSelect";
 import { TemplateQuickAccess } from "@/components/TemplateQuickAccess";
+import { PriceDeltaWarning } from "@/components/PriceDeltaWarning";
 import { Loader2, RotateCcw, Sparkles, ChevronDown, ChevronUp, User, MessageSquare } from "lucide-react";
 import { Progress } from "@/components/ui/progress";
 import { supabase } from "@/integrations/supabase/client";
@@ -72,6 +73,16 @@ export const ChatInterface = ({
   const [suggestedQuestion, setSuggestedQuestion] = useState<string | null>(null);
   const [isDraftQuote, setIsDraftQuote] = useState(false); // FAS 22: Track if current quote is draft
   const [projectType, setProjectType] = useState<string>('övrigt'); // Track project type from backend
+  const [showDeltaWarning, setShowDeltaWarning] = useState(false); // FAS 3: Show price delta warnings
+  const [deltaWarningData, setDeltaWarningData] = useState<{ previousPrice: number; newPrice: number; warnings: string[] } | null>(null);
+  
+  // FAS 3: Helper to extract price from quote (defined early)
+  const extractPriceFromQuote = (quote: any): number => {
+    return quote?.summary?.customerPays ??
+           quote?.summary?.totalWithVAT ??
+           quote?.summary?.total ??
+           0;
+  };
   
   // P1: Progress tracking
   const [questionsAsked, setQuestionsAsked] = useState(0);
@@ -623,6 +634,28 @@ export const ChatInterface = ({
               timestamp: new Date()
             };
             setMessages(prev => [...prev, warningMessage]);
+          }
+          
+          // FAS 3: Show delta warnings
+          if (data.deltaWarnings?.length > 0 && data.previous_quote_total) {
+            const newTotal = extractPriceFromQuote(data.quote);
+            setDeltaWarningData({
+              previousPrice: data.previous_quote_total,
+              newPrice: newTotal,
+              warnings: data.deltaWarnings
+            });
+            setShowDeltaWarning(true);
+          }
+          
+          // FAS 3: Show delta warnings for suspicious price changes
+          if (data.deltaWarnings?.length > 0 && data.previous_quote_total) {
+            const newTotal = extractPriceFromQuote(data.quote);
+            setDeltaWarningData({
+              previousPrice: data.previous_quote_total,
+              newPrice: newTotal,
+              warnings: data.deltaWarnings
+            });
+            setShowDeltaWarning(true);
           }
           
           // Spara AI-svar

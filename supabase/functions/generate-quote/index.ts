@@ -34,6 +34,8 @@ import { buildLayeredPrompt } from './helpers/layeredPrompt.ts';
 import { searchMaterialPriceLive } from './helpers/materialPricing.ts';
 // Import assumption engine
 import { generateAssumptions, getHistoricalPatterns, calculateCompleteness } from './helpers/assumptionEngine.ts';
+// FAS 3: Import delta engine for incremental updates
+import { detectDeltaChanges, applyDeltaChanges, validatePriceDelta } from './helpers/deltaEngine.ts';
 
 // Brand dictionary and synonyms for better language understanding
 const KEYWORD_SYNONYMS: Record<string, string[]> = {
@@ -5076,6 +5078,60 @@ Svara med **1**, **2** eller **3** (eller "granska", "generera", "mer info")`;
     }
     
     // ============================================
+    // FAS 1: ALWAYS CALCULATE ROT/RUT DEDUCTION
+    // ============================================
+    console.log(`💰 Calculating ${finalDeductionType.toUpperCase()} deduction...`);
+    
+    // Always call calculateROTRUT if deduction type is rot or rut
+    if (finalDeductionType === 'rot' || finalDeductionType === 'rut') {
+      const numberOfRecipients = 1; // Default to 1 recipient (can be expanded later)
+      await calculateROTRUT(
+        supabaseClient,
+        quote,
+        finalDeductionType,
+        numberOfRecipients,
+        new Date()
+      );
+      console.log(`✅ ${finalDeductionType.toUpperCase()}-avdrag beräknat: ${quote.summary.deduction?.deductionAmount || 0} kr`);
+      console.log(`   Kunden betalar: ${quote.summary.customerPays} kr (efter avdrag)`);
+    } else {
+      // No deduction - customer pays total with VAT
+      quote.summary.customerPays = quote.summary.totalWithVAT;
+      console.log(`   Kunden betalar: ${quote.summary.customerPays} kr (inget avdrag)`);
+    }
+    
+    // ============================================
+    // FAS 3: DELTA ENGINE VALIDATION
+    // ============================================
+    let deltaWarnings: string[] = [];
+    
+    if (isDeltaMode && previousQuote && previousQuoteTotal > 0) {
+      console.log('🔄 FAS 3: Applying Delta Engine validation...');
+      
+      const lastUserMsg = actualConversationHistory.filter(m => m.role === 'user').slice(-1)[0];
+      const userMessage = lastUserMsg?.content || description;
+      
+      // Detect what changes were requested
+      const deltaChanges = detectDeltaChanges(userMessage, previousQuote);
+      console.log('🔍 Detected delta changes:', deltaChanges);
+      
+      // Validate that price delta makes sense
+      const deltaValidation = validatePriceDelta(
+        previousQuote,
+        quote,
+        deltaChanges,
+        userMessage
+      );
+      
+      if (!deltaValidation.valid) {
+        console.error('⚠️ DELTA VALIDATION WARNINGS:', deltaValidation.warnings);
+        deltaWarnings = deltaValidation.warnings;
+      } else {
+        console.log(`✅ Delta validation passed - price change: ${deltaValidation.priceChange > 0 ? '+' : ''}${deltaValidation.priceChange.toLocaleString()} kr (${deltaValidation.priceChangePercent.toFixed(1)}%)`);
+      }
+    }
+    
+    // ============================================
     // NEW: CALCULATE RISK MARGIN (Optional - Only for large uncertain projects)
     // ============================================
     const lowConfidenceAssumptions = assumptions.filter(a => a.confidence < 60).length;
@@ -5246,6 +5302,7 @@ Svara med **1**, **2** eller **3** (eller "granska", "generera", "mer info")`;
         realismWarnings: allWarnings.length > 0 ? allWarnings : undefined,
         needsReview: hallucinationCheck.needsReview || allWarnings.length > 0,
         assumptions: quote.assumptions || [],
+        deltaWarnings: deltaWarnings.length > 0 ? deltaWarnings : undefined, // FAS 3: Return delta warnings
         validation: validation.issues.length > 0 ? {
           warnings: validation.issues
         } : undefined,
