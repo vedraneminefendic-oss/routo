@@ -2,13 +2,54 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.0";
 import { getProjectRequirements, ProjectRequirements } from "./helpers/smartQuestions.ts";
 
-// Import completeness calculation
-import { calculateCompleteness } from '../generate-quote/helpers/assumptionEngine.ts';
-
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
+
+// ============================================================================
+// COMPLETENESS CALCULATION (shared logic)
+// ============================================================================
+function calculateCompleteness(conversationSummary: any): {
+  completeness: number;
+  missingCritical: string[];
+  missingOptional: string[];
+} {
+  const requiredFields = [
+    { key: 'projectType', label: 'Typ av projekt' },
+    { key: 'measurements.area', label: 'Storlek/Area' },
+    { key: 'scope', label: 'Omfattning' },
+    { key: 'timeline', label: 'Tidplan' },
+  ];
+
+  const optionalFields = [
+    { key: 'materials.quality', label: 'Materialkvalitet' },
+    { key: 'budget', label: 'Budget' },
+    { key: 'specialRequirements', label: 'Speciella krav' },
+    { key: 'exclusions', label: 'Undantag' },
+  ];
+
+  const getValue = (obj: any, path: string) => {
+    return path.split('.').reduce((current, key) => current?.[key], obj);
+  };
+
+  const missingCritical = requiredFields
+    .filter(f => !getValue(conversationSummary, f.key))
+    .map(f => f.label);
+
+  const missingOptional = optionalFields
+    .filter(f => !getValue(conversationSummary, f.key))
+    .map(f => f.label);
+
+  const filled = requiredFields.length - missingCritical.length;
+  const completeness = Math.round((filled / requiredFields.length) * 100);
+
+  return {
+    completeness,
+    missingCritical,
+    missingOptional,
+  };
+}
 
 const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY')!;
 const TEXT_MODEL = 'google/gemini-2.5-flash';
