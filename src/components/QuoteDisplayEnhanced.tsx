@@ -6,6 +6,7 @@ import { Hammer, Sparkles, Info, AlertCircle, Package, Wrench } from "lucide-rea
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { normalizeDeduction } from "@/lib/utils";
 
 interface WorkItem {
   name: string;
@@ -46,6 +47,7 @@ interface Summary {
   equipmentCost?: number;
   totalBeforeVAT: number;
   vat: number;
+  vatAmount?: number; // FAS 1: New field for backward compatibility
   totalWithVAT: number;
   rotDeduction?: number;
   rutDeduction?: number;
@@ -145,11 +147,8 @@ const ReasoningTooltip = ({
 };
 
 export function QuoteDisplayEnhanced({ quote }: QuoteDisplayEnhancedProps) {
-  const deductionType = quote.deductions?.type || quote.deductionType || 
-    (quote.summary.rotDeduction ? 'rot' : quote.summary.rutDeduction ? 'rut' : 'none');
-  
-  const deductionAmount = quote.deductions?.amount || quote.summary.deductionAmount || 
-    quote.summary.rotDeduction || quote.summary.rutDeduction || 0;
+  // FAS 1: Use normalizeDeduction from utils for consistent ROT/RUT handling
+  const { deductionType, deductionAmount, deductionPercentage } = normalizeDeduction(quote);
 
   return (
     <div className="space-y-6">
@@ -198,7 +197,7 @@ export function QuoteDisplayEnhanced({ quote }: QuoteDisplayEnhancedProps) {
                 </div>
                 <div className="flex justify-between text-muted-foreground">
                   <span>Moms (25%)</span>
-                  <span>{formatCurrency(quote.summary.vat)}</span>
+                  <span>{formatCurrency(quote.summary.vatAmount || quote.summary.vat || 0)}</span>
                 </div>
                 <div className="flex justify-between">
                   <span>Totalt inkl. moms</span>
@@ -211,7 +210,7 @@ export function QuoteDisplayEnhanced({ quote }: QuoteDisplayEnhancedProps) {
                     <div className="flex justify-between text-green-600">
                       <span className="flex items-center gap-2">
                         {deductionType === 'rot' ? <Hammer className="w-4 h-4" /> : <Sparkles className="w-4 h-4" />}
-                        {deductionType.toUpperCase()}-avdrag ({quote.deductions?.percentage || 50}%)
+                        {deductionType.toUpperCase()}-avdrag ({deductionPercentage}%)
                       </span>
                       <span className="font-medium">–{formatCurrency(deductionAmount)}</span>
                     </div>
@@ -413,7 +412,7 @@ export function QuoteDisplayEnhanced({ quote }: QuoteDisplayEnhancedProps) {
                   
                   <div className="space-y-2">
                     <p><strong>Avdragstyp:</strong> {deductionType.toUpperCase()}</p>
-                    <p><strong>Procentsats:</strong> {quote.deductions?.percentage || 50}% på arbetskostnad</p>
+                    <p><strong>Procentsats:</strong> {deductionPercentage}% på arbetskostnad</p>
                     <p><strong>Maxbelopp:</strong> {deductionType === 'rot' ? '50 000' : '75 000'} kr/år per person</p>
                     <p><strong>Beräknat avdrag:</strong> {formatCurrency(deductionAmount)}</p>
                   </div>
@@ -423,7 +422,7 @@ export function QuoteDisplayEnhanced({ quote }: QuoteDisplayEnhancedProps) {
                     <AlertTitle>Så fungerar avdraget</AlertTitle>
                     <AlertDescription>
                       Avdraget dras direkt från din slutskattsedel. Du betalar full kostnad till oss,
-                      och får sedan tillbaka {quote.deductions?.percentage || 50}% via Skatteverket.
+                      och får sedan tillbaka {deductionPercentage}% via Skatteverket.
                     </AlertDescription>
                   </Alert>
                 </div>

@@ -2013,7 +2013,7 @@ async function calculateROTRUT(
 
   const customerPays = quote.summary.totalWithVAT - actualDeduction;
 
-  // Update quote with detailed deduction breakdown
+  // FAS 1: Update quote with detailed deduction breakdown AND legacy fields for backward compatibility
   quote.summary.deduction = {
     type: deductionType.toUpperCase(),
     deductionRate,
@@ -2029,6 +2029,15 @@ async function calculateROTRUT(
     exceedsCapacity, // FAS 27 Del 4: Warning flag
   };
 
+  // FAS 1: Set both new and legacy deduction fields for backward compatibility
+  quote.summary.deductionAmount = actualDeduction;
+  quote.summary.deductionType = deductionType;
+  quote.summary[`${deductionType}Deduction`] = actualDeduction; // rotDeduction or rutDeduction
+  
+  // FAS 1: Set both vatAmount and vat for backward compatibility
+  quote.summary.vatAmount = quote.summary.vat || Math.round(quote.summary.totalBeforeVAT * 0.25);
+  quote.summary.vat = quote.summary.vatAmount;
+  
   quote.summary.customerPays = customerPays;
 
   console.log(`💰 ${deductionType.toUpperCase()}-avdrag detaljer:`, {
@@ -2994,29 +3003,58 @@ I summary.customerPays, använd format:
 
 ` : '';
 
-  // SPRINT 1.5: Build delta mode intro (if applicable)
+  // FAS 3: Enhanced delta mode intro with Quote Summary for better AI context
   const deltaModeIntro = isDeltaMode ? `
-**🔄 DELTA MODE - UTÖKA BEFINTLIG OFFERT (KRITISKT!):**
+**🔄 DELTA MODE - MODIFIERA BEFINTLIG OFFERT (FAS 2 & FAS 3):**
 
-Du ska INTE skapa en ny offert från grunden. Du ska UTÖKA den befintliga offerten baserat på ny information från kunden.
+Du ska INTE skapa en ny offert från grunden. Du ska ENDAST ändra det användaren ber dig ändra i den befintliga offerten.
 
-**BEFINTLIG OFFERT:**
-\`\`\`json
-${JSON.stringify(previousQuote, null, 2)}
-\`\`\`
+**BEFINTLIG OFFERT - INNEHÅLL:**
 
-**FÖREGÅENDE TOTALPRIS:** ${previousTotal} SEK (kunden betalar)
+**Arbetsmoment (workItems):**
+${previousQuote.workItems?.map((w: any, i: number) => `${i+1}. ${w.name} - ${w.subtotal?.toLocaleString('sv-SE') || 0} kr (${w.hours || 0}h × ${w.hourlyRate || 0} kr/h)`).join('\n') || 'Inga workItems'}
 
-**REGLER FÖR DELTA MODE:**
-1. **Vid TILLÄGG av arbete:** Nytt totalpris MÅSTE vara >= ${previousTotal} SEK
-2. **Vid BORTTAGNING av arbete:** Beräkna bara de kvarvarande arbetena, priset ska minska
-3. **Vid ÄNDRING av material:** Justera bara det specifika arbetet som påverkas
-4. **Vid FÖRTYDLIGANDE:** Om kunden bara förtydligar (inte lägger till/tar bort), behåll samma pris ±5%
+**Material:**
+${previousQuote.materials?.map((m: any, i: number) => `${i+1}. ${m.name} - ${m.subtotal?.toLocaleString('sv-SE') || 0} kr`).join('\n') || 'Inga material'}
 
-**VIKTIG LOGIK:**
-- Om kunden säger "lägg till takmålning" → Kopiera alla befintliga workItems + lägg till ny för takmålning
-- Om kunden säger "ta bort kakling" → Kopiera alla workItems UTOM kakling
-- Om kunden säger "använd premium färg istället" → Kopiera workItems, uppdatera material i målnings-itemet
+**Totalpris:** ${previousTotal?.toLocaleString('sv-SE') || 0} kr (inkl. moms, kunden betalar)
+
+---
+
+**ANVÄNDARENS BEGÄRAN:**
+"${actualConversationHistory.filter((m: any) => m.role === 'user').slice(-1)[0]?.content || description}"
+
+---
+
+**STRIKTA REGLER FÖR DELTA MODE (FAS 3):**
+
+1. **Om användaren INTE nämner något från listan ovan → KOPIERA det OFÖRÄNDRAT**
+   - Exempel: Om användaren säger "ta bort spackling", kopiera ALLA andra workItems exakt som de är
+
+2. **Ställ INGA frågor om saker som redan finns i listan**
+   - Exempel: Om målning finns i listan, fråga INTE "Vill du ha målning?"
+
+3. **Om användaren säger "ta bort X" → Ta BARA bort X, behåll resten**
+   - Exempel: "ta bort golvvärme" → Ta bort golvvärme, kopiera allt annat
+
+4. **Om användaren säger "lägg till Y" → Lägg BARA till Y, behåll resten**
+   - Exempel: "lägg till takmålning" → Kopiera alla befintliga workItems + lägg till takmålning
+
+5. **Vid BORTTAGNING:** Priset SKA minska med ungefär subtotalen för borttaget arbete
+   - Exempel: Om "spackling" kostar 5000 kr → nytt pris ska vara ~5000 kr lägre
+
+6. **Vid TILLÄGG:** Priset SKA öka med ungefär subtotalen för nytt arbete
+   - Exempel: Om "takmålning" kostar 8000 kr → nytt pris ska vara ~8000 kr högre
+
+**FELAKTIGA EXEMPEL (GÖR INTE SÅ HÄR):**
+❌ FEL: Ta bort X → AI ställer frågor om Y och Z som redan finns
+❌ FEL: Ta bort spackling (5000 kr) → Totalpris sjunker med 100 000 kr
+❌ FEL: Lägg till takmålning → AI tar bort grundmålning
+
+**KORREKTA EXEMPEL (GÖR SÅ HÄR):**
+✅ RÄTT: Ta bort spackling → Kopiera alla workItems UTOM spackling, pris -5000 kr
+✅ RÄTT: Lägg till takmålning → Kopiera alla workItems + lägg till takmålning, pris +8000 kr
+✅ RÄTT: Användaren bekräftar befintligt arbete → Kopiera ALLT oförändrat
 
 **SPRÅK:**
 - Behåll SAMMA SPRÅK som den befintliga offerten (se workItems och materials ovan)
@@ -5112,21 +5150,65 @@ Svara med **1**, **2** eller **3** (eller "granska", "generera", "mer info")`;
     }
     
     // ============================================
-    // FAS 3: DELTA ENGINE VALIDATION
+    // FAS 2-4: DELTA ENGINE - DETERMINISTIC CHANGES + VALIDATION
     // ============================================
     let deltaWarnings: string[] = [];
     
     if (isDeltaMode && previousQuote && previousQuoteTotal > 0) {
-      console.log('🔄 FAS 3: Applying Delta Engine validation...');
+      console.log('🔄 FAS 2: Applying Delta Engine (deterministic + validation)...');
       
       const lastUserMsg = actualConversationHistory.filter(m => m.role === 'user').slice(-1)[0];
       const userMessage = lastUserMsg?.content || description;
       
-      // Detect what changes were requested
-      const deltaChanges = detectDeltaChanges(userMessage, previousQuote);
-      console.log('🔍 Detected delta changes:', deltaChanges);
+      console.log(`📝 FAS 4: User message: "${userMessage}"`);
+      console.log(`📊 FAS 4: Previous quote total: ${previousQuoteTotal.toLocaleString('sv-SE')} kr`);
+      console.log(`📊 FAS 4: Previous quote workItems (${previousQuote.workItems?.length || 0}):`, 
+        previousQuote.workItems?.map((w: any) => `${w.name} (${w.subtotal} kr)`) || []);
       
-      // Validate that price delta makes sense
+      // FAS 2: Detect what changes were requested
+      const deltaChanges = detectDeltaChanges(userMessage, previousQuote);
+      console.log(`🔍 FAS 4: Detected ${deltaChanges.length} delta changes:`, deltaChanges);
+      
+      // FAS 2: Apply deterministic changes if simple removal
+      if (deltaChanges.length > 0 && deltaChanges.every(c => c.type === 'remove')) {
+        console.log('🎯 FAS 2: Simple removal detected, applying deterministic changes...');
+        
+        // Apply changes to get deterministic quote
+        const deterministicQuote = applyDeltaChanges(previousQuote, deltaChanges);
+        
+        // Recalculate totals
+        const workCost = deterministicQuote.workItems?.reduce((sum: number, w: any) => sum + (w.subtotal || 0), 0) || 0;
+        const materialCost = deterministicQuote.materials?.reduce((sum: number, m: any) => sum + (m.subtotal || 0), 0) || 0;
+        const totalBeforeVAT = workCost + materialCost;
+        const vatAmount = Math.round(totalBeforeVAT * 0.25);
+        const totalWithVAT = totalBeforeVAT + vatAmount;
+        
+        deterministicQuote.summary = {
+          ...deterministicQuote.summary,
+          workCost,
+          materialCost,
+          totalBeforeVAT,
+          vat: vatAmount,
+          vatAmount,
+          totalWithVAT,
+          customerPays: totalWithVAT
+        };
+        
+        console.log(`✅ FAS 2: Deterministic quote generated - new total: ${totalWithVAT.toLocaleString('sv-SE')} kr`);
+        console.log(`   Price change: ${(totalWithVAT - previousQuoteTotal).toLocaleString('sv-SE')} kr`);
+        
+        // Use deterministic quote instead of AI-generated one
+        quote.workItems = deterministicQuote.workItems;
+        quote.materials = deterministicQuote.materials;
+        quote.summary = deterministicQuote.summary;
+      }
+      
+      // FAS 3-4: Validate that price delta makes sense
+      const newQuoteTotal = quote.summary?.customerPays || quote.summary?.totalWithVAT || 0;
+      console.log(`📊 FAS 4: New quote total: ${newQuoteTotal.toLocaleString('sv-SE')} kr`);
+      console.log(`📊 FAS 4: New quote workItems (${quote.workItems?.length || 0}):`, 
+        quote.workItems?.map((w: any) => `${w.name} (${w.subtotal} kr)`) || []);
+      
       const deltaValidation = validatePriceDelta(
         previousQuote,
         quote,
@@ -5135,10 +5217,16 @@ Svara med **1**, **2** eller **3** (eller "granska", "generera", "mer info")`;
       );
       
       if (!deltaValidation.valid) {
-        console.error('⚠️ DELTA VALIDATION WARNINGS:', deltaValidation.warnings);
+        console.error('⚠️ FAS 4: DELTA VALIDATION WARNINGS:', deltaValidation.warnings);
         deltaWarnings = deltaValidation.warnings;
+        
+        // FAS 4: Log detailed comparison for debugging
+        console.log(`🔍 FAS 4: DETAILED COMPARISON:`);
+        console.log(`   Previous workItems:`, previousQuote.workItems?.map((w: any) => w.name));
+        console.log(`   New workItems:`, quote.workItems?.map((w: any) => w.name));
+        console.log(`   Price delta: ${deltaValidation.priceChange.toLocaleString('sv-SE')} kr (${deltaValidation.priceChangePercent.toFixed(1)}%)`);
       } else {
-        console.log(`✅ Delta validation passed - price change: ${deltaValidation.priceChange > 0 ? '+' : ''}${deltaValidation.priceChange.toLocaleString()} kr (${deltaValidation.priceChangePercent.toFixed(1)}%)`);
+        console.log(`✅ FAS 4: Delta validation passed - price change: ${deltaValidation.priceChange > 0 ? '+' : ''}${deltaValidation.priceChange.toLocaleString('sv-SE')} kr (${deltaValidation.priceChangePercent.toFixed(1)}%)`);
       }
     }
     

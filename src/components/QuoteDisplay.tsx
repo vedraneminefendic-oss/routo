@@ -42,6 +42,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { ROTSummary } from "@/components/ROTSummary";
 import { AssumptionsList } from "@/components/AssumptionsList";
+import { normalizeDeduction } from "@/lib/utils";
 
 interface WorkItem {
   name: string;
@@ -72,6 +73,7 @@ interface Summary {
   materialCost: number;
   totalBeforeVAT: number;
   vat: number;
+  vatAmount?: number; // FAS 1: New field for backward compatibility
   totalWithVAT: number;
   rotDeduction?: number; // Legacy field
   rutDeduction?: number; // Legacy field
@@ -354,11 +356,8 @@ const QuoteDisplay = ({
     return String(value);
   };
 
-  // Support both old and new deduction field names
-  const deductionAmount = quote.summary.deductionAmount ?? quote.summary.rotDeduction ?? quote.summary.rutDeduction ?? 0;
-  const deductionType = quote.deductionType ?? quote.summary.deductionType ?? 
-    (quote.summary.rotDeduction ? 'rot' : 
-     quote.summary.rutDeduction ? 'rut' : 'none');
+  // FAS 1: Use normalizeDeduction from utils for consistent ROT/RUT handling
+  const { deductionType, deductionAmount } = normalizeDeduction(quote);
   const maxDeduction = deductionType === 'rut' ? 75000 : 50000;
 
   const checkPageBreak = (doc: jsPDF, currentY: number, requiredSpace: number): number => {
@@ -990,7 +989,7 @@ const QuoteDisplay = ({
             </div>
             <div className="flex justify-between text-muted-foreground">
               <span>Moms (25%):</span>
-              <span>{formatValue(quote.summary.vat)}</span>
+              <span>{formatValue(quote.summary.vatAmount || quote.summary.vat || 0)}</span>
             </div>
             <div className="flex justify-between font-semibold text-lg">
               <span>Totalt inkl. moms:</span>

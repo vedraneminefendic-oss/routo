@@ -28,17 +28,21 @@ export function detectDeltaChanges(
   const changes: DeltaChange[] = [];
   const lowerMessage = userMessage.toLowerCase();
   
-  // Keywords för olika operationer
-  const addKeywords = ['lägg till', 'även', 'också', 'plus', 'och', 'inkludera'];
-  const removeKeywords = ['ta bort', 'utan', 'bara', 'endast', 'skippa', 'exkludera', 'ta inte med'];
-  const modifyKeywords = ['ändra', 'byt', 'istället', 'premium', 'standard', 'budget'];
+  // FAS 2: Expanded keywords for better detection
+  const addKeywords = ['lägg till', 'även', 'också', 'plus', 'och', 'inkludera', 'lägg in', 'ta med'];
+  const removeKeywords = ['ta bort', 'utan', 'bara', 'endast', 'skippa', 'exkludera', 'ta inte med', 'behövs inte', 'ej', 'inte'];
+  const modifyKeywords = ['ändra', 'byt', 'istället', 'premium', 'standard', 'budget', 'bättre', 'billigare'];
   
   const isAdding = addKeywords.some(kw => lowerMessage.includes(kw));
   const isRemoving = removeKeywords.some(kw => lowerMessage.includes(kw));
   const isModifying = modifyKeywords.some(kw => lowerMessage.includes(kw));
   
-  // Extrahera vilka items som nämns
+  console.log(`🔍 FAS 2: Detecting changes in: "${userMessage}"`);
+  console.log(`   isAdding: ${isAdding}, isRemoving: ${isRemoving}, isModifying: ${isModifying}`);
+  
+  // FAS 2: Extract which items are mentioned with better matching
   const mentionedItems = extractMentionedItems(lowerMessage, previousQuote);
+  console.log(`   Mentioned items (${mentionedItems.length}):`, mentionedItems.map(i => i.name));
   
   // Detektera typ av ändring
   if (isRemoving && !isAdding) {
@@ -51,15 +55,18 @@ export function detectDeltaChanges(
         oldValue: item.subtotal,
         reason: `Kunden bad ta bort: "${userMessage}"`
       });
+      console.log(`   ❌ REMOVE: ${item.name} (${item.category})`);
     });
   } else if (isAdding && !isRemoving) {
     // Lägg till nya items (AI måste beräkna dessa)
+    const newItemName = extractNewItemName(userMessage);
     changes.push({
       type: 'add',
       category: 'workItem',
-      itemName: extractNewItemName(userMessage),
+      itemName: newItemName,
       reason: `Kunden bad lägga till: "${userMessage}"`
     });
+    console.log(`   ➕ ADD: ${newItemName}`);
   } else if (isModifying) {
     // Ändra befintliga items
     mentionedItems.forEach(item => {
@@ -70,6 +77,7 @@ export function detectDeltaChanges(
         oldValue: item.subtotal,
         reason: `Kunden bad ändra: "${userMessage}"`
       });
+      console.log(`   🔄 MODIFY: ${item.name} (${item.category})`);
     });
   }
   
@@ -219,10 +227,29 @@ function extractMentionedItems(message: string, quote: any): Array<{ name: strin
   const items: Array<{ name: string; category: string; subtotal: number }> = [];
   const lowerMessage = message.toLowerCase();
   
-  // Sök i workItems
+  // FAS 2: Better fuzzy matching for Swedish work items
+  const normalizeSwedish = (text: string) => {
+    return text
+      .toLowerCase()
+      .replace(/å/g, 'a')
+      .replace(/ä/g, 'a')
+      .replace(/ö/g, 'o')
+      .replace(/[^a-z0-9]/g, '');
+  };
+  
+  const normalizedMessage = normalizeSwedish(lowerMessage);
+  
+  // Sök i workItems med fuzzy matching
   quote.workItems?.forEach((item: any) => {
-    const itemKeywords = item.name.toLowerCase().split(' ');
-    if (itemKeywords.some((kw: string) => kw.length > 3 && lowerMessage.includes(kw))) {
+    const normalizedItemName = normalizeSwedish(item.name);
+    const itemWords = normalizedItemName.split(' ').filter((w: string) => w.length > 3);
+    
+    // Check if ANY significant word from item name appears in message
+    const hasMatch = itemWords.some((word: string) => 
+      normalizedMessage.includes(word) || word.includes(normalizedMessage.split(' ')[0])
+    );
+    
+    if (hasMatch) {
       items.push({
         name: item.name,
         category: 'workItem',
@@ -231,10 +258,16 @@ function extractMentionedItems(message: string, quote: any): Array<{ name: strin
     }
   });
   
-  // Sök i materials
+  // Sök i materials med fuzzy matching
   quote.materials?.forEach((item: any) => {
-    const itemKeywords = item.name.toLowerCase().split(' ');
-    if (itemKeywords.some((kw: string) => kw.length > 3 && lowerMessage.includes(kw))) {
+    const normalizedItemName = normalizeSwedish(item.name);
+    const itemWords = normalizedItemName.split(' ').filter((w: string) => w.length > 3);
+    
+    const hasMatch = itemWords.some((word: string) => 
+      normalizedMessage.includes(word) || word.includes(normalizedMessage.split(' ')[0])
+    );
+    
+    if (hasMatch) {
       items.push({
         name: item.name,
         category: 'material',
