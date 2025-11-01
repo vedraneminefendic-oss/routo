@@ -5061,24 +5061,34 @@ Svara med **1**, **2** eller **3** (eller "granska", "generera", "mer info")`;
     }
     
     // ============================================
-    // NEW: CALCULATE RISK MARGIN (Optional)
+    // NEW: CALCULATE RISK MARGIN (Optional - Only for large uncertain projects)
     // ============================================
     const lowConfidenceAssumptions = assumptions.filter(a => a.confidence < 60).length;
     const projectValue = quote.summary?.totalWithVAT || 0;
     
     if (projectValue > 100000 && lowConfidenceAssumptions > 3) {
-      const riskMargin = Math.round(projectValue * 0.05);
-      console.log(`⚠️ Adding 5% risk margin (${riskMargin} kr) due to ${lowConfidenceAssumptions} low-confidence assumptions`);
+      const riskMarginAmount = Math.round(projectValue * 0.05);
+      console.log(`⚠️ Adding 5% risk margin (${riskMarginAmount} kr) due to ${lowConfidenceAssumptions} low-confidence assumptions`);
       
       quote.riskMargin = {
-        amount: riskMargin,
+        amount: riskMarginAmount,
         percentage: 5,
-        reason: `Projektet innehåller ${lowConfidenceAssumptions} osäkra antaganden och är värt över 100 000 kr`
+        reason: `Projektet innehåller ${lowConfidenceAssumptions} osäkra antaganden och är värt över 100 000 kr`,
+        applied: true
       };
       
-      // Optionally add to summary
-      // quote.summary.totalWithVAT += riskMargin;
-      // quote.summary.customerPays += riskMargin;
+      // Apply risk margin to totals
+      quote.summary.totalWithVAT += riskMarginAmount;
+      quote.summary.customerPays = quote.summary.totalWithVAT - (quote.summary.rotRutDeduction?.actualDeduction || 0);
+    } else {
+      quote.riskMargin = {
+        amount: 0,
+        percentage: 0,
+        reason: lowConfidenceAssumptions > 0 
+          ? `Endast ${lowConfidenceAssumptions} osäkra antaganden (gräns: >3)` 
+          : 'Inga osäkra antaganden',
+        applied: false
+      };
     }
 
     // ============================================

@@ -68,3 +68,141 @@ export function generateNextQuestion(
 ): string | null {
   return null; // Not used in AI-driven mode
 }
+
+// ============================================================================
+// ADAPTIVE QUESTIONS - Project-specific question templates
+// ============================================================================
+
+interface AdaptiveQuestionSet {
+  low_completeness: string[];
+  missing_timeline: string[];
+  missing_materials: string[];
+  missing_scope: string[];
+  missing_budget: string[];
+}
+
+export const ADAPTIVE_QUESTIONS: Record<string, AdaptiveQuestionSet> = {
+  'badrum': {
+    low_completeness: [
+      'Hur ser fuktförhållandena ut i badrummet? Finns risk för fuktproblem?',
+      'Finns det befintlig golvvärme, eller vill du installera ny?',
+      'Ska du köpa kakel/klinker och inredning själv, eller vill du att det ingår i offerten?'
+    ],
+    missing_timeline: [
+      'Finns det ett önskat färdigställandedatum, eller är det flexibelt?',
+      'Hur snart behöver projektet vara klart?'
+    ],
+    missing_materials: [
+      'Vilken standard tänker du dig på kakel/klinker? (Budget 200-400 kr/kvm, Mellan 400-800, Premium 800+)',
+      'Har du redan valt inredning (WC, dusch, tvättställ) eller vill du ha hjälp med det?'
+    ],
+    missing_scope: [
+      'Är det en totalrenovering med rivning, eller ska befintliga installationer behållas?',
+      'Behöver ventilationen uppgraderas? (Viktigt i källarbadrum för att undvika mögel)'
+    ],
+    missing_budget: [
+      'Har du en ungefärlig budget i åtanke för projektet?'
+    ]
+  },
+  'kök': {
+    low_completeness: [
+      'Behåller du befintliga vitvaror, eller ska nya ingå?',
+      'Tänker du dig IKEA-kök eller specialbeställt snickeri?',
+      'Behöver ventilation och el uppgraderas för nya vitvaror?'
+    ],
+    missing_timeline: [
+      'Hur lång tid kan köket vara obrukbart under renoveringen?',
+      'Finns det ett önskat färdigställandedatum?'
+    ],
+    missing_materials: [
+      'Vilken stil tänker du dig? (Modern, klassisk, lantlig)',
+      'Bänkskiva i laminat, kompositsten eller natursten?'
+    ],
+    missing_scope: [
+      'Ska stomme och rörinstallationer behållas eller göras om helt?',
+      'Behövs nya eluttag eller vattenanslutningar?'
+    ],
+    missing_budget: [
+      'Har du en ungefärlig budget i åtanke för projektet?'
+    ]
+  },
+  'målning': {
+    low_completeness: [
+      'Vilka ytor ska målas? (Väggar, tak, lister, dörrar)',
+      'Behöver ytorna förberedas (spackling, slipning)?',
+      'Önskar du miljövänlig färg eller standardfärg?'
+    ],
+    missing_timeline: [
+      'Finns det ett önskat färdigställandedatum?'
+    ],
+    missing_materials: [
+      'Har du redan färg hemma, eller ska vi köpa in allt?',
+      'Önskar du matt, sidenmatt eller halvblank färg?'
+    ],
+    missing_scope: [
+      'Ska möbler och golv skyddas/flyttas, eller är rummet redan tomt?'
+    ],
+    missing_budget: [
+      'Har du en ungefärlig budget i åtanke för projektet?'
+    ]
+  },
+  'default': {
+    low_completeness: [
+      'Hur stor är arbetsytan ungefär? (Kvm, meter, antal rum)',
+      'Finns det några speciella krav eller önskemål?'
+    ],
+    missing_timeline: [
+      'Finns det en önskad tidsram för projektet?'
+    ],
+    missing_materials: [
+      'Ska material ingå i offerten, eller köper du det själv?'
+    ],
+    missing_scope: [
+      'Kan du beskriva arbetsomfattningen mer detaljerat?'
+    ],
+    missing_budget: [
+      'Har du en ungefärlig budget i åtanke?'
+    ]
+  }
+};
+
+export function getAdaptiveQuestions(
+  projectType: string,
+  completeness: number,
+  missingFields: string[]
+): string[] {
+  const questions: string[] = [];
+  
+  // Determine project category
+  const category = Object.keys(ADAPTIVE_QUESTIONS).find(key => 
+    projectType.toLowerCase().includes(key)
+  ) || 'default';
+  
+  const questionSet = ADAPTIVE_QUESTIONS[category];
+  
+  // Select questions based on completeness and missing fields
+  if (completeness < 30) {
+    // Very incomplete - ask broad questions
+    questions.push(...questionSet.low_completeness.slice(0, 3));
+  } else if (completeness < 70) {
+    // Moderately complete - ask targeted questions
+    missingFields.forEach(field => {
+      const fieldKey = `missing_${field}` as keyof AdaptiveQuestionSet;
+      if (questionSet[fieldKey]) {
+        questions.push(questionSet[fieldKey][0]);
+      }
+    });
+    
+    // Limit to 2 questions
+    questions.splice(2);
+  } else {
+    // Mostly complete - ask 1 confirmation question
+    if (missingFields.includes('timeline') && questionSet.missing_timeline) {
+      questions.push(questionSet.missing_timeline[0]);
+    } else if (questionSet.missing_budget) {
+      questions.push(questionSet.missing_budget[0]);
+    }
+  }
+  
+  return questions;
+}

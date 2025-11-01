@@ -12,6 +12,7 @@ interface ClassificationRequest {
   projectDescription: string;
   workType?: string;
   conversationSummary?: any;
+  workItems?: Array<{ name: string; description?: string }>;
 }
 
 interface ClassificationResponse {
@@ -19,6 +20,59 @@ interface ClassificationResponse {
   confidence: number;
   reasoning: string;
   source: string;
+  workItemClassifications?: Array<{
+    name: string;
+    rotEligible: boolean;
+    reasoning: string;
+    source: string;
+  }>;
+}
+
+// Official ROT work types according to Skatteverket 2025
+const ROT_APPROVED_WORK = [
+  'rivning', 'demontering', 'montering', 'installation',
+  'vvs', 'el', 'elinstallation', 'elektriker',
+  'murning', 'murare', 'kakelsättning', 'kakel',
+  'målning', 'måla', 'spackling', 'slipning',
+  'golvläggning', 'golv', 'parkett', 'klinker',
+  'takarbete', 'takläggning', 'taktäckning',
+  'fönsterbyte', 'fönster', 'dörrbyte', 'dörr',
+  'badrumsrenovering', 'våtrumsarbete', 'tätskikt',
+  'köksrenovering', 'köksmontage',
+  'ventilation', 'golvvärme', 'värmesystem',
+  'isolering', 'fasad', 'puts',
+  'snickeri', 'byggnadsarbete', 'renovering'
+];
+
+function isRotEligible(workItemName: string, description?: string): { eligible: boolean; reasoning: string; source: string } {
+  const searchText = `${workItemName} ${description || ''}`.toLowerCase();
+  
+  // Check against approved ROT work list
+  const matchedWork = ROT_APPROVED_WORK.find(work => searchText.includes(work));
+  
+  if (matchedWork) {
+    return {
+      eligible: true,
+      reasoning: `${workItemName} klassificeras som ROT-arbete (${matchedWork})`,
+      source: 'Skatteverket ROT-lista'
+    };
+  }
+  
+  // Exclude material costs explicitly
+  if (searchText.includes('material') || searchText.includes('inköp') || searchText.includes('leverans')) {
+    return {
+      eligible: false,
+      reasoning: 'Materialkostnad är inte ROT-avdragsgill',
+      source: 'Skatteverket ROT-regler'
+    };
+  }
+  
+  // Default to not eligible if uncertain
+  return {
+    eligible: false,
+    reasoning: 'Arbetet matchar inte ROT-kriterierna',
+    source: 'Skatteverket ROT-lista'
+  };
 }
 
 Deno.serve(async (req) => {
@@ -28,9 +82,24 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const { projectDescription, workType, conversationSummary }: ClassificationRequest = await req.json();
+    const { projectDescription, workType, conversationSummary, workItems }: ClassificationRequest = await req.json();
 
-    console.log('🔍 Classifying ROT/RUT for:', { projectDescription, workType });
+    console.log('🔍 Classifying ROT/RUT for:', { projectDescription, workType, workItems: workItems?.length });
+
+    // If workItems provided, classify each one
+    let workItemClassifications;
+    if (workItems && workItems.length > 0) {
+      workItemClassifications = workItems.map(item => {
+        const result = isRotEligible(item.name, item.description);
+        return {
+          name: item.name,
+          rotEligible: result.eligible,
+          reasoning: result.reasoning,
+          source: result.source
+        };
+      });
+      console.log('📋 Work item classifications:', workItemClassifications);
+    }
 
     const prompt = `Du är en expert på svenska ROT- och RUT-avdrag enligt Skatteverket 2025.
 
@@ -178,6 +247,11 @@ Returnera bara JSON, inget annat.`;
     const result: ClassificationResponse = JSON.parse(data.choices[0].message.content);
 
     console.log('✅ Classification result:', result);
+
+    // Add work item classifications if available
+    if (workItemClassifications) {
+      result.workItemClassifications = workItemClassifications;
+    }
 
     return new Response(
       JSON.stringify(result),
