@@ -636,17 +636,6 @@ export const ChatInterface = ({
             setMessages(prev => [...prev, warningMessage]);
           }
           
-          // FAS 3: Show delta warnings
-          if (data.deltaWarnings?.length > 0 && data.previous_quote_total) {
-            const newTotal = extractPriceFromQuote(data.quote);
-            setDeltaWarningData({
-              previousPrice: data.previous_quote_total,
-              newPrice: newTotal,
-              warnings: data.deltaWarnings
-            });
-            setShowDeltaWarning(true);
-          }
-          
           // FAS 3: Show delta warnings for suspicious price changes
           if (data.deltaWarnings?.length > 0 && data.previous_quote_total) {
             const newTotal = extractPriceFromQuote(data.quote);
@@ -1175,6 +1164,28 @@ export const ChatInterface = ({
             </div>
           )}
           
+          {/* FAS 3: Price Delta Warning */}
+          {showDeltaWarning && deltaWarningData && (
+            <div className="px-4 py-3">
+              <PriceDeltaWarning
+                previousPrice={deltaWarningData.previousPrice}
+                newPrice={deltaWarningData.newPrice}
+                warnings={deltaWarningData.warnings}
+                onAccept={() => {
+                  setShowDeltaWarning(false);
+                  toast({
+                    title: "Prisförändring accepterad",
+                    description: "Offerten sparas med den nya prissättningen"
+                  });
+                }}
+                onRegenerate={() => {
+                  setShowDeltaWarning(false);
+                  handleSendMessage("Generera om offerten med mer realistisk prisberäkning");
+                }}
+              />
+            </div>
+          )}
+
           {/* Messages Area */}
           <div ref={chatContainerRef} className="flex-1 overflow-y-auto px-4 py-6 space-y-4">
           {messages.length === 0 ? (
