@@ -15,7 +15,7 @@ import { ConversationHistory } from "./ConversationHistory";
 import { HelpCollapsible } from "./HelpCollapsible";
 import { CustomerQuickSelect } from "@/components/CustomerQuickSelect";
 import { TemplateQuickAccess } from "@/components/TemplateQuickAccess";
-import { Loader2, RotateCcw, Sparkles, ChevronDown, ChevronUp, User } from "lucide-react";
+import { Loader2, RotateCcw, Sparkles, ChevronDown, ChevronUp, User, MessageSquare } from "lucide-react";
 import { Progress } from "@/components/ui/progress";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
@@ -937,6 +937,23 @@ export const ChatInterface = ({
           ref={chatContainerRef}
           className="flex flex-col min-h-[500px] max-h-[calc(100vh-200px)] md:min-h-[600px] md:max-h-[calc(100vh-150px)] bg-background relative"
         >
+          {/* Draft Mode Context Banner */}
+          {isDraftMode && existingQuote && (
+            <div className="sticky top-0 z-10 bg-primary/10 border-b border-primary/20 px-4 py-3 backdrop-blur-sm">
+              <div className="flex items-start gap-2">
+                <MessageSquare className="h-5 w-5 text-primary mt-0.5 flex-shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-foreground">
+                    Du chattar om offerten: "{existingQuote.title}"
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    AI:n kommer att uppdatera denna offert baserat på dina önskemål
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* AI Processing Banner - Compact */}
           {isTyping && (
             <div className="sticky top-0 z-10 bg-gradient-to-r from-primary/10 via-blue-500/10 to-purple-500/10 border-b border-primary/20 px-4 py-2 backdrop-blur-sm">
