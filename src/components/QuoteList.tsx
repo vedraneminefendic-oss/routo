@@ -1,11 +1,12 @@
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { FileText, Calendar, Send, Eye, CheckCircle, XCircle, Check, Hammer, Sparkles, Droplet, CookingPot, Paintbrush, Scissors, Trees, Zap, Wrench, Home, MessageSquare } from "lucide-react";
+import { FileText, Calendar, Send, Eye, CheckCircle, XCircle, Check, Hammer, Sparkles, Droplet, CookingPot, Paintbrush, Scissors, Trees, Zap, Wrench, Home, MessageSquare, ChevronDown } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { sv } from "date-fns/locale";
 import { QuoteStatus } from "@/hooks/useQuoteStatus";
 import { EmptyState } from "@/components/EmptyState";
+import { useState } from "react";
 import {
   Tooltip,
   TooltipContent,
@@ -67,6 +68,8 @@ const STATUS_CONFIG = {
 };
 
 const QuoteList = ({ quotes, onQuoteClick }: QuoteListProps) => {
+  const [expandedQuoteId, setExpandedQuoteId] = useState<string | null>(null);
+
   const getStatusConfig = (status: string) => {
     return STATUS_CONFIG[status as QuoteStatus] || {
       label: status,
@@ -184,15 +187,15 @@ const QuoteList = ({ quotes, onQuoteClick }: QuoteListProps) => {
                   
                   {/* Status badges and actions */}
                   <div className="flex flex-col items-end gap-2">
-                    {/* Quick improve button for non-completed/accepted quotes */}
+                    {/* Quick improve button for non-completed/accepted quotes - FAS 2 */}
                     {quote.status !== 'completed' && quote.status !== 'accepted' && (
                       <TooltipProvider>
                         <Tooltip>
                           <TooltipTrigger asChild>
                             <Button
                               size="sm"
-                              variant="outline"
-                              className="h-8 w-8 p-0"
+                              variant="default"
+                              className="h-9 w-9 p-0 hover:scale-110 transition-transform shadow-sm"
                               onClick={(e) => {
                                 e.stopPropagation();
                                 onQuoteClick?.(quote);
@@ -202,7 +205,8 @@ const QuoteList = ({ quotes, onQuoteClick }: QuoteListProps) => {
                             </Button>
                           </TooltipTrigger>
                           <TooltipContent>
-                            <p>Förbättra med AI</p>
+                            <p className="font-medium">Förbättra offerten med AI</p>
+                            <p className="text-xs text-muted-foreground">Lägg till/ta bort arbeten</p>
                           </TooltipContent>
                         </Tooltip>
                       </TooltipProvider>
@@ -235,19 +239,86 @@ const QuoteList = ({ quotes, onQuoteClick }: QuoteListProps) => {
                   </div>
                 </div>
                 
-                {/* Footer row */}
-                <div className="flex items-center justify-between pt-2 border-t border-border/50">
-                  <span className="flex items-center gap-1 text-xs text-muted-foreground">
-                    <Calendar className="h-3 w-3" />
-                    {formatDistanceToNow(new Date(quote.created_at), { 
-                      addSuffix: true, 
-                      locale: sv 
-                    })}
-                  </span>
-                  {quote.generated_quote?.summary && (
-                    <span className="font-semibold text-sm text-primary">
-                      {formatCurrency(quote.generated_quote.summary.customerPays)}
+                {/* Footer row with expandable preview - FAS 2 */}
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between pt-2 border-t border-border/50">
+                    <span className="flex items-center gap-1 text-xs text-muted-foreground">
+                      <Calendar className="h-3 w-3" />
+                      {formatDistanceToNow(new Date(quote.created_at), { 
+                        addSuffix: true, 
+                        locale: sv 
+                      })}
                     </span>
+                    <div className="flex items-center gap-2">
+                      {quote.generated_quote?.summary && (
+                        <span className="font-semibold text-sm text-primary">
+                          {formatCurrency(quote.generated_quote.summary.customerPays)}
+                        </span>
+                      )}
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-6 w-6 p-0"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setExpandedQuoteId(expandedQuoteId === quote.id ? null : quote.id);
+                        }}
+                      >
+                        <ChevronDown className={`h-4 w-4 transition-transform ${expandedQuoteId === quote.id ? 'rotate-180' : ''}`} />
+                      </Button>
+                    </div>
+                  </div>
+
+                  {/* Expandable quick preview */}
+                  {expandedQuoteId === quote.id && (
+                    <div className="p-3 bg-muted/50 rounded-lg space-y-2 animate-in slide-in-from-top-2">
+                      <div className="grid grid-cols-2 gap-2 text-sm">
+                        <div>
+                          <span className="font-medium">Arbeten:</span>
+                          <span className="ml-1 text-muted-foreground">
+                            {quote.generated_quote.workItems?.length || 0} st
+                          </span>
+                        </div>
+                        <div>
+                          <span className="font-medium">Material:</span>
+                          <span className="ml-1 text-muted-foreground">
+                            {quote.generated_quote.materials?.length || 0} st
+                          </span>
+                        </div>
+                      </div>
+                      
+                      {(() => {
+                        const deductionType = getDeductionType(quote);
+                        const deduction = deductionType === 'rot' 
+                          ? quote.generated_quote.summary.rotDeduction || quote.generated_quote.summary.deductionAmount
+                          : deductionType === 'rut'
+                          ? quote.generated_quote.summary.rutDeduction || quote.generated_quote.summary.deductionAmount
+                          : null;
+                        
+                        if (deduction) {
+                          return (
+                            <div className="text-sm">
+                              <span className="font-medium text-primary">
+                                {deductionType?.toUpperCase()}-avdrag: 
+                              </span>
+                              <span className="ml-1">{formatCurrency(deduction)}</span>
+                            </div>
+                          );
+                        }
+                        return null;
+                      })()}
+                      
+                      {quote.generated_quote.workItems && quote.generated_quote.workItems.length > 0 && (
+                        <div className="text-xs text-muted-foreground pt-1 border-t border-border/50">
+                          <span className="font-medium">Exempel arbeten: </span>
+                          {quote.generated_quote.workItems
+                            .slice(0, 2)
+                            .map((w: any) => w.name)
+                            .join(', ')}
+                          {quote.generated_quote.workItems.length > 2 && '...'}
+                        </div>
+                      )}
+                    </div>
                   )}
                 </div>
               </div>

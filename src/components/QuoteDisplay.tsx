@@ -137,6 +137,7 @@ interface QuoteDisplayProps {
     confidence: number;
     reasoning: string;
   }>;
+  showCompactView?: boolean; // FAS 1: Compact view for split-screen
 }
 
 const QuoteDisplay = ({ 
@@ -159,7 +160,8 @@ const QuoteDisplay = ({
   usedReference,
   referenceTitle,
   bathroomValidation,
-  aiDecisions
+  aiDecisions,
+  showCompactView = false // FAS 1: Default to false
 }: QuoteDisplayProps) => {
   const [companySettings, setCompanySettings] = useState<any>(null);
   const [logoImage, setLogoImage] = useState<string | null>(null);

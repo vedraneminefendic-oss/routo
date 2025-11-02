@@ -12,6 +12,8 @@ import { AIProgressIndicator } from "@/components/AIProgressIndicator";
 import { ChatInterface } from "@/components/chat/ChatInterface";
 import { LiveQuotePreview } from "@/components/chat/LiveQuotePreview";
 import { ExpressQuoteForm } from "@/components/ExpressQuoteForm";
+import { Breadcrumbs } from "@/components/Breadcrumbs";
+import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
 
 const NewQuote = () => {
   const navigate = useNavigate();
@@ -233,7 +235,7 @@ const NewQuote = () => {
     }
   };
 
-  const handleSaveQuote = async () => {
+  const handleSaveQuote = async (action: 'save' | 'save_and_continue' = 'save') => {
     if (!currentQuote || !user) return;
 
     setIsSaving(true);
@@ -250,7 +252,7 @@ const NewQuote = () => {
       else if (description.includes('vvs') || description.includes('rör')) projectType = 'vvs';
       else if (description.includes('fönster')) projectType = 'fönster';
 
-      const { error } = await supabase
+      const { data, error } = await supabase
         .from('quotes')
         .insert({
           user_id: user.id,
@@ -260,12 +262,19 @@ const NewQuote = () => {
           project_type: projectType,
           status: 'draft',
           customer_id: currentCustomerId || null
-        });
+        })
+        .select()
+        .single();
 
       if (error) throw error;
 
-      toast.success("Offert sparad!");
-      navigate('/quotes');
+      if (action === 'save') {
+        toast.success("Offert sparad!");
+        navigate('/quotes');
+      } else {
+        toast.success("Offert sparad! Du kan fortsätta redigera.");
+        navigate(`/quotes?id=${data.id}`, { replace: true });
+      }
     } catch (error: any) {
       console.error('Error saving quote:', error);
       toast.error(error.message || "Kunde inte spara offert");
@@ -349,6 +358,11 @@ const NewQuote = () => {
     navigate("/auth");
   };
 
+  // FAS 5: Keyboard shortcuts
+  useKeyboardShortcuts({
+    onSave: currentQuote ? () => handleSaveQuote('save') : undefined,
+  });
+
 
   if (loading) {
     return (
@@ -400,6 +414,13 @@ const NewQuote = () => {
 
       {/* Main Content */}
       <main className="container mx-auto px-4 py-8">
+        {/* FAS 3: Breadcrumbs */}
+        <Breadcrumbs items={[
+          { label: 'Hem', href: '/' },
+          { label: 'Offerter', href: '/quotes' },
+          { label: 'Skapa ny offert' }
+        ]} />
+
         {/* P1: Split view layout when in AI mode and no quote yet */}
         {!currentQuote ? (
           <div className="grid lg:grid-cols-[1fr,400px] gap-6 max-w-7xl mx-auto">
@@ -449,24 +470,37 @@ const NewQuote = () => {
             </div>
           </div>
         ) : (
-          // Show tabs when quote is generated
-          <div className="max-w-4xl mx-auto space-y-6">
-            <Card className="border-2 border-primary/20 bg-card shadow-routo">
-              <Tabs defaultValue="view" className="w-full">
-                <div className="border-b px-6 pt-4">
-                  <TabsList className="grid w-full max-w-md grid-cols-2">
-                    <TabsTrigger value="view" className="gap-2">
-                      <Eye className="h-4 w-4" />
-                      Granska offert
-                    </TabsTrigger>
-                    <TabsTrigger value="chat" className="gap-2">
-                      <MessageSquare className="h-4 w-4" />
-                      Förbättra
-                    </TabsTrigger>
-                  </TabsList>
-                </div>
-
-                <TabsContent value="view" className="m-0 p-6">
+          // FAS 1: Split-view layout when quote is generated
+          <div className="grid lg:grid-cols-[minmax(400px,1fr),minmax(400px,600px)] gap-6 max-w-7xl mx-auto">
+            {/* Left: AI Chat */}
+            <div className="space-y-4">
+              <Card className="border-2 border-primary/20 bg-card shadow-routo">
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <MessageSquare className="h-5 w-5 text-primary" />
+                    Förbättra offerten
+                  </CardTitle>
+                  <CardDescription>
+                    Chatta med AI för att lägga till, ta bort eller ändra arbeten
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <ChatInterface 
+                    onQuoteGenerated={handleChatGenerateQuote}
+                    isGenerating={isGenerating}
+                    onConversationUpdate={handleConversationUpdate}
+                    existingQuote={currentQuote}
+                    isDraftMode={true}
+                    onQuoteUpdated={(updated) => setCurrentQuote(updated)}
+                  />
+                </CardContent>
+              </Card>
+            </div>
+            
+            {/* Right: Live Quote Preview */}
+            <div className="space-y-4">
+              <div className="sticky top-4">
+                <Card className="max-h-[calc(100vh-120px)] overflow-y-auto border-2 border-primary/20 bg-card shadow-routo">
                   {isEditing ? (
                     <QuoteEditor
                       quote={currentQuote}
@@ -475,60 +509,45 @@ const NewQuote = () => {
                       isSaving={isSaving}
                     />
                   ) : (
-                    <div className="space-y-4">
-                      <QuoteDisplay 
-                        quote={currentQuote}
-                        onEdit={handleEditQuote}
-                        onClose={() => {
-                          setCurrentQuote(null);
-                          setIsEditing(false);
-                        }}
-                        isSaving={isSaving}
-                        qualityWarning={qualityWarning}
-                        warningMessage={warningMessage}
-                        realismWarnings={realismWarnings}
-                        validationErrors={validationErrors}
-                        bathroomValidation={bathroomValidation}
-                        aiDecisions={aiDecisions}
-                        usedReference={usedReference}
-                        referenceTitle={referenceTitle}
-                      />
-                      <div className="flex gap-3">
-                        <Button 
-                          onClick={handleSaveQuote}
-                          disabled={isSaving}
-                          className="flex-1 bg-primary hover:bg-primary/90 shadow-routo hover:shadow-routo-lg"
-                        >
-                          {isSaving ? "Sparar..." : "Spara offert"}
-                        </Button>
-                        <Button 
-                          onClick={handleEditQuote}
-                          variant="outline"
-                          className="flex-1"
-                        >
-                          Redigera
-                        </Button>
-                      </div>
-                    </div>
-                  )}
-                </TabsContent>
-
-                <TabsContent value="chat" className="m-0 p-6">
-                  <div className="space-y-4">
-                    <div className="p-4 bg-muted/30 rounded-lg border">
-                      <p className="text-sm text-muted-foreground">
-                        💡 <strong>Tips:</strong> Offerten är inte sparad ännu. Du kan förbättra den här innan du sparar.
-                      </p>
-                    </div>
-                    <ChatInterface 
-                      onQuoteGenerated={handleChatGenerateQuote}
-                      isGenerating={isGenerating}
-                      onConversationUpdate={handleConversationUpdate}
+                    <QuoteDisplay 
+                      quote={currentQuote}
+                      onEdit={handleEditQuote}
+                      onClose={() => {
+                        setCurrentQuote(null);
+                        setIsEditing(false);
+                      }}
+                      isSaving={isSaving}
+                      qualityWarning={qualityWarning}
+                      warningMessage={warningMessage}
+                      realismWarnings={realismWarnings}
+                      validationErrors={validationErrors}
+                      bathroomValidation={bathroomValidation}
+                      aiDecisions={aiDecisions}
+                      usedReference={usedReference}
+                      referenceTitle={referenceTitle}
+                      showCompactView={true}
                     />
-                  </div>
-                </TabsContent>
-              </Tabs>
-            </Card>
+                  )}
+                </Card>
+                
+                <div className="flex gap-3 mt-4">
+                  <Button 
+                    onClick={() => handleSaveQuote('save_and_continue')}
+                    disabled={isSaving}
+                    className="flex-1 bg-primary hover:bg-primary/90"
+                  >
+                    {isSaving ? "Sparar..." : "Spara och fortsätt"}
+                  </Button>
+                  <Button 
+                    onClick={() => handleSaveQuote('save')}
+                    variant="outline"
+                    disabled={isSaving}
+                  >
+                    Spara och stäng
+                  </Button>
+                </div>
+              </div>
+            </div>
           </div>
         )}
       </main>

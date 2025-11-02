@@ -14,6 +14,8 @@ import QuoteList from "@/components/QuoteList";
 import { ChatInterface } from "@/components/chat/ChatInterface";
 import { ContextualHelp } from "@/components/ContextualHelp";
 import { AppHeader } from "@/components/AppHeader";
+import { Breadcrumbs } from "@/components/Breadcrumbs";
+import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
 
 const Quotes = () => {
   const navigate = useNavigate();
@@ -206,6 +208,11 @@ const Quotes = () => {
     setIsEditing(false);
   };
 
+  // FAS 5: Keyboard shortcuts
+  useKeyboardShortcuts({
+    onClose: viewingQuote ? handleCloseQuote : undefined,
+  });
+
 
   const filteredQuotes = quotes.filter((quote) => {
     const matchesSearch = searchTerm === "" || 
@@ -243,11 +250,82 @@ const Quotes = () => {
 
       {/* Main Content */}
       <main className="container mx-auto px-4 py-8">
+        {/* FAS 3: Breadcrumbs */}
+        {viewingQuote && (
+          <Breadcrumbs items={[
+            { label: 'Hem', href: '/' },
+            { label: 'Offerter', href: '/quotes' },
+            { label: viewingQuote.title }
+          ]} />
+        )}
+
         <div className="grid lg:grid-cols-2 gap-6">
-          {/* Left Column - Quote Display/Editor with Tabs */}
+          {/* Left Column - Quote Display/Editor with Split-view for drafts */}
           <div className="space-y-6">
-            {/* Show tabs for all non-completed/accepted quotes */}
-            {currentQuote && !isEditing && viewingQuote?.status !== 'completed' && viewingQuote?.status !== 'accepted' && (
+            {/* FAS 1: Split-view for draft quotes */}
+            {currentQuote && !isEditing && viewingQuote?.status === 'draft' && (
+              <div className="grid lg:grid-cols-[1fr,400px] gap-4">
+                {/* Quote display */}
+                <Card className="border-2 border-primary/20 bg-card shadow-routo">
+                  <QuoteDisplay 
+                    quote={currentQuote} 
+                    onEdit={handleEditQuote}
+                    onClose={handleCloseQuote}
+                    onDelete={handleDeleteQuote}
+                    onDuplicate={handleDuplicateQuote}
+                    isSaving={isSaving}
+                    quoteId={viewingQuote?.id}
+                    currentStatus={viewingQuote?.status}
+                    onStatusChanged={loadQuotes}
+                    showCompactView={true}
+                  />
+                </Card>
+                
+                {/* AI Chat sidebar */}
+                <Card className="border-2 border-primary/20 bg-card shadow-routo">
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-base flex items-center gap-2">
+                      <MessageSquare className="h-4 w-4 text-primary" />
+                      Förbättra
+                    </CardTitle>
+                    <CardDescription className="text-xs">
+                      Använd AI för att ändra offerten
+                    </CardDescription>
+                  </CardHeader>
+                  <div className="px-6 pb-6">
+                    <ChatInterface
+                      existingQuoteId={viewingQuote.id}
+                      onQuoteGenerated={(updatedQuote) => {
+                        setCurrentQuote(updatedQuote);
+                        setIsGeneratingQuote(false);
+                      }}
+                      isGenerating={isGeneratingQuote}
+                      onQuoteUpdated={async () => {
+                        await loadQuotes();
+                        const updated = await supabase
+                          .from('quotes')
+                          .select('*')
+                          .eq('id', viewingQuote.id)
+                          .single();
+                        if (updated.data) {
+                          const updatedQuoteData = updated.data.edited_quote || updated.data.generated_quote;
+                          if (updatedQuoteData && typeof updatedQuoteData === 'object') {
+                            setCurrentQuote({
+                              ...(updatedQuoteData as any),
+                              deductionType: updated.data.deduction_type || (updatedQuoteData as any).deductionType || 'none'
+                            });
+                            setViewingQuote(updated.data);
+                          }
+                        }
+                      }}
+                    />
+                  </div>
+                </Card>
+              </div>
+            )}
+
+            {/* Show tabs for non-draft, non-completed/accepted quotes */}
+            {currentQuote && !isEditing && viewingQuote?.status !== 'draft' && viewingQuote?.status !== 'completed' && viewingQuote?.status !== 'accepted' && (
               <Card className="border-2 border-primary/20 bg-card shadow-routo">
                 <Tabs defaultValue="view" className="w-full">
                   <div className="border-b px-6 pt-4">
