@@ -158,6 +158,9 @@ export const ChatInterface = ({
   }, [messages, isTyping]);
 
   useEffect(() => {
+    // Only create session if user is authenticated
+    if (!userId) return;
+    
     const createSession = async () => {
       try {
         const { data, error } = await supabase.functions.invoke('manage-conversation', {
@@ -177,7 +180,7 @@ export const ChatInterface = ({
       }
     };
     createSession();
-  }, [toast]);
+  }, [userId, toast]);
 
   const handleSendMessage = async (content: string, images?: string[], intent?: string, retryCount = 0) => {
     if (!sessionId) {
@@ -1337,8 +1340,18 @@ export const ChatInterface = ({
               assumptions={assumptions}
               onConfirm={async (field) => {
                 try {
+                  // Check authentication before proceeding
+                  if (!userId || !sessionId) {
+                    toast({ 
+                      title: "Vänligen logga in", 
+                      description: "Du måste vara inloggad för att bekräfta antaganden",
+                      variant: "destructive" 
+                    });
+                    return;
+                  }
+                  
                   const assumption = assumptions.find(a => a.field === field);
-                  if (assumption && sessionId) {
+                  if (assumption) {
                     // Save preference in session
                     await supabase.functions.invoke('manage-conversation', {
                       body: { 
