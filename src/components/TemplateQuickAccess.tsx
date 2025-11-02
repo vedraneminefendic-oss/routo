@@ -102,14 +102,14 @@ export function TemplateQuickAccess({ description, userId, onSelectTemplate }: T
   }
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-3 max-w-full overflow-hidden">
       {/* AI-suggested templates */}
       {suggestions.length > 0 && (
-        <Card className="border-primary/20 bg-primary/5">
+        <Card className="border-primary/20 bg-primary/5 max-w-[280px]">
           <CardHeader className="pb-2 px-3 py-2">
             <div className="flex items-center gap-2">
               <Sparkles className="h-4 w-4 text-primary flex-shrink-0" />
-              <CardTitle className="text-sm">AI föreslår</CardTitle>
+              <CardTitle className="text-sm truncate">AI föreslår</CardTitle>
             </div>
           </CardHeader>
           <CardContent className="space-y-2 px-3 pb-3">
@@ -142,11 +142,11 @@ export function TemplateQuickAccess({ description, userId, onSelectTemplate }: T
 
       {/* Popular templates */}
       {popularTemplates.length > 0 && (
-        <Card>
+        <Card className="max-w-[280px]">
           <CardHeader className="pb-2 px-3 py-2">
             <div className="flex items-center gap-2">
               <TrendingUp className="h-4 w-4 text-muted-foreground flex-shrink-0" />
-              <CardTitle className="text-sm">Senaste mallar</CardTitle>
+              <CardTitle className="text-sm truncate">Senaste mallar</CardTitle>
             </div>
           </CardHeader>
           <CardContent className="space-y-2 px-3 pb-3">

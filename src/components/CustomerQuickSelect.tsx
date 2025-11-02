@@ -54,15 +54,15 @@ export function CustomerQuickSelect({ onSelect, selectedCustomerId }: CustomerQu
           variant="outline"
           role="combobox"
           aria-expanded={open}
-          className="w-full justify-between text-left"
+          className="w-full max-w-full justify-between text-left"
         >
           {selectedCustomer ? (
-            <span className="flex items-center gap-2 truncate min-w-0">
+            <span className="flex items-center gap-2 min-w-0 flex-1 truncate">
               <User className="h-4 w-4 flex-shrink-0" />
               <span className="truncate">{selectedCustomer.name}</span>
             </span>
           ) : (
-            <span className="text-muted-foreground flex items-center gap-2 truncate">
+            <span className="text-muted-foreground flex items-center gap-2 min-w-0 flex-1 truncate">
               <User className="h-4 w-4 flex-shrink-0" />
               <span className="truncate">Välj befintlig kund...</span>
             </span>

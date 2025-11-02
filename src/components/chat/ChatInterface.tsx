@@ -16,6 +16,7 @@ import { HelpCollapsible } from "./HelpCollapsible";
 import { CustomerQuickSelect } from "@/components/CustomerQuickSelect";
 import { TemplateQuickAccess } from "@/components/TemplateQuickAccess";
 import { PriceDeltaWarning } from "@/components/PriceDeltaWarning";
+import { AssumptionsList } from "@/components/AssumptionsList";
 import { Loader2, RotateCcw, Sparkles, ChevronDown, ChevronUp, User, MessageSquare } from "lucide-react";
 import { Progress } from "@/components/ui/progress";
 import { supabase } from "@/integrations/supabase/client";
@@ -75,6 +76,7 @@ export const ChatInterface = ({
   const [projectType, setProjectType] = useState<string>('övrigt'); // Track project type from backend
   const [showDeltaWarning, setShowDeltaWarning] = useState(false); // FAS 3: Show price delta warnings
   const [deltaWarningData, setDeltaWarningData] = useState<{ previousPrice: number; newPrice: number; warnings: string[] } | null>(null);
+  const [assumptions, setAssumptions] = useState<any[]>([]); // FAS 3: Track assumptions
   
   // FAS 3: Helper to extract price from quote (defined early)
   const extractPriceFromQuote = (quote: any): number => {
@@ -621,6 +623,11 @@ export const ChatInterface = ({
           setShowQuoteSheet(true);
           setIsDraftQuote(data.isDraft || false);
           setProjectType(data.projectType || 'övrigt');
+          
+          // FAS 3: Extract assumptions from response
+          if (data.assumptions && Array.isArray(data.assumptions)) {
+            setAssumptions(data.assumptions);
+          }
           
           if (isDraftMode && onQuoteUpdated) {
             onQuoteUpdated(data);
@@ -1317,10 +1324,38 @@ export const ChatInterface = ({
                 </div>
               ))}
               
-              {/* P0: Typing Indicator */}
-              {isTyping && <TypingIndicator />}
-              
-              {/* Quote generated - show button to open sheet */}
+          {/* P0: Typing Indicator */}
+          {isTyping && <TypingIndicator />}
+          
+          {/* FAS 3: Assumptions List - ENDAST efter konversation, före offert visas */}
+          {assumptions.length > 0 && !showQuoteSheet && (
+            <AssumptionsList
+              assumptions={assumptions}
+              onConfirm={(field) => {
+                console.log('Confirming assumption:', field);
+                toast({
+                  title: "Antagande bekräftat",
+                  description: "Offerten kommer att uppdateras baserat på din bekräftelse.",
+                });
+                // Rensa antagandet när det bekräftas
+                setAssumptions(prev => prev.filter(a => a.field !== field));
+              }}
+              onEdit={(field) => {
+                const assumption = assumptions.find(a => a.field === field);
+                if (assumption) {
+                  setUserMessage(`Jag vill ändra: ${assumption.text}. `);
+                  // Fokusera input - scroll to input area
+                  const inputArea = document.querySelector('textarea');
+                  if (inputArea) {
+                    inputArea.focus();
+                    inputArea.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                  }
+                }
+              }}
+            />
+          )}
+          
+          {/* Quote generated - show button to open sheet */}
               {generatedQuote && (
                 <div className="bg-primary/10 border border-primary/20 rounded-lg p-4 animate-in fade-in-50">
                   <div className="flex items-center justify-between gap-3">
