@@ -102,35 +102,34 @@ export function TemplateQuickAccess({ description, userId, onSelectTemplate }: T
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-3">
       {/* AI-suggested templates */}
       {suggestions.length > 0 && (
         <Card className="border-primary/20 bg-primary/5">
-          <CardHeader className="pb-3">
+          <CardHeader className="pb-2 px-3 py-2">
             <div className="flex items-center gap-2">
-              <Sparkles className="h-5 w-5 text-primary" />
-              <CardTitle className="text-lg">AI föreslår mallar</CardTitle>
+              <Sparkles className="h-4 w-4 text-primary flex-shrink-0" />
+              <CardTitle className="text-sm">AI föreslår</CardTitle>
             </div>
-            <CardDescription>Baserat på din beskrivning</CardDescription>
           </CardHeader>
-          <CardContent className="space-y-2">
-            {suggestions.map((suggestion) => (
+          <CardContent className="space-y-2 px-3 pb-3">
+            {suggestions.slice(0, 2).map((suggestion) => (
               <Button
                 key={suggestion.templateId}
                 variant="outline"
-                className="w-full justify-start h-auto py-3"
+                className="w-full justify-start h-auto py-2 text-left"
                 onClick={() => handleSelectTemplate(suggestion.template)}
               >
-                <div className="flex items-start gap-3 w-full">
-                  <FileText className="h-5 w-5 text-primary mt-1 flex-shrink-0" />
-                  <div className="flex-1 text-left">
-                    <div className="font-semibold flex items-center gap-2">
-                      {suggestion.template.name}
-                      <Badge variant="secondary" className="text-xs">
-                        {Math.round(suggestion.relevanceScore * 100)}% match
+                <div className="flex items-start gap-2 w-full min-w-0">
+                  <FileText className="h-4 w-4 text-primary mt-0.5 flex-shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <div className="font-medium text-sm flex items-center gap-2 flex-wrap">
+                      <span className="truncate">{suggestion.template.name}</span>
+                      <Badge variant="secondary" className="text-xs whitespace-nowrap">
+                        {Math.round(suggestion.relevanceScore * 100)}%
                       </Badge>
                     </div>
-                    <p className="text-xs text-muted-foreground mt-1">
+                    <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">
                       {suggestion.reason}
                     </p>
                   </div>
@@ -144,31 +143,27 @@ export function TemplateQuickAccess({ description, userId, onSelectTemplate }: T
       {/* Popular templates */}
       {popularTemplates.length > 0 && (
         <Card>
-          <CardHeader className="pb-3">
+          <CardHeader className="pb-2 px-3 py-2">
             <div className="flex items-center gap-2">
-              <TrendingUp className="h-5 w-5 text-muted-foreground" />
-              <CardTitle className="text-lg">Populära mallar</CardTitle>
+              <TrendingUp className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+              <CardTitle className="text-sm">Senaste mallar</CardTitle>
             </div>
-            <CardDescription>Dina mest använda mallar</CardDescription>
           </CardHeader>
-          <CardContent className="space-y-2">
-            {popularTemplates.map((template) => (
+          <CardContent className="space-y-2 px-3 pb-3">
+            {popularTemplates.slice(0, 3).map((template) => (
               <Button
                 key={template.id}
                 variant="ghost"
-                className="w-full justify-start h-auto py-3"
+                className="w-full justify-start h-auto py-2 text-left"
                 onClick={() => handleSelectTemplate(template)}
               >
-                <div className="flex items-start gap-3 w-full">
-                  <FileText className="h-5 w-5 text-muted-foreground mt-1 flex-shrink-0" />
-                  <div className="flex-1 text-left">
-                    <div className="font-semibold flex items-center gap-2">
+                <div className="flex items-start gap-2 w-full min-w-0">
+                  <FileText className="h-4 w-4 text-muted-foreground mt-0.5 flex-shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <div className="font-medium text-sm truncate">
                       {template.name}
-                      <Badge variant="outline" className="text-xs">
-                        Senaste
-                      </Badge>
                     </div>
-                    <p className="text-xs text-muted-foreground mt-1">
+                    <p className="text-xs text-muted-foreground mt-0.5 line-clamp-1">
                       {template.description}
                     </p>
                   </div>

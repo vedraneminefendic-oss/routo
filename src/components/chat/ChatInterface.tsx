@@ -1233,6 +1233,14 @@ export const ChatInterface = ({
                   <p className="text-sm text-muted-foreground max-w-md">
                     Beskriv vad du vill ändra eller lägga till
                   </p>
+                  
+                  {/* FAS 4: Visa kund om offerten har en kopplad kund */}
+                  {existingQuote.customer_name && (
+                    <div className="inline-flex items-center gap-2 px-3 py-1.5 bg-muted rounded-full text-xs">
+                      <User className="h-3 w-3" />
+                      <span>{existingQuote.customer_name}</span>
+                    </div>
+                  )}
                 </div>
               ) : (
                 <div className="text-center space-y-2">
@@ -1267,8 +1275,8 @@ export const ChatInterface = ({
               
               <ConversationStarter onStarterClick={handleStarterClick} />
               
-              {/* Template Quick Access */}
-              {userId && userMessage.length > 20 && (
+              {/* Template Quick Access - FAS 1: ENDAST för nya offerter */}
+              {userId && userMessage.length > 20 && !existingQuoteId && (
                 <div className="w-full max-w-2xl">
                   <TemplateQuickAccess
                     description={userMessage}

@@ -19,7 +19,7 @@ export const QuickReplies = ({ replies, onSelect, disabled }: QuickRepliesProps)
   };
 
   return (
-    <div className="flex flex-wrap gap-2 mt-3">
+    <div className="flex flex-wrap gap-2 mt-3 max-w-full">
       {replies.map((reply, index) => (
         <Button
           key={index}
@@ -27,9 +27,9 @@ export const QuickReplies = ({ replies, onSelect, disabled }: QuickRepliesProps)
           size="sm"
           onClick={() => onSelect(reply.action, reply.label)}
           disabled={disabled}
-          className="text-sm transition-all duration-300 hover:scale-105 shadow-sm hover:shadow-md"
+          className="text-sm transition-all duration-300 hover:scale-105 shadow-sm hover:shadow-md flex-shrink-0"
         >
-          {reply.label}
+          <span className="truncate max-w-[200px]">{reply.label}</span>
         </Button>
       ))}
     </div>
