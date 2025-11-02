@@ -731,6 +731,52 @@ serve(async (req) => {
         .update(updateData)
         .eq('id', sessionId);
 
+      // FAS 2 & 3: Save conversation to conversations table for quote-based history
+      if (session.quote_id) {
+        try {
+          const newMessage = {
+            id: savedMessage.id,
+            role: message.role,
+            content: message.content,
+            timestamp: new Date().toISOString()
+          };
+
+          // Check if conversation record exists for this quote
+          const { data: existingConv } = await supabaseClient
+            .from('conversations')
+            .select('id, messages')
+            .eq('quote_id', session.quote_id)
+            .eq('user_id', user.id)
+            .single();
+
+          if (existingConv) {
+            // Append to existing messages
+            const updatedMessages = [...(existingConv.messages || []), newMessage];
+            await supabaseClient
+              .from('conversations')
+              .update({ messages: updatedMessages, updated_at: new Date().toISOString() })
+              .eq('id', existingConv.id);
+            
+            console.log('✅ FAS 3: Updated conversation history for quote', session.quote_id);
+          } else {
+            // Create new conversation record
+            await supabaseClient
+              .from('conversations')
+              .insert({
+                quote_id: session.quote_id,
+                user_id: user.id,
+                messages: [newMessage],
+                session_id: sessionId
+              });
+            
+            console.log('✅ FAS 3: Created new conversation history for quote', session.quote_id);
+          }
+        } catch (convError) {
+          console.error('⚠️ Failed to save to conversations table:', convError);
+          // Don't fail the whole request if this fails
+        }
+      }
+
       // FIX 2 + FAS 4 + FAS 8: Generate batch questions and check readiness for user messages
       if (message.role === 'user') {
         const { data: allMessages } = await supabaseClient

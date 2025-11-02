@@ -212,6 +212,44 @@ export type Database = {
           },
         ]
       }
+      conversations: {
+        Row: {
+          created_at: string | null
+          id: string
+          messages: Json
+          quote_id: string | null
+          session_id: string | null
+          updated_at: string | null
+          user_id: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          messages?: Json
+          quote_id?: string | null
+          session_id?: string | null
+          updated_at?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          messages?: Json
+          quote_id?: string | null
+          session_id?: string | null
+          updated_at?: string | null
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "conversations_quote_id_fkey"
+            columns: ["quote_id"]
+            isOneToOne: false
+            referencedRelation: "quotes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       customers: {
         Row: {
           address: string | null

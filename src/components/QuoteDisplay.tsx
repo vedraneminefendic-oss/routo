@@ -664,49 +664,73 @@ const QuoteDisplay = ({
   };
 
   return (
-    <Card className="border-2">
-      <CardHeader>
+    <Card className={showCompactView ? "border-0 shadow-none" : "border-2"}>
+      <CardHeader className={showCompactView ? "p-4 pb-2" : ""}>
         <div className="flex items-start justify-between">
           <div className="flex-1">
-            <CardTitle className="flex items-center gap-2">
-              <FileText className="h-5 w-5 text-primary" />
-              {quote.title}
-            </CardTitle>
-            <CardDescription className="mt-1">
-              Genererad offert - granska och spara
-            </CardDescription>
-            
-            {/* Reference badge */}
-            {usedReference && referenceTitle && (
-              <Badge variant="outline" className="mt-3">
-                <Sparkles className="h-3 w-3 mr-1" />
-                Baserad på tidigare offert: {referenceTitle}
-              </Badge>
-            )}
-            
-            <div className="mt-3">
-              <AIInsightBadge 
-                deductionType={quote.deductionType} 
-                hasCustomRates={hasCustomRates}
-                hourlyRate={hourlyRate}
-              />
-            </div>
-            
-            {quoteId && currentStatus && (
-              <div className="mt-4">
-                <QuoteStatusManager
-                  quoteId={quoteId}
-                  currentStatus={currentStatus}
-                  onStatusChanged={onStatusChanged}
-                />
+            {showCompactView ? (
+              /* FAS 1.1: Compact header for split-view */
+              <div className="space-y-1">
+                <CardTitle className="text-lg flex items-center gap-2">
+                  {quote.title}
+                </CardTitle>
+                <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                  <AIInsightBadge 
+                    deductionType={quote.deductionType} 
+                    hasCustomRates={hasCustomRates}
+                    hourlyRate={hourlyRate}
+                  />
+                  {deductionAmount > 0 && (
+                    <Badge variant="secondary" className="text-xs">
+                      {deductionType === 'rut' ? 'RUT' : 'ROT'} {Math.round((deductionAmount / quote.summary.totalWithVAT) * 100)}%
+                    </Badge>
+                  )}
+                </div>
               </div>
+            ) : (
+              /* Standard header for full view */
+              <>
+                <CardTitle className="flex items-center gap-2">
+                  <FileText className="h-5 w-5 text-primary" />
+                  {quote.title}
+                </CardTitle>
+                <CardDescription className="mt-1">
+                  Genererad offert - granska och spara
+                </CardDescription>
+                
+                {/* Reference badge */}
+                {usedReference && referenceTitle && (
+                  <Badge variant="outline" className="mt-3">
+                    <Sparkles className="h-3 w-3 mr-1" />
+                    Baserad på tidigare offert: {referenceTitle}
+                  </Badge>
+                )}
+                
+                <div className="mt-3">
+                  <AIInsightBadge 
+                    deductionType={quote.deductionType} 
+                    hasCustomRates={hasCustomRates}
+                    hourlyRate={hourlyRate}
+                  />
+                </div>
+                
+                {quoteId && currentStatus && (
+                  <div className="mt-4">
+                    <QuoteStatusManager
+                      quoteId={quoteId}
+                      currentStatus={currentStatus}
+                      onStatusChanged={onStatusChanged}
+                    />
+                  </div>
+                )}
+              </>
             )}
           </div>
         </div>
       </CardHeader>
 
-      {/* AI Quality Warnings */}
-      {(qualityWarning || realismWarnings?.length || validationErrors?.length) && (
+      {/* AI Quality Warnings - Hide in compact view */}
+      {!showCompactView && (qualityWarning || realismWarnings?.length || validationErrors?.length) && (
         <div className="px-6 pb-4 space-y-3">
           {/* Auto-correction warning */}
           {qualityWarning === 'auto_corrected' && (

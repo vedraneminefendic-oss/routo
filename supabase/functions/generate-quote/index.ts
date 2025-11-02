@@ -3022,7 +3022,7 @@ ${previousQuote.materials?.map((m: any, i: number) => `${i+1}. ${m.name} - ${m.s
 ---
 
 **ANVÄNDARENS BEGÄRAN:**
-"${actualConversationHistory.filter((m: any) => m.role === 'user').slice(-1)[0]?.content || description}"
+"${conversationHistory.filter((m: any) => m.role === 'user').slice(-1)[0]?.content || description}"
 
 ---
 

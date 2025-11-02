@@ -113,6 +113,40 @@ export const ChatInterface = ({
     getUser();
   }, []);
 
+  // FAS 2: Load conversation history when existingQuoteId changes
+  useEffect(() => {
+    if (existingQuoteId && userId) {
+      loadQuoteConversationHistory(existingQuoteId);
+    }
+  }, [existingQuoteId, userId]);
+
+  const loadQuoteConversationHistory = async (quoteId: string) => {
+    try {
+      const { data, error } = await supabase
+        .from('conversations')
+        .select('messages')
+        .eq('quote_id', quoteId)
+        .order('created_at', { ascending: false })
+        .limit(1);
+      
+      if (error) throw error;
+      
+      if (data && data[0]?.messages && Array.isArray(data[0].messages) && data[0].messages.length > 0) {
+        const loadedMessages = data[0].messages.map((msg: any) => ({
+          id: msg.id || crypto.randomUUID(),
+          role: msg.role,
+          content: msg.content,
+          timestamp: new Date(msg.timestamp)
+        }));
+        setMessages(loadedMessages);
+        console.log(`✅ FAS 2: Loaded ${loadedMessages.length} messages from quote conversation history`);
+      }
+    } catch (error) {
+      console.error('Error loading quote conversation history:', error);
+      // Don't show error to user - just start fresh if history can't be loaded
+    }
+  };
+
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   };
@@ -1190,17 +1224,29 @@ export const ChatInterface = ({
           <div ref={chatContainerRef} className="flex-1 overflow-y-auto px-4 py-6 space-y-4">
           {messages.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-full space-y-6">
-              <div className="text-center space-y-2">
-                <h2 className="text-2xl font-semibold text-foreground">
-                  Beskriv ditt projekt
-                </h2>
-                <p className="text-sm text-muted-foreground max-w-md">
-                  Jag hjälper dig skapa en professionell offert
-                </p>
-              </div>
+              {/* FAS 1.3: Contextual header - different for delta vs new quote mode */}
+              {existingQuoteId && existingQuote ? (
+                <div className="text-center space-y-2">
+                  <h2 className="text-2xl font-semibold text-foreground">
+                    💬 Förbättra: {existingQuote.title}
+                  </h2>
+                  <p className="text-sm text-muted-foreground max-w-md">
+                    Beskriv vad du vill ändra eller lägga till
+                  </p>
+                </div>
+              ) : (
+                <div className="text-center space-y-2">
+                  <h2 className="text-2xl font-semibold text-foreground">
+                    Beskriv ditt projekt
+                  </h2>
+                  <p className="text-sm text-muted-foreground max-w-md">
+                    Jag hjälper dig skapa en professionell offert
+                  </p>
+                </div>
+              )}
               
-              {/* Customer Quick Select */}
-              {userId && (
+              {/* FAS 1.3: Only show customer select for new quotes, not delta mode */}
+              {!existingQuoteId && userId && (
                 <div className="w-full max-w-md space-y-3">
                   <div className="flex items-center gap-2 text-sm text-muted-foreground">
                     <User className="h-4 w-4" />
