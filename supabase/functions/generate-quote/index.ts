@@ -3192,6 +3192,51 @@ ${industryStandardText}
 
 **KRITISKT:** Om du estimerar tid som är 2x högre eller lägre än dessa exempel, FÖRKLARA VARFÖR i reasoning!
 
+**🚨 P0: KRITISKA REGLER - DESSA FÅR ALDRIG BRYTAS:**
+
+**REGEL 1: TIDSESTIMAT MÅSTE LIGGA INOM BRANSCHSTANDARD ±15%**
+
+**FLYTTSTÄDNING:**
+- MINIMUM: 0.15h/kvm (9h för 60 kvm)
+- TYPISKT: 0.18h/kvm (10.8h för 60 kvm)  ← ANVÄND DETTA SOM DEFAULT
+- MAXIMUM: 0.25h/kvm (15h för 60 kvm)
+- **OM DIN ESTIMAT ÄR UTANFÖR DETTA INTERVALL → DU MÅSTE JUSTERA DEN!**
+
+**HEMSTÄDNING:**
+- MINIMUM: 1h per städtillfälle
+- TYPISKT: 2-3h per städtillfälle för 100 kvm
+- MAXIMUM: 4h per städtillfälle
+- **ALDRIG mer än 0.03h/kvm!**
+
+**MÅLNING INOMHUS:**
+- MINIMUM: 0.3h/kvm
+- TYPISKT: 0.4h/kvm  ← ANVÄND DETTA SOM DEFAULT
+- MAXIMUM: 0.6h/kvm
+- **Exempel: 50 kvm väggar = 15-30 timmar (INTE 50 timmar!)**
+
+**BADRUMSRENOVERING:**
+- MINIMUM: 40h/kvm
+- TYPISKT: 50h/kvm  ← ANVÄND DETTA SOM DEFAULT
+- MAXIMUM: 70h/kvm
+- **Exempel: 8 kvm badrum = 320-560 timmar (INTE 800 timmar!)**
+
+**REGEL 2: AVVIKELSER MÅSTE MOTIVERAS**
+- Om du avviker mer än ±15% från TYPISKT → du MÅSTE förklara varför i "reasoning"
+- Exempel: "Estimerade 20h pga mycket smutsig lägenhet med djuprengöring av kök"
+
+**REGEL 3: KONSISTENS MELLAN LIKADANA PROJEKT**
+- Flyttstädning 50 kvm ska ALLTID vara cirka 9h (±2h)
+- Hemstädning 100 kvm ska ALLTID vara cirka 2-3h
+- Målning 40 kvm ska ALLTID vara cirka 16h (±4h)
+
+**VALIDERING AV DIN OFFERT:**
+Efter att du genererat offerten kommer systemet att automatiskt validera:
+1. ✅ Är tidsåtgången realistisk jämfört med branschstandard?
+2. ✅ Är avvikelser motiverade?
+3. ✅ Är priset rimligt för arbetstypen?
+
+**OM VALIDERING MISSLYCKAS → OFFERTEN KOMMER AUTO-KORRIGERAS!**
+
     **🚨 KRITISKT - INKLUSIONS/EXKLUSIONS-REGLER:**
 
 När du bygger offerten:
@@ -4960,6 +5005,72 @@ Svara med **1**, **2** eller **3** (eller "granska", "generera", "mer info")`;
       }
     } else {
       console.log('✅ All time estimates are within industry standards');
+    }
+
+    
+    // ============================================
+    // P0: FORCED TIME ESTIMATE VALIDATION - STRICT ±15% ENFORCEMENT
+    // ============================================
+    
+    console.log('🚨 P0: Applying FORCED time estimate validation (±15% strict enforcement)...');
+    
+    let forcedCorrections = 0;
+    
+    for (let i = 0; i < (quote.workItems || []).length; i++) {
+      const workItem = quote.workItems[i];
+      const standard = findStandard(workItem.name);
+      
+      if (!standard) {
+        console.log(`   ℹ️ ${workItem.name}: No standard found, skipping forced validation`);
+        continue;
+      }
+      
+      // Calculate expected time
+      const unit = standard.timePerUnit.unit;
+      let amount = 1;
+      
+      if (unit === 'kvm' && measurementsForValidation.area) {
+        amount = measurementsForValidation.area;
+      } else if (unit === 'rum' && measurementsForValidation.rooms) {
+        amount = measurementsForValidation.rooms;
+      } else if (unit === 'styck' && measurementsForValidation.quantity) {
+        amount = measurementsForValidation.quantity;
+      } else if (unit === 'meter' && measurementsForValidation.length) {
+        amount = measurementsForValidation.length;
+      }
+      
+      const typicalTime = amount * standard.timePerUnit.typical;
+      const minAllowed = typicalTime * 0.85; // -15%
+      const maxAllowed = typicalTime * 1.15; // +15%
+      
+      // FORCED CORRECTION if outside ±15%
+      if (workItem.hours < minAllowed || workItem.hours > maxAllowed) {
+        const originalHours = workItem.hours;
+        
+        // Force to typical value
+        quote.workItems[i].hours = typicalTime;
+        quote.workItems[i].subtotal = typicalTime * workItem.hourlyRate;
+        
+        // Add note to reasoning
+        const deviationPercent = Math.round(((originalHours - typicalTime) / typicalTime) * 100);
+        quote.workItems[i].reasoning = (workItem.reasoning || '') + 
+          ` [P0 AUTO-KORRIGERAD: ${originalHours.toFixed(1)}h → ${typicalTime.toFixed(1)}h (${deviationPercent > 0 ? '+' : ''}${deviationPercent}% från branschstandard)]`;
+        
+        console.log(`   🔧 FORCED: ${workItem.name}: ${originalHours.toFixed(1)}h → ${typicalTime.toFixed(1)}h (${deviationPercent > 0 ? '+' : ''}${deviationPercent}% deviation)`);
+        forcedCorrections++;
+      } else {
+        console.log(`   ✅ ${workItem.name}: ${workItem.hours.toFixed(1)}h är inom ±15% av ${typicalTime.toFixed(1)}h`);
+      }
+    }
+    
+    if (forcedCorrections > 0) {
+      console.log(`✅ P0: Forced ${forcedCorrections} corrections to match industry standards`);
+      
+      // Re-calculate totals after forced corrections
+      quote = computeQuoteTotals(quote, hourlyRates || [], equipmentRates || [], isDraft);
+      console.log('💰 Totals recalculated after P0 forced corrections');
+    } else {
+      console.log('✅ P0: All time estimates are within ±15% of industry standards');
     }
 
     console.log('🔬 Validating realism...');

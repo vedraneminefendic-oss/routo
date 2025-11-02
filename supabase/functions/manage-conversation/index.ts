@@ -19,7 +19,6 @@ function calculateCompleteness(conversationSummary: any): {
     { key: 'projectType', label: 'Typ av projekt' },
     { key: 'measurements.area', label: 'Storlek/Area' },
     { key: 'scope', label: 'Omfattning' },
-    { key: 'timeline', label: 'Tidplan' },
   ];
 
   const optionalFields = [
@@ -71,7 +70,6 @@ async function generateSmartQuestions(
     scope: false,
     size: false,
     materials: false,
-    timeline: false,
     specialRequirements: false
   };
   
@@ -144,7 +142,6 @@ Vi vill INTE överbelasta hantverkaren med frågor. Målet är max 6-7 frågor T
 - ✅/❌ Scope (vad ska göras?): ${checklist.scope ? '✅ JA' : '❌ NEJ - fråga om detta!'}
 - ✅/❌ Size (hur mycket?): ${checklist.size ? '✅ JA' : '❌ NEJ - fråga om detta!'}
 - ✅/❌ Materials (vilket material?): ${checklist.materials ? '✅ JA' : '❌ NEJ - fråga om detta!'}
-- ✅/❌ Timeline (när?): ${checklist.timeline ? '✅ JA' : '❌ NEJ - fråga om detta!'}
 - ✅/❌ Special Requirements (något speciellt?): ${checklist.specialRequirements ? '✅ JA' : '❌ NEJ - fråga om detta!'}
 
 PROJEKTBESKRIVNING: ${projectDescription}
@@ -224,9 +221,20 @@ Om alla checklist-kategorier är täckta, returnera: []`;
     
     const questions = JSON.parse(jsonStr);
     // FAS 23: Hard cap at 4 questions maximum
-    const validQuestions = Array.isArray(questions) ? questions.slice(0, 4) : [];
+    let validQuestions = Array.isArray(questions) ? questions.slice(0, 4) : [];
     
-    console.log(`✅ FAS 23: Generated ${validQuestions.length} ${isRefinement ? 'refinement' : 'initial'} questions`);
+    // P0: Filter out timeline questions
+    validQuestions = validQuestions.filter(q => {
+      const lower = q.toLowerCase();
+      return !lower.includes('tidsplan') && 
+             !lower.includes('tidplan') &&
+             !lower.includes('när ska') && 
+             !lower.includes('färdigställ') &&
+             !lower.includes('deadline') &&
+             !lower.includes('färdig');
+    });
+    
+    console.log(`✅ FAS 23: Generated ${validQuestions.length} ${isRefinement ? 'refinement' : 'initial'} questions (timeline questions filtered out)`);
     return validQuestions;
   } catch (error) {
     console.error('❌ Error generating smart questions:', error);
@@ -312,14 +320,13 @@ Extrahera följande information och returnera som JSON:
 **UPPGIFT 2: Markera vilka huvudkategorier som är BESVARADE (FAS 19)**
 Returnera också ett "checklist"-objekt som markerar om vi har fått svar på dessa 5 huvudkategorier:
 {
-  "checklist": {
-    "scope": true/false,     // Har vi fått svar på VAD som ska göras? (rivning, renovering, nyinstallation, etc.)
-    "size": true/false,      // Har vi fått svar på STORLEK/OMFATTNING? (kvm, antal enheter, höjd, etc.)
-    "materials": true/false, // Har vi fått svar om MATERIAL/KVALITET? (budget/standard/premium, specifika material)
-    "timeline": true/false,  // Har vi fått svar om TIDSPLAN? (brådskande, flexibel, specifikt datum)
-    "specialRequirements": true/false // Har vi fått svar om SPECIELLA KRAV? (arbetssätt, begränsningar, önskemål)
-  }
-}
+   "checklist": {
+     "scope": true/false,     // Har vi fått svar på VAD som ska göras? (rivning, renovering, nyinstallation, etc.)
+     "size": true/false,      // Har vi fått svar på STORLEK/OMFATTNING? (kvm, antal enheter, höjd, etc.)
+     "materials": true/false, // Har vi fått svar om MATERIAL/KVALITET? (budget/standard/premium, specifika material)
+     "specialRequirements": true/false // Har vi fått svar om SPECIELLA KRAV? (arbetssätt, begränsningar, önskemål)
+   }
+ }
 
 **EXEMPEL OUTPUT:**
 {
@@ -343,13 +350,12 @@ Returnera också ett "checklist"-objekt som markerar om vi har fått svar på de
     "kvalitet": "standard",
     "bortforsling": "nej, kunden sköter det"
   },
-  "checklist": {
-    "scope": true,
-    "size": true,
-    "materials": true,
-    "timeline": false,
-    "specialRequirements": true
-  }
+   "checklist": {
+     "scope": true,
+     "size": true,
+     "materials": true,
+     "specialRequirements": true
+   }
 }
 
 **VIKTIGT:**
