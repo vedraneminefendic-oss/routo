@@ -36,6 +36,9 @@ import { searchMaterialPriceLive } from './helpers/materialPricing.ts';
 import { generateAssumptions, getHistoricalPatterns, calculateCompleteness } from './helpers/assumptionEngine.ts';
 // FAS 3: Import delta engine for incremental updates
 import { detectDeltaChanges, applyDeltaChanges, validatePriceDelta } from './helpers/deltaEngine.ts';
+// Import industry standards for realistic pricing
+import { findStandard, getStandardPromptAddition, calculateTimeFromStandard } from './helpers/industryStandards.ts';
+import { validateQuoteTimeEstimates, autoCorrectTimeEstimates } from './helpers/validateTimeEstimate.ts';
 
 // Brand dictionary and synonyms for better language understanding
 const KEYWORD_SYNONYMS: Record<string, string[]> = {
@@ -2909,6 +2912,32 @@ Kunde inte hämta aktuell branschdata. Använd standardpriser och uppskattningar
     console.log('🎨 Painting project detected! Adding requirements checklist...');
   }
 
+  // ============================================
+  // PROPOSAL 1: INDUSTRY STANDARDS INTEGRATION
+  // ============================================
+  
+  let industryStandardText = '';
+  
+  // Försök hitta branschstandard baserat på beskrivning
+  const detectedStandard = findStandard(description + ' ' + conversationHistory.map(m => m.content).join(' '));
+  
+  if (detectedStandard) {
+    console.log(`🎯 BRANSCHSTANDARD HITTAD: ${detectedStandard.jobType.toUpperCase()}`);
+    console.log(`   Kategori: ${detectedStandard.category}`);
+    console.log(`   Timpris: ${detectedStandard.hourlyRate.standard} kr/h`);
+    console.log(`   Tid per ${detectedStandard.timePerUnit.unit}: ${detectedStandard.timePerUnit.typical}`);
+    
+    // Beräkna estimerad tid om vi har mått
+    const estimatedTime = calculateTimeFromStandard(detectedStandard, measurements);
+    console.log(`   Estimerad total tid: ${estimatedTime.toFixed(1)} timmar`);
+    
+    // Bygg prompt-tillägg för branschstandard
+    industryStandardText = getStandardPromptAddition(detectedStandard, measurements);
+    
+  } else {
+    console.log('⚠️ Ingen branschstandard hittad för detta projekt');
+  }
+
   // FAS 22 & FAS 25: Enhanced Draft mode instructions with structured price interval format
   const draftModeInstructions = isDraft ? `
 🎯 **FAS 22 & FAS 25: DRAFT MODE - SNABB OFFERT MED PRISINTERVALL**
@@ -3138,6 +3167,30 @@ ${industryDataText}
 ${liveSearchText}
 
 ${domainKnowledgeText}
+
+${industryStandardText}
+
+**🎯 FÖRSLAG 2: REALISTISKA TIDSESTIMAT (KONKRETA EXEMPEL):**
+
+**STÄDNING:**
+- Flyttstädning 50 kvm → 9-12 timmar (0.18h/kvm är typiskt)
+- Hemstädning 100 kvm → 2-3 timmar (ej 10 timmar!)
+- Fönsterputs 20 kvm fönster → 1.5-2.5 timmar
+
+**TRÄDGÅRD:**
+- Gräsklippning 200 kvm → 0.5-1 timme (0.003h/kvm)
+- Häckklippning 30 meter → 3-5 timmar (0.10h/meter)
+- Trädfällning 1 träd (10m) → 3-6 timmar (beroende på höjd och svårighetsgrad)
+
+**MÅLNING:**
+- Målning inomhus 40 kvm väggar → 16-24 timmar (0.4h/kvm)
+- Målning fasad 100 kvm → 30-50 timmar (0.3-0.5h/kvm)
+
+**RENOVERING:**
+- Badrumsrenovering 6 kvm → 300-420 timmar (50h/kvm är typiskt)
+- Köksrenovering 10 kvm → 300-600 timmar (30-60h/kvm)
+
+**KRITISKT:** Om du estimerar tid som är 2x högre eller lägre än dessa exempel, FÖRKLARA VARFÖR i reasoning!
 
     **🚨 KRITISKT - INKLUSIONS/EXKLUSIONS-REGLER:**
 
@@ -4861,6 +4914,53 @@ Svara med **1**, **2** eller **3** (eller "granska", "generera", "mer info")`;
     // Apply deterministic pricing (FAS 22: skip if draft mode)
     console.log('💰 Computing deterministic totals...');
     quote = computeQuoteTotals(quote, hourlyRates || [], equipmentRates || [], isDraft);
+
+    // ============================================
+    // PROPOSAL 1: VALIDATE TIME ESTIMATES AGAINST INDUSTRY STANDARDS
+    // ============================================
+    
+    console.log('⏱️ Validating time estimates against industry standards...');
+    
+    // Extrahera mått från beskrivning för validering
+    const allTextForValidation = (completeDescription + ' ' + actualConversationHistory.map((m: any) => m.content).join(' ')).toLowerCase();
+    const areaMatchValidation = allTextForValidation.match(/(\d+(?:[.,]\d+)?)\s*(?:kvm|kvadratmeter|m2)/i);
+    const lengthMatchValidation = allTextForValidation.match(/(\d+(?:[.,]\d+)?)\s*(?:meter|löpmeter|m)/i);
+    const quantityMatchValidation = allTextForValidation.match(/(\d+)\s*(?:st|styck|stycken|träd)/i);
+    const roomsMatchValidation = allTextForValidation.match(/(\d+)\s*(?:rum|sovrum)/i);
+    
+    const measurementsForValidation = {
+      area: areaMatchValidation ? parseFloat(areaMatchValidation[1].replace(',', '.')) : undefined,
+      length: lengthMatchValidation ? parseFloat(lengthMatchValidation[1].replace(',', '.')) : undefined,
+      quantity: quantityMatchValidation ? parseInt(quantityMatchValidation[1]) : undefined,
+      rooms: roomsMatchValidation ? parseInt(roomsMatchValidation[1]) : undefined
+    };
+    
+    const timeValidation = validateQuoteTimeEstimates(quote, measurementsForValidation);
+    
+    if (!timeValidation.isValid) {
+      console.warn('⚠️ Time estimate validation warnings:');
+      timeValidation.warnings.forEach(w => console.warn(`   - ${w}`));
+      
+      // Auto-correct if corrections are suggested
+      if (timeValidation.corrections.length > 0) {
+        console.log('🔧 Auto-correcting time estimates...');
+        
+        const correctionResult = autoCorrectTimeEstimates(quote, measurementsForValidation, true);
+        
+        if (correctionResult.corrected) {
+          console.log(`✅ Corrected ${correctionResult.corrections.length} work items:`);
+          correctionResult.corrections.forEach(c => {
+            console.log(`   - ${c.workItem}: ${c.before.toFixed(1)}h → ${c.after.toFixed(1)}h`);
+          });
+          
+          // Re-calculate totals after correction (FAS 22: respect draft mode)
+          quote = computeQuoteTotals(quote, hourlyRates || [], equipmentRates || [], isDraft);
+          console.log('💰 Totals recalculated after time corrections');
+        }
+      }
+    } else {
+      console.log('✅ All time estimates are within industry standards');
+    }
 
     console.log('🔬 Validating realism...');
     const realismWarnings = validateRealism(

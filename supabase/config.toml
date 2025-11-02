@@ -54,3 +54,6 @@ verify_jwt = false
 
 [functions.export-user-data]
 verify_jwt = true
+
+[functions.seed-industry-standards]
+verify_jwt = false
