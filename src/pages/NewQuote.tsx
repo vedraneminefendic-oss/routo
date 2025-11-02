@@ -430,17 +430,23 @@ const NewQuote = () => {
               {isGenerating && <AIProgressIndicator isGenerating={isGenerating} />}
 
               {/* SPRINT 2: Tabs for AI-assisted vs Express mode */}
-              <Tabs defaultValue="ai" className="w-full">
-                <TabsList className="grid w-full grid-cols-2 mb-6 bg-[hsl(36,45%,98%)]">
-                  <TabsTrigger value="ai" className="flex items-center gap-2 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
-                    <MessageSquare className="h-4 w-4" />
-                    AI-assisterad (rekommenderas)
-                  </TabsTrigger>
-                  <TabsTrigger value="express" className="flex items-center gap-2 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
-                    <Zap className="h-4 w-4" />
-                    Snabbläge (erfaren)
-                  </TabsTrigger>
-                </TabsList>
+          <Tabs defaultValue="ai" className="w-full">
+            <TabsList className="grid w-full grid-cols-2 mb-6 bg-[hsl(36,45%,98%)]">
+              <TabsTrigger value="ai" className="flex flex-col items-center gap-1 py-4 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
+                <div className="flex items-center gap-2">
+                  <MessageSquare className="h-4 w-4" />
+                  <span className="font-medium">AI-assisterad</span>
+                </div>
+                <span className="text-xs opacity-80">Chatta och få hjälp steg för steg</span>
+              </TabsTrigger>
+              <TabsTrigger value="express" className="flex flex-col items-center gap-1 py-4 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
+                <div className="flex items-center gap-2">
+                  <Zap className="h-4 w-4" />
+                  <span className="font-medium">Snabbläge</span>
+                </div>
+                <span className="text-xs opacity-80">Fyll i formulär snabbt</span>
+              </TabsTrigger>
+            </TabsList>
                 
                 <TabsContent value="ai">
                   <ChatInterface 

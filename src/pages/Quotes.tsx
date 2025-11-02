@@ -4,9 +4,8 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Search, AlertCircle, Plus, Eye, MessageSquare } from "lucide-react";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Search, AlertCircle, Plus, MessageSquare } from "lucide-react";
 import { toast } from "sonner";
 import QuoteDisplay from "@/components/QuoteDisplay";
 import QuoteEditor from "@/components/QuoteEditor";
@@ -262,130 +261,67 @@ const Quotes = () => {
         <div className="grid lg:grid-cols-2 gap-6">
           {/* Left Column - Quote Display/Editor with Split-view for drafts */}
           <div className="space-y-6">
-            {/* FAS 1: Split-view for draft quotes */}
-            {currentQuote && !isEditing && viewingQuote?.status === 'draft' && (
-              <div className="grid lg:grid-cols-[1fr,400px] gap-4">
-                {/* Quote display */}
-                <Card className="border-2 border-primary/20 bg-card shadow-routo">
-                  <QuoteDisplay 
-                    quote={currentQuote} 
-                    onEdit={handleEditQuote}
-                    onClose={handleCloseQuote}
-                    onDelete={handleDeleteQuote}
-                    onDuplicate={handleDuplicateQuote}
-                    isSaving={isSaving}
-                    quoteId={viewingQuote?.id}
-                    currentStatus={viewingQuote?.status}
-                    onStatusChanged={loadQuotes}
-                    showCompactView={true}
-                  />
-                </Card>
-                
-                {/* AI Chat sidebar */}
-                <Card className="border-2 border-primary/20 bg-card shadow-routo">
-                  <CardHeader className="pb-3">
-                    <CardTitle className="text-base flex items-center gap-2">
-                      <MessageSquare className="h-4 w-4 text-primary" />
-                      Förbättra
-                    </CardTitle>
-                    <CardDescription className="text-xs">
-                      Använd AI för att ändra offerten
-                    </CardDescription>
-                  </CardHeader>
-                  <div className="px-6 pb-6">
-                    <ChatInterface
-                      existingQuoteId={viewingQuote.id}
-                      onQuoteGenerated={(updatedQuote) => {
-                        setCurrentQuote(updatedQuote);
-                        setIsGeneratingQuote(false);
-                      }}
-                      isGenerating={isGeneratingQuote}
-                      onQuoteUpdated={async () => {
-                        await loadQuotes();
-                        const updated = await supabase
-                          .from('quotes')
-                          .select('*')
-                          .eq('id', viewingQuote.id)
-                          .single();
-                        if (updated.data) {
-                          const updatedQuoteData = updated.data.edited_quote || updated.data.generated_quote;
-                          if (updatedQuoteData && typeof updatedQuoteData === 'object') {
-                            setCurrentQuote({
-                              ...(updatedQuoteData as any),
-                              deductionType: updated.data.deduction_type || (updatedQuoteData as any).deductionType || 'none'
-                            });
-                            setViewingQuote(updated.data);
-                          }
-                        }
-                      }}
-                    />
-                  </div>
-                </Card>
-              </div>
-            )}
-
-            {/* Show tabs for non-draft, non-completed/accepted quotes */}
-            {currentQuote && !isEditing && viewingQuote?.status !== 'draft' && viewingQuote?.status !== 'completed' && viewingQuote?.status !== 'accepted' && (
-              <Card className="border-2 border-primary/20 bg-card shadow-routo">
-                <Tabs defaultValue="view" className="w-full">
-                  <div className="border-b px-6 pt-4">
-                    <TabsList className="grid w-full max-w-md grid-cols-2">
-                      <TabsTrigger value="view" className="gap-2">
-                        <Eye className="h-4 w-4" />
-                        Visa offert
-                      </TabsTrigger>
-                      <TabsTrigger value="chat" className="gap-2">
-                        <MessageSquare className="h-4 w-4" />
-                        Chatta & förbättra
-                      </TabsTrigger>
-                    </TabsList>
-                  </div>
-
-                  <TabsContent value="view" className="m-0 p-6">
-                    <QuoteDisplay 
-                      quote={currentQuote} 
-                      onEdit={handleEditQuote}
-                      onClose={handleCloseQuote}
-                      onDelete={handleDeleteQuote}
-                      onDuplicate={handleDuplicateQuote}
-                      isSaving={isSaving}
-                      quoteId={viewingQuote?.id}
-                      currentStatus={viewingQuote?.status}
-                      onStatusChanged={loadQuotes}
-                    />
-                  </TabsContent>
-
-                  <TabsContent value="chat" className="m-0 p-6">
-                    <ChatInterface
-                      existingQuoteId={viewingQuote.id}
-                      onQuoteGenerated={(updatedQuote) => {
-                        setCurrentQuote(updatedQuote);
-                        setIsGeneratingQuote(false);
-                      }}
-                      isGenerating={isGeneratingQuote}
-                      onQuoteUpdated={async () => {
-                        await loadQuotes();
-                        const updated = await supabase
-                          .from('quotes')
-                          .select('*')
-                          .eq('id', viewingQuote.id)
-                          .single();
-                        if (updated.data) {
-                          const updatedQuoteData = updated.data.edited_quote || updated.data.generated_quote;
-                          if (updatedQuoteData && typeof updatedQuoteData === 'object') {
-                            setCurrentQuote({
-                              ...(updatedQuoteData as any),
-                              deductionType: updated.data.deduction_type || (updatedQuoteData as any).deductionType || 'none'
-                            });
-                            setViewingQuote(updated.data);
-                          }
-                        }
-                      }}
-                    />
-                  </TabsContent>
-                </Tabs>
-              </Card>
-            )}
+      {/* FAS 1: Split-view for all editable quotes (draft, sent, viewed) */}
+      {currentQuote && !isEditing && viewingQuote?.status !== 'completed' && viewingQuote?.status !== 'accepted' && (
+        <div className="grid lg:grid-cols-[1fr,400px] gap-4">
+          {/* Quote display */}
+          <Card className="border-2 border-primary/20 bg-card shadow-routo">
+            <QuoteDisplay 
+              quote={currentQuote} 
+              onEdit={handleEditQuote}
+              onClose={handleCloseQuote}
+              onDelete={handleDeleteQuote}
+              onDuplicate={handleDuplicateQuote}
+              isSaving={isSaving}
+              quoteId={viewingQuote?.id}
+              currentStatus={viewingQuote?.status}
+              onStatusChanged={loadQuotes}
+              showCompactView={true}
+            />
+          </Card>
+          
+          {/* AI Chat sidebar */}
+          <Card className="border-2 border-primary/20 bg-card shadow-routo">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base flex items-center gap-2">
+                <MessageSquare className="h-4 w-4 text-primary" />
+                Förbättra med AI
+              </CardTitle>
+              <CardDescription className="text-xs">
+                Chatta för att ändra eller lägga till arbeten
+              </CardDescription>
+            </CardHeader>
+            <div className="px-6 pb-6">
+              <ChatInterface
+                existingQuoteId={viewingQuote.id}
+                onQuoteGenerated={(updatedQuote) => {
+                  setCurrentQuote(updatedQuote);
+                  setIsGeneratingQuote(false);
+                }}
+                isGenerating={isGeneratingQuote}
+                onQuoteUpdated={async () => {
+                  await loadQuotes();
+                  const updated = await supabase
+                    .from('quotes')
+                    .select('*')
+                    .eq('id', viewingQuote.id)
+                    .single();
+                  if (updated.data) {
+                    const updatedQuoteData = updated.data.edited_quote || updated.data.generated_quote;
+                    if (updatedQuoteData && typeof updatedQuoteData === 'object') {
+                      setCurrentQuote({
+                        ...(updatedQuoteData as any),
+                        deductionType: updated.data.deduction_type || (updatedQuoteData as any).deductionType || 'none'
+                      });
+                      setViewingQuote(updated.data);
+                    }
+                  }
+                }}
+              />
+            </div>
+          </Card>
+        </div>
+      )}
 
             {/* Show regular display for completed/accepted quotes */}
             {currentQuote && !isEditing && (viewingQuote?.status === 'completed' || viewingQuote?.status === 'accepted') && (
