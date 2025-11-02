@@ -1228,7 +1228,7 @@ export const ChatInterface = ({
           )}
 
           {/* Messages Area */}
-          <div ref={chatContainerRef} className="flex-1 overflow-y-auto px-4 py-6 space-y-4">
+          <div ref={chatContainerRef} className="flex-1 overflow-y-auto overflow-x-hidden px-4 py-6 space-y-4 max-w-full">
           {messages.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-full space-y-6">
               {/* FAS 1.3: Contextual header - different for delta vs new quote mode */}
@@ -1280,7 +1280,11 @@ export const ChatInterface = ({
                 </div>
               )}
               
-              <ConversationStarter onStarterClick={handleStarterClick} />
+              
+              {/* ConversationStarter - ENDAST för nya offerter */}
+              {!existingQuoteId && (
+                <ConversationStarter onStarterClick={handleStarterClick} />
+              )}
               
               {/* Template Quick Access - FAS 1: ENDAST för nya offerter */}
               {userId && userMessage.length > 20 && !existingQuoteId && (
@@ -1331,20 +1335,34 @@ export const ChatInterface = ({
           {assumptions.length > 0 && !showQuoteSheet && (
             <AssumptionsList
               assumptions={assumptions}
-              onConfirm={(field) => {
-                console.log('Confirming assumption:', field);
-                toast({
-                  title: "Antagande bekräftat",
-                  description: "Offerten kommer att uppdateras baserat på din bekräftelse.",
-                });
-                // Rensa antagandet när det bekräftas
-                setAssumptions(prev => prev.filter(a => a.field !== field));
+              onConfirm={async (field) => {
+                try {
+                  const assumption = assumptions.find(a => a.field === field);
+                  if (assumption && sessionId) {
+                    // Save preference in session
+                    await supabase.functions.invoke('manage-conversation', {
+                      body: { 
+                        action: 'update_learned_preferences', 
+                        sessionId, 
+                        learnedPreferences: { [field]: 'confirmed' } 
+                      }
+                    });
+                  }
+                  // Remove confirmed assumption and regenerate
+                  setAssumptions(prev => prev.filter(a => a.field !== field));
+                  toast({ title: "✅ Antagande bekräftat", description: "Offerten uppdateras..." });
+                  handleSendMessage(`Bekräftar antagande: ${assumption?.text || field}`, undefined, 'generate');
+                } catch (error) {
+                  console.error('Error confirming assumption:', error);
+                  toast({ title: "Fel", description: "Kunde inte bekräfta antagande", variant: "destructive" });
+                }
               }}
               onEdit={(field) => {
                 const assumption = assumptions.find(a => a.field === field);
                 if (assumption) {
-                  setUserMessage(`Jag vill ändra: ${assumption.text}. `);
-                  // Fokusera input - scroll to input area
+                  setUserMessage(`Uppdatera ${field}: `);
+                  toast({ title: "💬 Ange nytt värde", description: "Svara med uppdaterad information så uppdaterar jag offerten" });
+                  // Focus input
                   const inputArea = document.querySelector('textarea');
                   if (inputArea) {
                     inputArea.focus();

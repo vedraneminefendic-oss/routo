@@ -55,16 +55,16 @@ export const ConversationStarter = ({ onStarterClick }: ConversationStarterProps
         <span>Berätta själv om ditt projekt</span>
       </Button>
 
-      {/* Category Quick Starts - Horizontal Scroll */}
+      {/* Category Quick Starts - Responsive Layout */}
       <div className="relative">
-        <div className="flex gap-3 overflow-x-auto snap-x snap-mandatory scrollbar-hide pb-2 -mx-4 px-4">
+        <div className="flex gap-3 overflow-x-auto sm:overflow-x-visible sm:flex-wrap sm:justify-center md:justify-start snap-x sm:snap-none scrollbar-hide pb-2 -mx-4 sm:mx-0 px-4 sm:px-0">
           {starters.map((starter, index) => {
             const Icon = starter.icon;
             return (
               <Button
                 key={index}
                 variant="outline"
-                className="flex-shrink-0 snap-start h-auto py-3 px-4 min-w-[140px] hover:bg-gradient-to-br hover:from-primary/10 hover:to-blue-500/10 hover:border-primary transition-all duration-200 group"
+                className="flex-shrink-0 sm:flex-shrink snap-start min-w-[140px] sm:min-w-0 h-auto py-3 px-4 hover:bg-gradient-to-br hover:from-primary/10 hover:to-blue-500/10 hover:border-primary transition-all duration-200 group"
                 onClick={() => onStarterClick(starter.text)}
               >
                 <div className="flex flex-col items-center gap-2 w-full">
