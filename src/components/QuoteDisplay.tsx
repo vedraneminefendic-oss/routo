@@ -1,7 +1,8 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
-import { FileText, Download, Save, Edit, Send, ChevronDown, Trash2, Copy, Hammer, Sparkles, AlertCircle, BookTemplate, Info, Package, Wrench } from "lucide-react";
+import { FileText, Download, Save, Edit, Send, ChevronDown, Trash2, Copy, Hammer, Sparkles, AlertCircle, BookTemplate, Info, Package, Wrench, MoreVertical, X } from "lucide-react";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { AIInsightBadge } from "@/components/AIInsightBadge";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
@@ -666,67 +667,115 @@ const QuoteDisplay = ({
   return (
     <Card className={showCompactView ? "border-0 shadow-none" : "border-2"}>
       <CardHeader className={showCompactView ? "p-4 pb-2" : ""}>
-        <div className="flex items-start justify-between">
-          <div className="flex-1">
-            {showCompactView ? (
-              /* FAS 1.1: Compact header for split-view */
-              <div className="space-y-1">
-                <CardTitle className="text-lg flex items-center gap-2">
-                  {quote.title}
-                </CardTitle>
-                <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                  <AIInsightBadge 
-                    deductionType={quote.deductionType} 
-                    hasCustomRates={hasCustomRates}
-                    hourlyRate={hourlyRate}
-                  />
-                  {deductionAmount > 0 && (
-                    <Badge variant="secondary" className="text-xs">
-                      {deductionType === 'rut' ? 'RUT' : 'ROT'} {Math.round((deductionAmount / quote.summary.totalWithVAT) * 100)}%
-                    </Badge>
+        {showCompactView ? (
+          /* Compact header for split-view */
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3 flex-1 min-w-0">
+              <h3 className="font-semibold text-base truncate">{quote.title}</h3>
+              {deductionAmount > 0 && (
+                <Badge variant="secondary" className="text-xs shrink-0">
+                  {deductionType === 'rut' ? '🧹 RUT' : '🔨 ROT'} {Math.round((deductionAmount / quote.summary.totalWithVAT) * 100)}%
+                </Badge>
+              )}
+            </div>
+            
+            <div className="flex items-center gap-2 shrink-0">
+              {quoteId && currentStatus && (
+                <QuoteStatusManager 
+                  quoteId={quoteId}
+                  currentStatus={currentStatus}
+                  onStatusChanged={onStatusChanged}
+                />
+              )}
+              
+              {/* Actions dropdown */}
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="ghost" size="sm">
+                    <MoreVertical className="h-4 w-4" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  {quoteId && currentStatus && currentStatus !== "accepted" && currentStatus !== "rejected" && currentStatus !== "completed" && (
+                    <>
+                      <DropdownMenuItem onClick={() => setShowEmailDialog(true)}>
+                        <Send className="h-4 w-4 mr-2" /> Skicka e-post
+                      </DropdownMenuItem>
+                      <DropdownMenuSeparator />
+                    </>
                   )}
-                </div>
+                  <DropdownMenuItem onClick={handleExport}>
+                    <Download className="h-4 w-4 mr-2" /> Ladda ner PDF
+                  </DropdownMenuItem>
+                  {onDuplicate && (
+                    <DropdownMenuItem onClick={onDuplicate}>
+                      <Copy className="h-4 w-4 mr-2" /> Duplicera
+                    </DropdownMenuItem>
+                  )}
+                  {onEdit && (
+                    <DropdownMenuItem onClick={onEdit}>
+                      <Edit className="h-4 w-4 mr-2" /> Redigera
+                    </DropdownMenuItem>
+                  )}
+                  <DropdownMenuSeparator />
+                  {quoteId && onDelete && (
+                    <DropdownMenuItem 
+                      onClick={handleDeleteQuote} 
+                      className="text-destructive"
+                      disabled={isDeleting}
+                    >
+                      <Trash2 className="h-4 w-4 mr-2" /> {isDeleting ? "Raderar..." : "Radera"}
+                    </DropdownMenuItem>
+                  )}
+                </DropdownMenuContent>
+              </DropdownMenu>
+              
+              {onClose && (
+                <Button variant="ghost" size="sm" onClick={onClose}>
+                  <X className="h-4 w-4" />
+                </Button>
+              )}
+            </div>
+          </div>
+        ) : (
+          /* Standard header for full view */
+          <div className="flex items-start justify-between">
+            <div className="flex-1">
+              <CardTitle className="flex items-center gap-2">
+                <FileText className="h-5 w-5 text-primary" />
+                {quote.title}
+              </CardTitle>
+              <CardDescription className="mt-1">
+                Genererad offert - granska och spara
+              </CardDescription>
+              
+              {usedReference && referenceTitle && (
+                <Badge variant="outline" className="mt-3">
+                  <Sparkles className="h-3 w-3 mr-1" />
+                  Baserad på tidigare offert: {referenceTitle}
+                </Badge>
+              )}
+              
+              <div className="mt-3">
+                <AIInsightBadge 
+                  deductionType={quote.deductionType} 
+                  hasCustomRates={hasCustomRates}
+                  hourlyRate={hourlyRate}
+                />
               </div>
-            ) : (
-              /* Standard header for full view */
-              <>
-                <CardTitle className="flex items-center gap-2">
-                  <FileText className="h-5 w-5 text-primary" />
-                  {quote.title}
-                </CardTitle>
-                <CardDescription className="mt-1">
-                  Genererad offert - granska och spara
-                </CardDescription>
-                
-                {/* Reference badge */}
-                {usedReference && referenceTitle && (
-                  <Badge variant="outline" className="mt-3">
-                    <Sparkles className="h-3 w-3 mr-1" />
-                    Baserad på tidigare offert: {referenceTitle}
-                  </Badge>
-                )}
-                
-                <div className="mt-3">
-                  <AIInsightBadge 
-                    deductionType={quote.deductionType} 
-                    hasCustomRates={hasCustomRates}
-                    hourlyRate={hourlyRate}
+              
+              {quoteId && currentStatus && (
+                <div className="mt-4">
+                  <QuoteStatusManager
+                    quoteId={quoteId}
+                    currentStatus={currentStatus}
+                    onStatusChanged={onStatusChanged}
                   />
                 </div>
-                
-                {quoteId && currentStatus && (
-                  <div className="mt-4">
-                    <QuoteStatusManager
-                      quoteId={quoteId}
-                      currentStatus={currentStatus}
-                      onStatusChanged={onStatusChanged}
-                    />
-                  </div>
-                )}
-              </>
-            )}
+              )}
+            </div>
           </div>
-        </div>
+        )}
       </CardHeader>
 
       {/* AI Quality Warnings - Hide in compact view */}
@@ -1068,131 +1117,133 @@ const QuoteDisplay = ({
         )}
       </CardContent>
 
-      {/* Sticky Action Footer */}
-      <div className="sticky bottom-0 z-10 bg-card/95 backdrop-blur-sm border-t shadow-lg p-4">
-        <div className="flex flex-wrap gap-2">
-          {quoteId && currentStatus && currentStatus !== "accepted" && currentStatus !== "rejected" && currentStatus !== "completed" && (
-            <Dialog open={showEmailDialog} onOpenChange={setShowEmailDialog}>
-              <DialogTrigger asChild>
-                <Button variant="default" size="sm">
-                  <Send className="h-4 w-4 mr-1" />
-                  Skicka
-                </Button>
-              </DialogTrigger>
-              <DialogContent>
-                <DialogHeader>
-                  <DialogTitle>Skicka offert via e-post</DialogTitle>
-                  <DialogDescription>
-                    Ange mottagarens uppgifter för att skicka offerten.
-                  </DialogDescription>
-                </DialogHeader>
-                <div className="space-y-4 py-4">
-                  {customerInfo && (
-                    <div className="bg-muted/50 rounded-lg p-4 mb-4">
-                      <p className="text-sm font-medium mb-2">Kundinformation (auto-ifylld)</p>
-                      <div className="text-sm text-muted-foreground space-y-1">
-                        <p><strong>Namn:</strong> {customerInfo.name}</p>
-                        <p><strong>E-post:</strong> {customerInfo.email}</p>
-                        {customerInfo.phone && <p><strong>Telefon:</strong> {customerInfo.phone}</p>}
-                        {customerInfo.address && <p><strong>Adress:</strong> {customerInfo.address}</p>}
-                      </div>
-                    </div>
-                  )}
-                  <div className="space-y-2">
-                    <Label htmlFor="recipientName">Mottagarens namn</Label>
-                    <Input
-                      id="recipientName"
-                      placeholder="Johan Andersson"
-                      value={recipientName}
-                      onChange={(e) => setRecipientName(e.target.value)}
-                      disabled={!!customerInfo}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="recipientEmail">E-postadress</Label>
-                    <Input
-                      id="recipientEmail"
-                      type="email"
-                      placeholder="johan@example.com"
-                      value={recipientEmail}
-                      onChange={(e) => setRecipientEmail(e.target.value)}
-                      disabled={!!customerInfo}
-                    />
-                  </div>
-                  {!customerInfo && (
-                    <p className="text-sm text-muted-foreground">
-                      Tips: Om du kopplar en kund till offerten fylls uppgifterna i automatiskt.
-                    </p>
-                  )}
-                  <Button 
-                    onClick={handleSendEmail} 
-                    className="w-full"
-                    disabled={isSendingEmail}
-                  >
-                    {isSendingEmail ? "Skickar..." : "Skicka e-post"}
-                  </Button>
+      {/* Email Dialog - always available even in compact view */}
+      <Dialog open={showEmailDialog} onOpenChange={setShowEmailDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Skicka offert via e-post</DialogTitle>
+            <DialogDescription>
+              Ange mottagarens uppgifter för att skicka offerten.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            {customerInfo && (
+              <div className="bg-muted/50 rounded-lg p-4 mb-4">
+                <p className="text-sm font-medium mb-2">Kundinformation (auto-ifylld)</p>
+                <div className="text-sm text-muted-foreground space-y-1">
+                  <p><strong>Namn:</strong> {customerInfo.name}</p>
+                  <p><strong>E-post:</strong> {customerInfo.email}</p>
+                  {customerInfo.phone && <p><strong>Telefon:</strong> {customerInfo.phone}</p>}
+                  {customerInfo.address && <p><strong>Adress:</strong> {customerInfo.address}</p>}
                 </div>
-              </DialogContent>
-            </Dialog>
-          )}
-          <Button variant="outline" size="sm" onClick={handleExport}>
-            <Download className="h-4 w-4 mr-1" />
-            PDF
-          </Button>
-          {onDuplicate && (
-            <Button variant="outline" size="sm" onClick={onDuplicate}>
-              <Copy className="h-4 w-4 mr-1" />
-              Duplicera
+              </div>
+            )}
+            <div className="space-y-2">
+              <Label htmlFor="recipientName">Mottagarens namn</Label>
+              <Input
+                id="recipientName"
+                placeholder="Johan Andersson"
+                value={recipientName}
+                onChange={(e) => setRecipientName(e.target.value)}
+                disabled={!!customerInfo}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="recipientEmail">E-postadress</Label>
+              <Input
+                id="recipientEmail"
+                type="email"
+                placeholder="johan@example.com"
+                value={recipientEmail}
+                onChange={(e) => setRecipientEmail(e.target.value)}
+                disabled={!!customerInfo}
+              />
+            </div>
+            {!customerInfo && (
+              <p className="text-sm text-muted-foreground">
+                Tips: Om du kopplar en kund till offerten fylls uppgifterna i automatiskt.
+              </p>
+            )}
+            <Button 
+              onClick={handleSendEmail} 
+              className="w-full"
+              disabled={isSendingEmail}
+            >
+              {isSendingEmail ? "Skickar..." : "Skicka e-post"}
             </Button>
-          )}
-          {onEdit && (
-            <Button variant="outline" size="sm" onClick={onEdit}>
-              <Edit className="h-4 w-4 mr-1" />
-              Redigera
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Sticky Action Footer - Only show in non-compact view */}
+      {!showCompactView && (
+        <div className="sticky bottom-0 z-10 bg-card/95 backdrop-blur-sm border-t shadow-lg p-4">
+          <div className="flex flex-wrap gap-2">
+            {quoteId && currentStatus && currentStatus !== "accepted" && currentStatus !== "rejected" && currentStatus !== "completed" && (
+              <Button variant="default" size="sm" onClick={() => setShowEmailDialog(true)}>
+                <Send className="h-4 w-4 mr-1" />
+                Skicka
+              </Button>
+            )}
+            <Button variant="outline" size="sm" onClick={handleExport}>
+              <Download className="h-4 w-4 mr-1" />
+              PDF
             </Button>
-          )}
-          {onSave && (
-            <Button size="sm" onClick={onSave} disabled={isSaving}>
-              <Save className="h-4 w-4 mr-1" />
-              {isSaving ? "Sparar..." : "Spara"}
-            </Button>
-          )}
-          {onClose && (
-            <Button variant="outline" size="sm" onClick={onClose}>
-              Stäng
-            </Button>
-          )}
-          {quoteId && onDelete && (
-            <AlertDialog>
-              <AlertDialogTrigger asChild>
-                <Button variant="destructive" size="sm">
-                  <Trash2 className="h-4 w-4 mr-1" />
-                  Radera
-                </Button>
-              </AlertDialogTrigger>
-              <AlertDialogContent>
-                <AlertDialogHeader>
-                  <AlertDialogTitle>Är du säker?</AlertDialogTitle>
-                  <AlertDialogDescription>
-                    Detta kommer att permanent radera offerten "{quote.title}". 
-                    Denna åtgärd kan inte ångras.
-                  </AlertDialogDescription>
-                </AlertDialogHeader>
-                <AlertDialogFooter>
-                  <AlertDialogCancel>Avbryt</AlertDialogCancel>
-                  <AlertDialogAction 
-                    onClick={handleDeleteQuote}
-                    disabled={isDeleting}
-                    className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                  >
-                    {isDeleting ? "Raderar..." : "Radera offert"}
-                  </AlertDialogAction>
-                </AlertDialogFooter>
-              </AlertDialogContent>
-            </AlertDialog>
-          )}
+            {onDuplicate && (
+              <Button variant="outline" size="sm" onClick={onDuplicate}>
+                <Copy className="h-4 w-4 mr-1" />
+                Duplicera
+              </Button>
+            )}
+            {onEdit && (
+              <Button variant="outline" size="sm" onClick={onEdit}>
+                <Edit className="h-4 w-4 mr-1" />
+                Redigera
+              </Button>
+            )}
+            {onSave && (
+              <Button size="sm" onClick={onSave} disabled={isSaving}>
+                <Save className="h-4 w-4 mr-1" />
+                {isSaving ? "Sparar..." : "Spara"}
+              </Button>
+            )}
+            {onClose && (
+              <Button variant="outline" size="sm" onClick={onClose}>
+                Stäng
+              </Button>
+            )}
+            {quoteId && onDelete && (
+              <AlertDialog>
+                <AlertDialogTrigger asChild>
+                  <Button variant="destructive" size="sm">
+                    <Trash2 className="h-4 w-4 mr-1" />
+                    Radera
+                  </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>Är du säker?</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      Detta kommer att permanent radera offerten "{quote.title}". 
+                      Denna åtgärd kan inte ångras.
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>Avbryt</AlertDialogCancel>
+                    <AlertDialogAction 
+                      onClick={handleDeleteQuote}
+                      disabled={isDeleting}
+                      className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                    >
+                      {isDeleting ? "Raderar..." : "Radera offert"}
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
+            )}
+          </div>
         </div>
-      </div>
+      )}
     </Card>
   );
 };

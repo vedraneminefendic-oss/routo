@@ -34,6 +34,7 @@ const Quotes = () => {
   const [statusFilter, setStatusFilter] = useState(filterParam || "all");
   const [pendingQuotesCount, setPendingQuotesCount] = useState(0);
   const [isGeneratingQuote, setIsGeneratingQuote] = useState(false);
+  const [showQuoteList, setShowQuoteList] = useState(false);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -258,112 +259,107 @@ const Quotes = () => {
           ]} />
         )}
 
-        <div className="grid lg:grid-cols-2 gap-6">
-          {/* Left Column - Quote Display/Editor with Split-view for drafts */}
-          <div className="space-y-6">
-      {/* FAS 1: Split-view for all editable quotes (draft, sent, viewed) */}
-      {currentQuote && !isEditing && viewingQuote?.status !== 'completed' && viewingQuote?.status !== 'accepted' && (
-        <div className="grid lg:grid-cols-[1fr,400px] gap-4">
-          {/* Quote display */}
-          <Card className="border-2 border-primary/20 bg-card shadow-routo">
-            <QuoteDisplay 
-              quote={currentQuote} 
-              onEdit={handleEditQuote}
-              onClose={handleCloseQuote}
-              onDelete={handleDeleteQuote}
-              onDuplicate={handleDuplicateQuote}
+        {/* When quote is open - Simple 2-column layout */}
+        {currentQuote && !isEditing && (
+          <>
+            {/* Toggle button for quote list */}
+            <Button 
+              onClick={() => setShowQuoteList(true)}
+              className="mb-4"
+              variant="outline"
+              size="sm"
+            >
+              📋 Visa alla offerter
+            </Button>
+
+            <div className="grid lg:grid-cols-[1fr,400px] gap-6">
+              {/* Left: QuoteDisplay */}
+              <Card className="border-2 border-primary/20 bg-card shadow-routo">
+                <QuoteDisplay 
+                  quote={currentQuote} 
+                  onEdit={handleEditQuote}
+                  onClose={handleCloseQuote}
+                  onDelete={handleDeleteQuote}
+                  onDuplicate={handleDuplicateQuote}
+                  isSaving={isSaving}
+                  quoteId={viewingQuote?.id}
+                  currentStatus={viewingQuote?.status}
+                  onStatusChanged={loadQuotes}
+                  showCompactView={true}
+                />
+              </Card>
+              
+              {/* Right: ChatInterface for non-completed quotes */}
+              {viewingQuote?.status !== 'completed' && viewingQuote?.status !== 'accepted' && (
+                <Card className="border-2 border-primary/20 bg-card shadow-routo sticky top-4 h-fit max-h-[calc(100vh-120px)] overflow-y-auto">
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-base flex items-center gap-2">
+                      <MessageSquare className="h-4 w-4 text-primary" />
+                      Förbättra med AI
+                    </CardTitle>
+                    <CardDescription className="text-xs">
+                      Chatta för att ändra eller lägga till arbeten
+                    </CardDescription>
+                  </CardHeader>
+                  <div className="px-6 pb-6">
+                    <ChatInterface
+                      existingQuoteId={viewingQuote.id}
+                      onQuoteGenerated={(updatedQuote) => {
+                        setCurrentQuote(updatedQuote);
+                        setIsGeneratingQuote(false);
+                      }}
+                      isGenerating={isGeneratingQuote}
+                      onQuoteUpdated={async () => {
+                        await loadQuotes();
+                        const updated = await supabase
+                          .from('quotes')
+                          .select('*')
+                          .eq('id', viewingQuote.id)
+                          .single();
+                        if (updated.data) {
+                          const updatedQuoteData = updated.data.edited_quote || updated.data.generated_quote;
+                          if (updatedQuoteData && typeof updatedQuoteData === 'object') {
+                            setCurrentQuote({
+                              ...(updatedQuoteData as any),
+                              deductionType: updated.data.deduction_type || (updatedQuoteData as any).deductionType || 'none'
+                            });
+                            setViewingQuote(updated.data);
+                          }
+                        }
+                      }}
+                    />
+                  </div>
+                </Card>
+              )}
+            </div>
+          </>
+        )}
+
+        {/* Editor mode */}
+        {currentQuote && isEditing && (
+          <>
+            <Button 
+              onClick={() => setShowQuoteList(true)}
+              className="mb-4"
+              variant="outline"
+              size="sm"
+            >
+              📋 Visa alla offerter
+            </Button>
+            <QuoteEditor
+              quote={currentQuote}
+              onSave={handleSaveEdit}
+              onCancel={handleCancelEdit}
               isSaving={isSaving}
               quoteId={viewingQuote?.id}
-              currentStatus={viewingQuote?.status}
-              onStatusChanged={loadQuotes}
-              showCompactView={true}
             />
-          </Card>
-          
-          {/* AI Chat sidebar */}
-          <Card className="border-2 border-primary/20 bg-card shadow-routo">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-base flex items-center gap-2">
-                <MessageSquare className="h-4 w-4 text-primary" />
-                Förbättra med AI
-              </CardTitle>
-              <CardDescription className="text-xs">
-                Chatta för att ändra eller lägga till arbeten
-              </CardDescription>
-            </CardHeader>
-            <div className="px-6 pb-6">
-              <ChatInterface
-                existingQuoteId={viewingQuote.id}
-                onQuoteGenerated={(updatedQuote) => {
-                  setCurrentQuote(updatedQuote);
-                  setIsGeneratingQuote(false);
-                }}
-                isGenerating={isGeneratingQuote}
-                onQuoteUpdated={async () => {
-                  await loadQuotes();
-                  const updated = await supabase
-                    .from('quotes')
-                    .select('*')
-                    .eq('id', viewingQuote.id)
-                    .single();
-                  if (updated.data) {
-                    const updatedQuoteData = updated.data.edited_quote || updated.data.generated_quote;
-                    if (updatedQuoteData && typeof updatedQuoteData === 'object') {
-                      setCurrentQuote({
-                        ...(updatedQuoteData as any),
-                        deductionType: updated.data.deduction_type || (updatedQuoteData as any).deductionType || 'none'
-                      });
-                      setViewingQuote(updated.data);
-                    }
-                  }
-                }}
-              />
-            </div>
-          </Card>
-        </div>
-      )}
+          </>
+        )}
 
-            {/* Show regular display for completed/accepted quotes */}
-            {currentQuote && !isEditing && (viewingQuote?.status === 'completed' || viewingQuote?.status === 'accepted') && (
-              <QuoteDisplay 
-                quote={currentQuote} 
-                onEdit={handleEditQuote}
-                onClose={handleCloseQuote}
-                onDelete={handleDeleteQuote}
-                onDuplicate={handleDuplicateQuote}
-                isSaving={isSaving}
-                quoteId={viewingQuote?.id}
-                currentStatus={viewingQuote?.status}
-                onStatusChanged={loadQuotes}
-              />
-            )}
-
-            {currentQuote && isEditing && (
-              <QuoteEditor
-                quote={currentQuote}
-                onSave={handleSaveEdit}
-                onCancel={handleCancelEdit}
-                isSaving={isSaving}
-                quoteId={viewingQuote?.id}
-              />
-            )}
-
-            {!currentQuote && (
-              <Card className="h-full flex items-center justify-center min-h-[400px] bg-[hsl(36,45%,98%)] border-2 border-primary/10">
-                <div className="text-center p-8">
-                  <p className="text-muted-foreground mb-4">Välj en offert från listan för att visa den här</p>
-                  <Button onClick={() => navigate('/quotes/new')} className="bg-primary hover:bg-primary/90 shadow-routo hover:shadow-routo-lg transition-all">
-                    <Plus className="h-4 w-4 mr-2" />
-                    Skapa ny offert
-                  </Button>
-                </div>
-              </Card>
-            )}
-          </div>
-
-          {/* Right Column - Quote List */}
-          <div>
-            <Card className="bg-[hsl(36,45%,98%)] border-2 border-primary/10 shadow-routo">
+        {/* When no quote is open - Show quote list centered */}
+        {!currentQuote && (
+          <div className="max-w-6xl mx-auto">
+            <Card className="bg-[hsl(36,45%,98%)] border-2 border-primary/10 shadow-routo mb-4">
               <CardHeader className="pb-3">
                 <div className="flex items-center justify-between mb-2">
                   <div className="flex items-center gap-2">
@@ -429,14 +425,75 @@ const Quotes = () => {
               </CardHeader>
             </Card>
 
-            <div className="mt-4">
-              <QuoteList 
-                quotes={filteredQuotes}
-                onQuoteClick={handleQuoteClick}
-              />
-            </div>
+            <QuoteList 
+              quotes={filteredQuotes}
+              onQuoteClick={handleQuoteClick}
+            />
           </div>
-        </div>
+        )}
+
+        {/* Sliding quote list panel */}
+        {showQuoteList && (
+          <>
+            {/* Backdrop */}
+            <div 
+              className="fixed inset-0 bg-black/20 z-40 animate-fade-in"
+              onClick={() => setShowQuoteList(false)}
+            />
+            
+            {/* Sliding panel */}
+            <div className="fixed right-0 top-0 h-full w-96 bg-background border-l shadow-xl z-50 animate-slide-in-right overflow-hidden flex flex-col">
+              <div className="p-4 border-b flex items-center justify-between shrink-0">
+                <h3 className="font-semibold">Dina offerter</h3>
+                <Button 
+                  variant="ghost" 
+                  size="sm"
+                  onClick={() => setShowQuoteList(false)}
+                >
+                  ✕
+                </Button>
+              </div>
+              
+              {/* Search & filter */}
+              <div className="p-4 border-b space-y-2 shrink-0">
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                  <Input
+                    placeholder="Sök offerter..."
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    className="pl-10"
+                  />
+                </div>
+                <Select value={statusFilter} onValueChange={setStatusFilter}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Filtrera..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Alla</SelectItem>
+                    <SelectItem value="draft">Utkast</SelectItem>
+                    <SelectItem value="sent">Skickade</SelectItem>
+                    <SelectItem value="viewed">Visade</SelectItem>
+                    <SelectItem value="accepted">Accepterade</SelectItem>
+                    <SelectItem value="completed">Slutförda</SelectItem>
+                    <SelectItem value="needs_followup">Behöver uppföljning</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              
+              {/* Quote list */}
+              <div className="overflow-y-auto flex-1 p-4">
+                <QuoteList 
+                  quotes={filteredQuotes} 
+                  onQuoteClick={(quote) => {
+                    handleQuoteClick(quote);
+                    setShowQuoteList(false);
+                  }}
+                />
+              </div>
+            </div>
+          </>
+        )}
       </main>
     </div>
   );
