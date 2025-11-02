@@ -422,30 +422,30 @@ const NewQuote = () => {
           { label: 'Skapa ny offert' }
         ]} />
 
-        {/* P1: Split view layout when in AI mode and no quote yet */}
+        {/* Mobile-responsive layout */}
         {!currentQuote ? (
-          <div className="grid lg:grid-cols-[1fr,400px] gap-6 max-w-7xl mx-auto">
+          <div className="flex flex-col lg:grid lg:grid-cols-[1fr,400px] gap-4 lg:gap-6 max-w-7xl mx-auto">
             {/* Left: Chat/Form */}
-            <div className="space-y-6">
+            <div className="space-y-4 lg:space-y-6">
               {/* AI Progress Indicator */}
               {isGenerating && <AIProgressIndicator isGenerating={isGenerating} />}
 
-              {/* SPRINT 2: Tabs for AI-assisted vs Express mode */}
+              {/* Tabs for AI-assisted vs Express mode */}
           <Tabs defaultValue="ai" className="w-full">
-            <TabsList className="grid w-full grid-cols-2 mb-6 bg-[hsl(36,45%,98%)]">
-              <TabsTrigger value="ai" className="flex flex-col items-center gap-1 py-4 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
+            <TabsList className="grid w-full grid-cols-2 mb-4 lg:mb-6 bg-[hsl(36,45%,98%)]">
+              <TabsTrigger value="ai" className="flex flex-col items-center gap-1 py-3 md:py-4 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground text-xs md:text-sm">
                 <div className="flex items-center gap-2">
                   <MessageSquare className="h-4 w-4" />
                   <span className="font-medium">AI-assisterad</span>
                 </div>
-                <span className="text-xs opacity-80">Chatta och få hjälp steg för steg</span>
+                <span className="text-xs opacity-80 hidden md:inline">Chatta och få hjälp steg för steg</span>
               </TabsTrigger>
-              <TabsTrigger value="express" className="flex flex-col items-center gap-1 py-4 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
+              <TabsTrigger value="express" className="flex flex-col items-center gap-1 py-3 md:py-4 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground text-xs md:text-sm">
                 <div className="flex items-center gap-2">
                   <Zap className="h-4 w-4" />
                   <span className="font-medium">Snabbläge</span>
                 </div>
-                <span className="text-xs opacity-80">Fyll i formulär snabbt</span>
+                <span className="text-xs opacity-80 hidden md:inline">Fyll i formulär snabbt</span>
               </TabsTrigger>
             </TabsList>
                 
@@ -477,21 +477,21 @@ const NewQuote = () => {
             </div>
           </div>
         ) : (
-          // FAS 1: Split-view layout when quote is generated
-          <div className="grid lg:grid-cols-[minmax(400px,1fr),minmax(400px,600px)] gap-6 max-w-7xl mx-auto">
+          // FAS 1: Mobile-responsive layout when quote is generated
+          <div className="flex flex-col lg:grid lg:grid-cols-[minmax(400px,1fr),minmax(400px,600px)] gap-4 lg:gap-6 max-w-7xl mx-auto">
             {/* Left: AI Chat */}
             <div className="space-y-4">
               <Card className="border-2 border-primary/20 bg-card shadow-routo">
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
+                <CardHeader className="p-4 md:p-6">
+                  <CardTitle className="flex items-center gap-2 text-base md:text-lg">
                     <MessageSquare className="h-5 w-5 text-primary" />
                     Förbättra offerten
                   </CardTitle>
-                  <CardDescription>
+                  <CardDescription className="text-sm">
                     Chatta med AI för att lägga till, ta bort eller ändra arbeten
                   </CardDescription>
                 </CardHeader>
-                <CardContent>
+                <CardContent className="p-4 md:p-6">
                   <ChatInterface 
                     onQuoteGenerated={handleChatGenerateQuote}
                     isGenerating={isGenerating}
@@ -504,10 +504,10 @@ const NewQuote = () => {
               </Card>
             </div>
             
-            {/* Right: Live Quote Preview */}
+            {/* Right: Live Quote Preview - scrollable on mobile */}
             <div className="space-y-4">
-              <div className="sticky top-4">
-                <Card className="max-h-[calc(100vh-120px)] overflow-y-auto border-2 border-primary/20 bg-card shadow-routo">
+              <div className="lg:sticky lg:top-4">
+                <Card className="lg:max-h-[calc(100vh-120px)] lg:overflow-y-auto border-2 border-primary/20 bg-card shadow-routo">
                   {isEditing ? (
                     <QuoteEditor
                       quote={currentQuote}
@@ -537,18 +537,21 @@ const NewQuote = () => {
                   )}
                 </Card>
                 
-                <div className="flex gap-3 mt-4">
+                <div className="flex flex-col sm:flex-row gap-3 mt-4">
                   <Button 
                     onClick={() => handleSaveQuote('save_and_continue')}
                     disabled={isSaving}
-                    className="flex-1 bg-primary hover:bg-primary/90"
+                    size="lg"
+                    className="flex-1 bg-primary hover:bg-primary/90 min-h-[48px] touch-manipulation"
                   >
                     {isSaving ? "Sparar..." : "Spara och fortsätt"}
                   </Button>
                   <Button 
                     onClick={() => handleSaveQuote('save')}
                     variant="outline"
+                    size="lg"
                     disabled={isSaving}
+                    className="min-h-[48px] touch-manipulation"
                   >
                     Spara och stäng
                   </Button>

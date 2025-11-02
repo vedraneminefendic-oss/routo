@@ -177,14 +177,14 @@ export const LiveQuotePreview = ({
     const totalCost = quote.summary?.customerPays || quote.summary?.totalWithVAT || 0;
     
     return (
-      <Card className="sticky top-4 animate-in fade-in-0 slide-in-from-right-4 duration-500">
-        <CardHeader>
+      <Card className="lg:sticky lg:top-4 animate-in fade-in-0 slide-in-from-right-4 duration-500">
+        <CardHeader className="p-4 md:p-6">
           <div className="flex items-center gap-2">
             <Sparkles className="h-5 w-5 text-green-500" />
-            <CardTitle className="text-lg">Offert klar!</CardTitle>
+            <CardTitle className="text-base md:text-lg">Offert klar!</CardTitle>
           </div>
         </CardHeader>
-        <CardContent className="space-y-4">
+        <CardContent className="space-y-4 p-4 md:p-6">
           <div>
             <h3 className="font-semibold text-lg mb-1">{quote.title || "Offert"}</h3>
             {quote.description && (

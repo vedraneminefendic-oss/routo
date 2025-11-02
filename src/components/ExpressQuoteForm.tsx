@@ -41,21 +41,21 @@ export const ExpressQuoteForm = ({ onGenerate, isGenerating }: ExpressQuoteFormP
 
   return (
     <Card className="border-2">
-      <CardHeader>
+      <CardHeader className="p-4 md:p-6">
         <div className="flex items-center gap-2">
           <Zap className="h-5 w-5 text-primary" />
-          <CardTitle>Snabbläge</CardTitle>
+          <CardTitle className="text-base md:text-lg">Snabbläge</CardTitle>
         </div>
-        <CardDescription>
+        <CardDescription className="text-sm">
           För erfarna användare - generera offert direkt utan AI-samtal
         </CardDescription>
       </CardHeader>
-      <CardContent>
+      <CardContent className="p-4 md:p-6">
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-2">
-            <Label htmlFor="projectType">Projekttyp *</Label>
+            <Label htmlFor="projectType" className="text-sm md:text-base">Projekttyp *</Label>
             <Select value={projectType} onValueChange={setProjectType}>
-              <SelectTrigger id="projectType">
+              <SelectTrigger id="projectType" className="min-h-[48px] touch-manipulation">
                 <SelectValue placeholder="Välj projekttyp" />
               </SelectTrigger>
               <SelectContent>
@@ -74,7 +74,7 @@ export const ExpressQuoteForm = ({ onGenerate, isGenerating }: ExpressQuoteFormP
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="description">Beskrivning *</Label>
+            <Label htmlFor="description" className="text-sm md:text-base">Beskrivning *</Label>
             <Textarea
               id="description"
               placeholder="Beskriv kort vad som ska göras..."
@@ -82,6 +82,7 @@ export const ExpressQuoteForm = ({ onGenerate, isGenerating }: ExpressQuoteFormP
               onChange={(e) => setDescription(e.target.value)}
               rows={3}
               maxLength={200}
+              className="min-h-[80px] touch-manipulation"
             />
             <p className="text-xs text-muted-foreground">
               {description.length}/200 tecken
@@ -89,19 +90,20 @@ export const ExpressQuoteForm = ({ onGenerate, isGenerating }: ExpressQuoteFormP
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="measurements">Storlek/Mått *</Label>
+            <Label htmlFor="measurements" className="text-sm md:text-base">Storlek/Mått *</Label>
             <Input
               id="measurements"
               placeholder="Ex: 8 kvm, 3 träd, 2 rum..."
               value={measurements}
               onChange={(e) => setMeasurements(e.target.value)}
+              className="min-h-[48px] touch-manipulation"
             />
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="deductionType">ROT/RUT-avdrag</Label>
+            <Label htmlFor="deductionType" className="text-sm md:text-base">ROT/RUT-avdrag</Label>
             <Select value={deductionType} onValueChange={setDeductionType}>
-              <SelectTrigger id="deductionType">
+              <SelectTrigger id="deductionType" className="min-h-[48px] touch-manipulation">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -114,9 +116,9 @@ export const ExpressQuoteForm = ({ onGenerate, isGenerating }: ExpressQuoteFormP
 
           <Button 
             type="submit" 
-            className="w-full" 
             size="lg"
             disabled={!isValid || isGenerating}
+            className="w-full min-h-[48px] touch-manipulation"
           >
             {isGenerating ? (
               <>
