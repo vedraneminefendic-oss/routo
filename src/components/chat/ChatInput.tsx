@@ -239,8 +239,7 @@ export const ChatInput = ({ onSendMessage, disabled, dynamicPlaceholder }: ChatI
 
   return (
     <>
-      {/* P3: Voice Waveform Overlay */}
-      <VoiceWaveform isActive={isListening} interimText={interimTranscript} />
+      {/* Removed fullscreen VoiceWaveform overlay - now using compact inline indicator */}
       
       <div className="flex flex-col gap-3">
         {/* Image previews */}
@@ -266,16 +265,25 @@ export const ChatInput = ({ onSendMessage, disabled, dynamicPlaceholder }: ChatI
         </div>
       )}
 
-      {/* Real-time transcript preview */}
-      {interimTranscript && (
-        <div className="px-4 py-3 bg-gradient-to-r from-primary/10 via-primary/5 to-primary/10 rounded-lg border border-primary/30 animate-in fade-in-0 slide-in-from-bottom-2 duration-300 shadow-sm">
-          <p className="text-sm text-muted-foreground flex items-center gap-3">
-            <span className="relative flex h-3 w-3">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-destructive opacity-75"></span>
-              <span className="relative inline-flex rounded-full h-3 w-3 bg-destructive"></span>
-            </span>
-            <span className="italic font-medium">{interimTranscript}</span>
-          </p>
+      {/* Compact voice indicator (replaces fullscreen overlay) */}
+      {isListening && (
+        <div className="px-3 py-2 bg-destructive/10 border border-destructive/30 rounded-lg animate-pulse flex items-center gap-3">
+          <div className="flex items-center gap-1">
+            {[...Array(8)].map((_, i) => (
+              <div 
+                key={i}
+                className="w-1 bg-destructive rounded-full transition-all duration-100"
+                style={{ 
+                  height: `${10 + Math.random() * 10}px`,
+                  animation: `pulse 0.8s ease-in-out infinite ${i * 0.1}s`
+                }}
+              />
+            ))}
+          </div>
+          <span className="text-sm font-medium text-destructive">🎤 Lyssnar...</span>
+          {interimTranscript && (
+            <span className="text-xs italic text-destructive/80 truncate flex-1">{interimTranscript}</span>
+          )}
         </div>
       )}
 
@@ -336,9 +344,9 @@ export const ChatInput = ({ onSendMessage, disabled, dynamicPlaceholder }: ChatI
         <Button
           onClick={handleSend}
           disabled={(!message.trim() && images.length === 0) || disabled}
-          size="icon"
-          className="h-[56px] w-[56px] flex-shrink-0 touch-manipulation bg-gradient-to-br from-primary to-primary/80 hover:from-primary/90 hover:to-primary/70 shadow-lg hover:shadow-xl transition-all duration-300 hover:scale-105"
-        >
+              size="icon"
+              className="h-[56px] w-[56px] flex-shrink-0 touch-manipulation bg-gradient-to-br from-primary to-primary/80 hover:from-primary/90 hover:to-primary/70 shadow-lg hover:shadow-xl transition-all duration-300 hover:scale-105 active:scale-95"
+            >
           <Send className="h-5 w-5" />
         </Button>
       </div>

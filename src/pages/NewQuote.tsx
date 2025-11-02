@@ -14,6 +14,7 @@ import { LiveQuotePreview } from "@/components/chat/LiveQuotePreview";
 import { ExpressQuoteForm } from "@/components/ExpressQuoteForm";
 import { Breadcrumbs } from "@/components/Breadcrumbs";
 import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
+import { MobileNav } from "@/components/MobileNav";
 
 const NewQuote = () => {
   const navigate = useNavigate();
@@ -373,7 +374,7 @@ const NewQuote = () => {
   }
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen bg-background pb-20 md:pb-0">
       {/* Header */}
       <header className="sticky top-0 z-50 border-b border-primary/10 bg-[hsl(36,33%,95%)]/95 backdrop-blur supports-[backdrop-filter]:bg-[hsl(36,33%,95%)]/90 shadow-routo">
         <div className="container mx-auto px-4 py-3">
@@ -557,6 +558,8 @@ const NewQuote = () => {
           </div>
         )}
       </main>
+      
+      <MobileNav />
     </div>
   );
 };

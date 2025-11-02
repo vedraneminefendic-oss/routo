@@ -21,15 +21,22 @@ export const EmptyState = ({
   children 
 }: EmptyStateProps) => {
   return (
-    <Card className="border-dashed">
-      <CardContent className="flex flex-col items-center justify-center py-12 px-4 text-center">
-        <div className="rounded-full bg-muted p-6 mb-4">
-          <Icon className="h-12 w-12 text-muted-foreground" aria-hidden="true" />
+    <Card className="border-2 border-dashed border-primary/20 bg-gradient-to-br from-primary/5 via-background to-secondary/5 hover:border-primary/30 transition-all duration-300">
+      <CardContent className="flex flex-col items-center justify-center py-16 px-4 text-center">
+        <div className="relative">
+          <div className="absolute inset-0 bg-primary/20 rounded-full blur-2xl animate-pulse" />
+          <div className="relative rounded-full bg-gradient-to-br from-primary/10 to-secondary/10 p-8 mb-6 shadow-routo">
+            <Icon className="h-16 w-16 text-primary" aria-hidden="true" />
+          </div>
         </div>
-        <h3 className="text-xl font-semibold mb-2">{title}</h3>
-        <p className="text-muted-foreground max-w-md mb-6">{description}</p>
+        <h3 className="text-2xl font-heading font-bold mb-3 text-foreground">{title}</h3>
+        <p className="text-muted-foreground max-w-md mb-8 leading-relaxed">{description}</p>
         {actionLabel && onAction && (
-          <Button onClick={onAction} size="lg">
+          <Button 
+            onClick={onAction} 
+            size="lg"
+            className="bg-primary hover:bg-primary/90 shadow-routo hover:shadow-routo-lg transition-all duration-300 hover:-translate-y-0.5"
+          >
             {actionLabel}
           </Button>
         )}

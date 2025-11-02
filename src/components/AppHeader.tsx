@@ -68,54 +68,59 @@ export const AppHeader = ({ currentPage = 'dashboard' }: AppHeaderProps) => {
           </Button>
         </div>
 
-        {/* Mobile Navigation */}
+        {/* Mobile Navigation - Improved */}
         <div className="flex md:hidden items-center justify-between">
+          <div className="flex items-center gap-2 flex-1 min-w-0">
+            <img 
+              src="/routo-logo.jpeg" 
+              alt="Routo" 
+              className="h-8 w-8 rounded-lg object-cover shadow-routo flex-shrink-0" 
+              onClick={() => navigate('/dashboard')}
+            />
+            <span className="font-heading font-bold text-base text-primary truncate">routo</span>
+          </div>
+          
           <Sheet open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
             <SheetTrigger asChild>
-              <Button variant="ghost" size="icon" className="hover:bg-primary/10">
+              <Button variant="ghost" size="icon" className="hover:bg-primary/10 flex-shrink-0">
                 <Menu className="h-5 w-5" />
               </Button>
             </SheetTrigger>
-            <SheetContent side="left" className="bg-[hsl(36,33%,95%)]">
-              <div className="flex flex-col gap-4 mt-8">
+            <SheetContent side="right" className="bg-[hsl(36,33%,95%)] w-64">
+              <div className="flex flex-col gap-3 mt-8">
                 {navItems.map((item) => {
                   const Icon = item.icon;
                   const isActive = currentPage === item.id;
                   return (
                     <Button
                       key={item.id}
-                      variant={isActive ? "secondary" : "ghost"}
+                      variant={isActive ? "default" : "ghost"}
                       onClick={() => {
                         navigate(item.path);
                         setMobileMenuOpen(false);
                       }}
-                      className={`justify-start ${isActive ? "bg-primary text-primary-foreground shadow-sm" : "hover:bg-primary/10 hover:text-primary"}`}
+                      className={`justify-start h-12 ${isActive ? "bg-primary text-primary-foreground shadow-sm" : "hover:bg-primary/10 hover:text-primary"}`}
                     >
-                      <Icon className="h-4 w-4 mr-2" />
-                      {item.label}
+                      <Icon className="h-5 w-5 mr-3" />
+                      <span className="text-base">{item.label}</span>
                     </Button>
                   );
                 })}
+                <div className="border-t border-primary/10 my-2" />
                 <Button 
                   variant="outline" 
                   onClick={() => {
                     handleLogout();
                     setMobileMenuOpen(false);
                   }}
-                  className="justify-start border-primary/20 hover:bg-primary/10"
+                  className="justify-start h-12 border-primary/20 hover:bg-primary/10"
                 >
-                  <LogOut className="h-4 w-4 mr-2" />
-                  Logga ut
+                  <LogOut className="h-5 w-5 mr-3" />
+                  <span className="text-base">Logga ut</span>
                 </Button>
               </div>
             </SheetContent>
           </Sheet>
-
-          <div className="flex items-center gap-2">
-            <img src="/routo-logo.jpeg" alt="Routo" className="h-8 w-8 rounded-lg object-cover shadow-routo" />
-            <span className="font-heading font-bold text-lg text-primary">routo</span>
-          </div>
-          <div className="w-10" /> {/* Spacer för symmetri */}
         </div>
       </div>
     </header>

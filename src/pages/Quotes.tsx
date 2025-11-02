@@ -15,6 +15,7 @@ import { ContextualHelp } from "@/components/ContextualHelp";
 import { AppHeader } from "@/components/AppHeader";
 import { Breadcrumbs } from "@/components/Breadcrumbs";
 import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
+import { MobileNav } from "@/components/MobileNav";
 
 const Quotes = () => {
   const navigate = useNavigate();
@@ -245,7 +246,7 @@ const Quotes = () => {
   }
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen bg-background pb-20 md:pb-0">
       <AppHeader currentPage="quotes" />
 
       {/* Main Content */}
@@ -495,6 +496,8 @@ const Quotes = () => {
           </>
         )}
       </main>
+      
+      <MobileNav />
     </div>
   );
 };

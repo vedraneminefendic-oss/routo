@@ -631,6 +631,20 @@ serve(async (req) => {
           { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }
+      
+      // FAS 30: Quick action detection for fast edits in delta mode
+      const quickActionPatterns = [
+        /ta\s+bort\s+(.*)/i,
+        /ändra\s+(.*)\s+till\s+(.*)/i,
+        /lägg\s+till\s+(.*)/i,
+        /byt\s+ut\s+(.*)\s+mot\s+(.*)/i,
+        /radera\s+(.*)/i,
+        /ta\s+bort/i,
+        /ändra\s+pris/i
+      ];
+      
+      const isQuickAction = message.role === 'user' && 
+        quickActionPatterns.some(p => p.test(message.content || ''));
 
       // Verifiera att sessionen tillhör användaren
       const { data: session } = await supabaseClient
@@ -644,6 +658,29 @@ serve(async (req) => {
         return new Response(
           JSON.stringify({ error: 'Session not found or unauthorized' }),
           { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+      
+      // If quick action detected, signal immediate quote generation
+      if (isQuickAction && session.quote_id) {
+        console.log('🚀 Quick action detected - bypassing questions');
+        
+        // Save message first
+        await supabaseClient
+          .from('conversation_messages')
+          .insert({
+            session_id: sessionId,
+            role: message.role,
+            content: message.content
+          });
+        
+        return new Response(
+          JSON.stringify({ 
+            success: true,
+            quickAction: true,
+            triggerGeneration: true
+          }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }
 

@@ -9,6 +9,8 @@ import { StatisticsCards } from "@/components/reports/StatisticsCards";
 import { AppHeader } from "@/components/AppHeader";
 import { ActionableInsights } from "@/components/ActionableInsights";
 import { toast } from "sonner";
+import { MobileNav } from "@/components/MobileNav";
+
 const Dashboard = () => {
   const navigate = useNavigate();
   const [user, setUser] = useState<any>(null);
@@ -149,7 +151,7 @@ const Dashboard = () => {
         <div className="animate-pulse text-muted-foreground">Laddar...</div>
       </div>;
   }
-  return <div className="min-h-screen bg-background">
+  return <div className="min-h-screen bg-background pb-20 md:pb-0">
       <AppHeader currentPage="dashboard" />
 
       {/* Onboarding Wizard */}
@@ -314,6 +316,8 @@ const Dashboard = () => {
           </CardContent>
         </Card>
       </main>
+      
+      <MobileNav />
     </div>;
 };
 export default Dashboard;
