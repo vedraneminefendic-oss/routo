@@ -147,6 +147,58 @@ interface LearningContext {
 // ============================================
 
 // ============================================
+// P1: DETERMINISTIC SEED GENERATION
+// ============================================
+
+/**
+ * Generate a deterministic seed for consistent AI outputs
+ * Same project type + measurements = same seed = more consistent quotes
+ */
+function generateDeterministicSeed(
+  layerOneContext: string,
+  conversationHistory: ConversationMessage[]
+): string {
+  // Extract key information for seed
+  const allText = [layerOneContext, ...conversationHistory.map(m => m.content)].join(' ').toLowerCase();
+  
+  // Extract project type
+  let projectType = 'unknown';
+  if (allText.includes('flyttstäd')) projectType = 'flyttstadning';
+  else if (allText.includes('hemstäd')) projectType = 'hemstadning';
+  else if (allText.includes('badrum')) projectType = 'badrum';
+  else if (allText.includes('kök')) projectType = 'kok';
+  else if (allText.includes('målning') || allText.includes('måla')) projectType = 'malning';
+  else if (allText.includes('fälla') || allText.includes('träd')) projectType = 'tradfallning';
+  else if (allText.includes('städ')) projectType = 'stadning';
+  
+  // Extract measurements (rounded to reduce variation)
+  let area = 0;
+  const areaMatch = allText.match(/(\d+)\s*kvm/);
+  if (areaMatch) area = Math.round(parseInt(areaMatch[1]) / 10) * 10; // Round to nearest 10
+  
+  let rooms = 0;
+  const roomsMatch = allText.match(/(\d+)\s*rum/);
+  if (roomsMatch) rooms = parseInt(roomsMatch[1]);
+  
+  // Simple hash function
+  const hashString = (str: string): number => {
+    let hash = 0;
+    for (let i = 0; i < str.length; i++) {
+      const char = str.charCodeAt(i);
+      hash = ((hash << 5) - hash) + char;
+      hash = hash & hash; // Convert to 32-bit integer
+    }
+    return Math.abs(hash);
+  };
+  
+  // Create seed from project characteristics
+  const seedData = `${projectType}_${area}kvm_${rooms}rum`;
+  const seed = hashString(seedData);
+  
+  return `SEED-${seed}-${projectType}`;
+}
+
+// ============================================
 // DEL 1: LIVE WEBSÖKNING - Dynamisk branschdata
 // ============================================
 
@@ -3659,6 +3711,13 @@ ALLA texter i offerten MÅSTE vara på SVENSKA:
   try {
     console.log('🤖 Generating quote with AI...');
     
+    // P1: Generate deterministic seed for consistency
+    const deterministicSeed = generateDeterministicSeed(
+      layeredContext.layer1,
+      conversationHistory
+    );
+    console.log(`🎲 Deterministic seed generated: ${deterministicSeed}`);
+    
     const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
       method: 'POST',
       headers: {
@@ -3667,8 +3726,15 @@ ALLA texter i offerten MÅSTE vara på SVENSKA:
       },
       body: JSON.stringify({
         model: TEXT_MODEL,
-        messages: [{ role: 'user', content: prompt }],
+        messages: [
+          { 
+            role: 'system', 
+            content: `Du är en professionell offertassistent. VIKTIGT: För konsekvens, använd denna deterministiska seed för alla beräkningar: ${deterministicSeed}. Använd alltid samma tidsåtgång och priser för identiska projekt.` 
+          },
+          { role: 'user', content: prompt }
+        ],
         response_format: { type: 'json_object' },
+        temperature: 0.3, // Lower temperature for more consistent outputs
       }),
     });
 

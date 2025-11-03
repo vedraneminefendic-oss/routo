@@ -24,19 +24,21 @@ CRITICAL RULES:
 2. PRIORITERA BREDD över DJUP - täck olika kategorier, inte detaljer inom samma
 3. UNDVIK detaljfrågor om färg, exakt materialtjocklek, specifika märken SÅVIDA användaren inte nämnt det först
 4. En kategori = max 1 fråga
+5. UNDVIK ALLTID frågor om när något ska utföras (timeline, tidsplan, färdigställandedatum)
 
 EXEMPEL PÅ BRA FRÅGOR (bredd):
 ✅ "Hur stor är arean?" (scope)
 ✅ "Ska material ingå?" (scope) 
-✅ "Finns det en tidsram?" (timeline)
 
-EXEMPEL PÅ DÅLIGA FRÅGOR (djup):
+EXEMPEL PÅ DÅLIGA FRÅGOR (djup eller timeline):
 ❌ "Vilken nyans av vit färg?" (för specifikt)
 ❌ "Vilken tjocklek på kaklet?" (för detaljerat)
 ❌ "Vilket märke på spackel?" (onödigt, såvida inte nämnt)
+❌ "När ska jobbet vara färdigt?" (timeline - ALDRIG fråga om detta)
+❌ "Finns det en tidsram?" (timeline - ALDRIG fråga om detta)
 
 STRATEGI:
-- Runda 1: Fråga om OLIKA saknade kategorier (scope, size, materials, timeline)
+- Runda 1: Fråga om OLIKA saknade kategorier (scope, size, materials)
 - Runda 2: Förfina ENDAST det mest kritiska
 - Efter 3 frågor → GENERERA DRAFT (med prisintervall för oklarheter)
 `;
@@ -75,7 +77,6 @@ export function generateNextQuestion(
 
 interface AdaptiveQuestionSet {
   low_completeness: string[];
-  missing_timeline: string[];
   missing_materials: string[];
   missing_scope: string[];
   missing_budget: string[];
@@ -87,10 +88,6 @@ export const ADAPTIVE_QUESTIONS: Record<string, AdaptiveQuestionSet> = {
       'Hur ser fuktförhållandena ut i badrummet? Finns risk för fuktproblem?',
       'Finns det befintlig golvvärme, eller vill du installera ny?',
       'Ska du köpa kakel/klinker och inredning själv, eller vill du att det ingår i offerten?'
-    ],
-    missing_timeline: [
-      'Finns det ett önskat färdigställandedatum, eller är det flexibelt?',
-      'Hur snart behöver projektet vara klart?'
     ],
     missing_materials: [
       'Vilken standard tänker du dig på kakel/klinker? (Budget 200-400 kr/kvm, Mellan 400-800, Premium 800+)',
@@ -110,10 +107,6 @@ export const ADAPTIVE_QUESTIONS: Record<string, AdaptiveQuestionSet> = {
       'Tänker du dig IKEA-kök eller specialbeställt snickeri?',
       'Behöver ventilation och el uppgraderas för nya vitvaror?'
     ],
-    missing_timeline: [
-      'Hur lång tid kan köket vara obrukbart under renoveringen?',
-      'Finns det ett önskat färdigställandedatum?'
-    ],
     missing_materials: [
       'Vilken stil tänker du dig? (Modern, klassisk, lantlig)',
       'Bänkskiva i laminat, kompositsten eller natursten?'
@@ -132,9 +125,6 @@ export const ADAPTIVE_QUESTIONS: Record<string, AdaptiveQuestionSet> = {
       'Behöver ytorna förberedas (spackling, slipning)?',
       'Önskar du miljövänlig färg eller standardfärg?'
     ],
-    missing_timeline: [
-      'Finns det ett önskat färdigställandedatum?'
-    ],
     missing_materials: [
       'Har du redan färg hemma, eller ska vi köpa in allt?',
       'Önskar du matt, sidenmatt eller halvblank färg?'
@@ -150,9 +140,6 @@ export const ADAPTIVE_QUESTIONS: Record<string, AdaptiveQuestionSet> = {
     low_completeness: [
       'Hur stor är arbetsytan ungefär? (Kvm, meter, antal rum)',
       'Finns det några speciella krav eller önskemål?'
-    ],
-    missing_timeline: [
-      'Finns det en önskad tidsram för projektet?'
     ],
     missing_materials: [
       'Ska material ingå i offerten, eller köper du det själv?'
@@ -197,9 +184,7 @@ export function getAdaptiveQuestions(
     questions.splice(2);
   } else {
     // Mostly complete - ask 1 confirmation question
-    if (missingFields.includes('timeline') && questionSet.missing_timeline) {
-      questions.push(questionSet.missing_timeline[0]);
-    } else if (questionSet.missing_budget) {
+    if (questionSet.missing_budget) {
       questions.push(questionSet.missing_budget[0]);
     }
   }

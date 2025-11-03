@@ -42,8 +42,129 @@ export interface JobStandard {
 // ============================================
 
 export const INDUSTRY_STANDARDS: JobStandard[] = [
+  // New additions for P1 - more comprehensive standards
+  {
+    jobType: 'hemstadning',
+    category: 'rut',
+    timePerUnit: { unit: 'kvm', min: 0.08, typical: 0.10, max: 0.12 },
+    hourlyRate: { budget: 400, standard: 500, premium: 600 },
+    materialCostPerUnit: { min: 5, typical: 8, max: 12 },
+    warnings: ['Hemstädning är snabbare än flyttstäd', 'Enklare grundrengöring'],
+    assumptions: ['Grundstädning av ytor', 'Inga fönster eller djupstädning'],
+    source: 'Branschstandard hemstäd 2024',
+    lastUpdated: '2025-01-15'
+  },
+  {
+    jobType: 'storstädning',
+    category: 'rut',
+    timePerUnit: { unit: 'kvm', min: 0.12, typical: 0.15, max: 0.18 },
+    hourlyRate: { budget: 450, standard: 500, premium: 550 },
+    materialCostPerUnit: { min: 10, typical: 15, max: 20 },
+    warnings: ['Storstädning inkluderar djupgående rengöring', 'Fönster kan ingå'],
+    assumptions: ['Djupstädning av alla ytor', 'Extra noggrann städning'],
+    source: 'Branschstandard storstäd 2024',
+    lastUpdated: '2025-01-15'
+  },
+  {
+    jobType: 'snöröjning',
+    category: 'rut',
+    timePerUnit: { unit: 'kvm', min: 0.008, typical: 0.010, max: 0.015 },
+    hourlyRate: { budget: 400, standard: 500, premium: 600 },
+    materialCostPerUnit: { min: 2, typical: 5, max: 10 },
+    warnings: ['Mycket snö ökar tiden', 'Tillgång till redskap påverkar effektivitet'],
+    assumptions: ['Normal snömängd', 'Enkel åtkomst'],
+    source: 'Branschstandard snöröjning 2024',
+    lastUpdated: '2025-01-15'
+  },
+  {
+    jobType: 'lövräfsning',
+    category: 'rut',
+    timePerUnit: { unit: 'kvm', min: 0.005, typical: 0.008, max: 0.012 },
+    hourlyRate: { budget: 400, standard: 500, premium: 600 },
+    warnings: ['Mycket löv tar längre tid', 'Bortforsling av löv kan kosta extra'],
+    assumptions: ['Normal mängd löv', 'Enkel åtkomst'],
+    source: 'Branschstandard lövräfsning 2024',
+    lastUpdated: '2025-01-15'
+  },
+  {
+    jobType: 'golvslipning',
+    category: 'rot',
+    timePerUnit: { unit: 'kvm', min: 0.8, typical: 1.0, max: 1.3 },
+    hourlyRate: { budget: 600, standard: 750, premium: 900 },
+    materialCostPerUnit: { min: 50, typical: 80, max: 120 },
+    warnings: ['Skadat golv tar längre tid', 'Möbler måste flyttas'],
+    assumptions: ['Träparkettgolv', 'Normal slitning'],
+    source: 'Branschstandard golvslipning 2024',
+    lastUpdated: '2025-01-15'
+  },
+  {
+    jobType: 'takmålning',
+    category: 'rot',
+    timePerUnit: { unit: 'kvm', min: 0.25, typical: 0.35, max: 0.45 },
+    hourlyRate: { budget: 550, standard: 650, premium: 800 },
+    materialCostPerUnit: { min: 25, typical: 40, max: 60 },
+    warnings: ['Högt tak kräver ställning', 'Strukturput tar längre tid'],
+    assumptions: ['2 lager takfärg', 'Standard takhöjd 2.4-2.7m'],
+    source: 'Branschstandard målning 2024',
+    lastUpdated: '2025-01-15'
+  },
+  {
+    jobType: 'fönsterbyte',
+    category: 'rot',
+    timePerUnit: { unit: 'styck', min: 2.5, typical: 3.5, max: 5.0 },
+    hourlyRate: { budget: 650, standard: 800, premium: 950 },
+    materialCostPerUnit: { min: 3000, typical: 5000, max: 8000 },
+    warnings: ['Äldre fönster kan kräva extra arbete', 'Fönster måste beställas i förväg'],
+    assumptions: ['Standard tvåglasfönster', 'Normal installation'],
+    source: 'Branschstandard fönsterbyte 2024',
+    lastUpdated: '2025-01-15'
+  },
+  {
+    jobType: 'altan_byggnad',
+    category: 'rot',
+    timePerUnit: { unit: 'kvm', min: 8, typical: 12, max: 18 },
+    hourlyRate: { budget: 650, standard: 800, premium: 1000 },
+    materialCostPerUnit: { min: 800, typical: 1200, max: 2000 },
+    warnings: ['Bygglov kan krävas', 'Grund måste vara klar'],
+    assumptions: ['Träaltan', 'Standard konstruktion'],
+    source: 'Branschstandard altan 2024',
+    lastUpdated: '2025-01-15'
+  },
+  {
+    jobType: 'plåttak_läggning',
+    category: 'rot',
+    timePerUnit: { unit: 'kvm', min: 0.5, typical: 0.7, max: 1.0 },
+    hourlyRate: { budget: 700, standard: 850, premium: 1000 },
+    materialCostPerUnit: { min: 200, typical: 300, max: 500 },
+    warnings: ['Brant tak tar längre tid', 'Fallskydd krävs'],
+    assumptions: ['Plåttak', 'Normal lutning'],
+    source: 'Branschstandard tak 2024',
+    lastUpdated: '2025-01-15'
+  },
+  {
+    jobType: 'isolering_vind',
+    category: 'rot',
+    timePerUnit: { unit: 'kvm', min: 0.3, typical: 0.5, max: 0.8 },
+    hourlyRate: { budget: 550, standard: 700, premium: 850 },
+    materialCostPerUnit: { min: 80, typical: 120, max: 180 },
+    warnings: ['Lågt till tak försvårar arbetet', 'Befintlig isolering måste granskas'],
+    assumptions: ['Mineralull', 'Enkel åtkomst'],
+    source: 'Branschstandard isolering 2024',
+    lastUpdated: '2025-01-15'
+  },
+  {
+    jobType: 'vattenskada_sanering',
+    category: 'rot',
+    timePerUnit: { unit: 'kvm', min: 2.0, typical: 3.5, max: 6.0 },
+    hourlyRate: { budget: 750, standard: 900, premium: 1100 },
+    materialCostPerUnit: { min: 200, typical: 400, max: 800 },
+    warnings: ['Mögel kräver specialbehandling', 'Fuktmätning måste göras'],
+    assumptions: ['Medelstor skada', 'Standard sanering'],
+    source: 'Branschstandard sanering 2024',
+    lastUpdated: '2025-01-15'
+  },
   // ============================================
-  // RUT - STÄDNING
+  // RUT - STÄDNING (Original items)
   // ============================================
   {
     jobType: 'flyttstadning',
