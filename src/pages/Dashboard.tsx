@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { FileText, AlertCircle, Plus, Layout } from "lucide-react";
+import { FileText, AlertCircle, Plus, Layout, Database } from "lucide-react";
 import { OnboardingWizard } from "@/components/OnboardingWizard";
 import { StatisticsCards } from "@/components/reports/StatisticsCards";
 import { AppHeader } from "@/components/AppHeader";
@@ -48,6 +48,37 @@ const Dashboard = () => {
       loadDashboardData();
     }
   }, [user]);
+  const seedIndustryStandards = async () => {
+    const loadingToast = toast.loading("Uppdaterar branschstandarder...");
+    
+    try {
+      const { data, error } = await supabase.functions.invoke('seed-industry-standards');
+      
+      if (error) {
+        console.error('Error seeding industry standards:', error);
+        toast.error("Kunde inte uppdatera branschstandarder", { id: loadingToast });
+        return;
+      }
+      
+      const result = data as { success: boolean; total: number; succeeded: number; failed: number };
+      
+      if (result.success) {
+        toast.success(
+          `Branschstandarder uppdaterade! ${result.succeeded} av ${result.total} poster sparade.`,
+          { 
+            id: loadingToast,
+            description: result.failed > 0 ? `${result.failed} poster misslyckades` : undefined
+          }
+        );
+      } else {
+        toast.error("Något gick fel vid uppdatering", { id: loadingToast });
+      }
+    } catch (error) {
+      console.error('Error calling seed function:', error);
+      toast.error("Kunde inte anropa seeding-funktion", { id: loadingToast });
+    }
+  };
+
   const loadDashboardData = async () => {
     try {
       // Load quotes
@@ -257,6 +288,26 @@ const Dashboard = () => {
                 Visa, redigera och hantera alla dina sparade offerter
               </CardDescription>
             </CardHeader>
+          </Card>
+        </div>
+
+        {/* Admin Tools */}
+        <div className="mb-10">
+          <Card className="border-2 border-muted/50 bg-[hsl(36,45%,98%)]">
+            <CardHeader>
+              <CardTitle className="text-sm font-heading font-semibold text-muted-foreground">Systemverktyg</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <Button 
+                onClick={seedIndustryStandards}
+                variant="outline"
+                size="sm"
+                className="gap-2"
+              >
+                <Database className="h-4 w-4" />
+                Uppdatera branschstandarder
+              </Button>
+            </CardContent>
           </Card>
         </div>
 
