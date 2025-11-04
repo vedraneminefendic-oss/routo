@@ -1,5 +1,5 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
-import { INDUSTRY_STANDARDS } from '../generate-quote/helpers/industryStandards.ts';
+import { JOB_REGISTRY } from '../generate-quote/helpers/jobRegistry.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -21,7 +21,7 @@ Deno.serve(async (req) => {
     let successCount = 0;
     let errorCount = 0;
 
-    for (const standard of INDUSTRY_STANDARDS) {
+    for (const standard of JOB_REGISTRY) {
       try {
         // Spara tid per enhet
         const { error: timeError } = await supabase
@@ -29,9 +29,9 @@ Deno.serve(async (req) => {
           .upsert({
             work_category: standard.jobType,
             metric_type: 'time_per_unit',
-            median_value: standard.timePerUnit.typical,
-            min_value: standard.timePerUnit.min,
-            max_value: standard.timePerUnit.max,
+            median_value: standard.timePerUnit.normal,
+            min_value: standard.timePerUnit.simple,
+            max_value: standard.timePerUnit.complex,
             sample_size: 100, // Markera som "verified standard"
             last_updated: standard.lastUpdated
           }, {
@@ -50,9 +50,9 @@ Deno.serve(async (req) => {
           .upsert({
             work_category: standard.jobType,
             metric_type: 'hourly_rate',
-            median_value: standard.hourlyRate.standard,
-            min_value: standard.hourlyRate.budget,
-            max_value: standard.hourlyRate.premium,
+            median_value: standard.hourlyRateRange.typical,
+            min_value: standard.hourlyRateRange.min,
+            max_value: standard.hourlyRateRange.max,
             sample_size: 100,
             last_updated: standard.lastUpdated
           }, {
@@ -65,16 +65,16 @@ Deno.serve(async (req) => {
           continue;
         }
 
-        // Spara material per enhet (om det finns)
-        if (standard.materialCostPerUnit) {
+        // Spara material ratio (om det finns)
+        if (standard.materialRatio > 0) {
           const { error: materialError } = await supabase
             .from('industry_benchmarks')
             .upsert({
               work_category: standard.jobType,
-              metric_type: 'material_cost_per_unit',
-              median_value: standard.materialCostPerUnit.typical,
-              min_value: standard.materialCostPerUnit.min,
-              max_value: standard.materialCostPerUnit.max,
+              metric_type: 'material_ratio',
+              median_value: standard.materialRatio,
+              min_value: standard.materialRatio * 0.8,
+              max_value: standard.materialRatio * 1.2,
               sample_size: 100,
               last_updated: standard.lastUpdated
             }, {
@@ -82,7 +82,7 @@ Deno.serve(async (req) => {
             });
 
           if (materialError) {
-            console.error(`❌ Error saving material standard for ${standard.jobType}:`, materialError);
+            console.error(`❌ Error saving material ratio for ${standard.jobType}:`, materialError);
             errorCount++;
             continue;
           }
@@ -96,11 +96,13 @@ Deno.serve(async (req) => {
             project_type: standard.jobType,
             content: {
               category: standard.category,
+              unitType: standard.unitType,
               timePerUnit: standard.timePerUnit,
-              hourlyRate: standard.hourlyRate,
-              materialCostPerUnit: standard.materialCostPerUnit,
-              warnings: standard.warnings,
-              assumptions: standard.assumptions
+              hourlyRateRange: standard.hourlyRateRange,
+              materialRatio: standard.materialRatio,
+              standardWorkItems: standard.standardWorkItems,
+              applicableDeduction: standard.applicableDeduction,
+              deductionPercentage: standard.deductionPercentage
             },
             source: standard.source,
             last_updated: standard.lastUpdated
@@ -128,7 +130,7 @@ Deno.serve(async (req) => {
     return new Response(
       JSON.stringify({ 
         success: true, 
-        total: INDUSTRY_STANDARDS.length,
+        total: JOB_REGISTRY.length,
         succeeded: successCount,
         failed: errorCount
       }),
