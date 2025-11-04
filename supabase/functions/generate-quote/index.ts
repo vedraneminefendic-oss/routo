@@ -28,7 +28,7 @@ import { validateBathroomQuote, generateValidationSummary, autoFixBathroomQuote 
 import { isKitchenProject, getKitchenPromptAddition } from './helpers/kitchenRequirements.ts';
 import { isPaintingProject, getPaintingPromptAddition } from './helpers/paintingRequirements.ts';
 // FAS 2 & 5: Import project standards and intent detection
-import { detectProjectType, getProjectPromptAddition, PROJECT_STANDARDS, normalizeKeyword, detectScope, detectProjectIntent, type ProjectIntent } from './helpers/projectStandards.ts';
+import { detectProjectType, detectProjectTypeAdvanced, getProjectPromptAddition, PROJECT_STANDARDS, normalizeKeyword, detectScope, detectProjectIntent, type ProjectIntent, type DetectionResult } from './helpers/projectStandards.ts';
 // FAS 1, 2, 4: Import layered prompt and material pricing
 import { buildLayeredPrompt } from './helpers/layeredPrompt.ts';
 import { searchMaterialPriceLive } from './helpers/materialPricing.ts';
@@ -5234,6 +5234,19 @@ Svara med **1**, **2** eller **3** (eller "granska", "generera", "mer info")`;
       explicitExclusions: projectIntent.explicitExclusions
     });
     
+    // FAS 5: Smart project detection with fallback hierarchy
+    const conversationContext = conversation_history.map(m => m.content);
+    const detectionResult = detectProjectTypeAdvanced(completeDescription, conversationContext);
+    
+    console.log(`🎯 FAS 5: Project Detection Result:`, {
+      level: detectionResult.level,
+      projectType: detectionResult.projectType,
+      category: detectionResult.category,
+      confidence: `${(detectionResult.confidence * 100).toFixed(0)}%`,
+      matchedKeywords: detectionResult.matchedKeywords,
+      suggestedMoments: detectionResult.suggestedMoments
+    });
+    
     // FAS 1 & 5: Validate quote against conversation with project type and intent
     const detectedProjectForValidation = detectProjectType(completeDescription);
     
@@ -5561,12 +5574,12 @@ Svara med **1**, **2** eller **3** (eller "granska", "generera", "mer info")`;
     }
 
     // ============================================
-    // FAS 2: PROJECT STANDARDS INTEGRATION
+    // FAS 5: PROJECT STANDARDS INTEGRATION WITH SMART DETECTION
     // ============================================
     
     const detectedProject = detectProjectType(completeDescription);
     if (detectedProject) {
-      console.log(`🎯 Detected project: ${detectedProject.displayName}`);
+      console.log(`🎯 Legacy format - Detected project: ${detectedProject.displayName}`);
       console.log(`📏 Scope: ${projectIntent.scope}`);
     }
     
@@ -5576,15 +5589,19 @@ Svara med **1**, **2** eller **3** (eller "granska", "generera", "mer info")`;
     
     let validationWarnings: any[] = [];
     
-    // FAS 5: Enhanced reasoning with project intent
+    // FAS 5: Enhanced reasoning with smart detection
     let reasoning = {
-      detectedProjectType: detectedProject?.displayName || 'unknown',
+      detectionLevel: detectionResult.level, // FAS 5: New field
+      detectedProjectType: detectedProject?.displayName || detectionResult.projectType,
+      category: detectionResult.category, // FAS 5: New field
+      confidence: detectionResult.confidence, // FAS 5: New field
       scope: projectIntent.scope,
       quality: projectIntent.quality,
       appliedStandards: detectedProject ? 'yes' : 'no',
       priceRange: detectedProject ? `${detectedProject.minCostPerSqm || detectedProject.minCostFlat}-${detectedProject.maxCostPerSqm || detectedProject.maxCostFlat}` : 'n/a',
       explicitInclusions: projectIntent.explicitInclusions,
-      explicitExclusions: projectIntent.explicitExclusions
+      explicitExclusions: projectIntent.explicitExclusions,
+      suggestedMoments: detectionResult.suggestedMoments // FAS 5: New field
     };
     
     // BATHROOM VALIDATION
