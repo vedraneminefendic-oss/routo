@@ -3697,9 +3697,9 @@ ALLA texter i offerten MÅSTE vara på SVENSKA:
   ],
   "deductions": {
     "type": "rot",
-    "percentage": 30,
-    "amount": 4250,
-    "reasoning": "ROT-avdrag tillämpligt eftersom det gäller renovering i bostad"
+    "percentage": 50,
+    "amount": 3400,
+    "reasoning": "ROT-avdrag tillämpligt eftersom det gäller renovering i bostad. 50% av arbetskostnad (6800 kr) = 3400 kr"
   }
 }
 
@@ -3816,6 +3816,25 @@ ALLA texter i offerten MÅSTE vara på SVENSKA:
     
     if (englishWarnings.length > 0) {
       console.warn('⚠️ Svenska-validering misslyckades:', englishWarnings);
+    }
+    
+    // VALIDERA ROT-PROCENT - Säkerställ att den matchar faktisk beräkning
+    if (quote.deductions?.type === 'rot' && quote.deductions.percentage !== 50) {
+      console.warn(`⚠️ AI returnerade fel ROT-procent: ${quote.deductions.percentage}% → korrigerar till 50%`);
+      quote.deductions.percentage = 50;
+      // Räkna om beloppet baserat på korrekt procentsats
+      if (quote.summary?.workCost) {
+        quote.deductions.amount = Math.round(quote.summary.workCost * 0.5);
+      }
+    }
+    
+    if (quote.deductions?.type === 'rut' && quote.deductions.percentage !== 50) {
+      console.warn(`⚠️ AI returnerade fel RUT-procent: ${quote.deductions.percentage}% → korrigerar till 50%`);
+      quote.deductions.percentage = 50;
+      // Räkna om beloppet baserat på korrekt procentsats
+      if (quote.summary?.workCost) {
+        quote.deductions.amount = Math.round(quote.summary.workCost * 0.5);
+      }
     }
     
     console.log('✅ Quote generated successfully');
@@ -5319,6 +5338,31 @@ Svara med **1**, **2** eller **3** (eller "granska", "generera", "mer info")`;
       }
     } else {
       console.log('✅ All time estimates are within industry standards');
+    }
+    
+    // ============================================
+    // P1: PROPORTION CHECK - Validera tidsproportioner för badrum
+    // ============================================
+    
+    if (completeDescription.toLowerCase().includes('badrum')) {
+      console.log('🔍 Running bathroom proportion check...');
+      
+      const { checkBathroomProportions } = await import('./helpers/proportionCheck.ts');
+      const proportionCheck = checkBathroomProportions(quote);
+      
+      if (!proportionCheck.passed) {
+        console.warn('⚠️ Proportion-check failed:');
+        proportionCheck.warnings.forEach(w => console.warn(`   - ${w}`));
+        
+        if (proportionCheck.corrections.length > 0) {
+          console.log('📊 Proportion deviations detected:');
+          proportionCheck.corrections.forEach(c => {
+            console.log(`   - ${c.workItem}: ${c.proportion}% (expected: ${c.expected})`);
+          });
+        }
+      } else {
+        console.log('✅ All proportions are within expected ranges');
+      }
     }
 
     

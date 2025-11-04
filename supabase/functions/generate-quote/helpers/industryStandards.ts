@@ -332,6 +332,140 @@ export const INDUSTRY_STANDARDS: JobStandard[] = [
   },
   
   // ============================================
+  // ROT - BADRUM MOMENT-SPECIFIKA STANDARDER
+  // ============================================
+  {
+    jobType: 'rivning_badrum',
+    category: 'rot',
+    timePerUnit: {
+      unit: 'kvm',
+      min: 1.5,      // Snabb rivning (enklare material)
+      typical: 2.5,  // Normal rivning
+      max: 3.5       // Komplicerad (asbest, extra grejer)
+    },
+    hourlyRate: {
+      budget: 650,
+      standard: 750,
+      premium: 900
+    },
+    warnings: [
+      'Gamla kakeltyper tar längre tid att riva',
+      'Asbest kräver specialhantering och utbildad personal'
+    ],
+    assumptions: [
+      'Kakel och puts rivs ner till stommen',
+      'Alla gamla rörinstallationer tas bort',
+      'Transport och flakning ingår'
+    ],
+    source: 'Byggfakta ROT 2025',
+    lastUpdated: '2025-01-15'
+  },
+  {
+    jobType: 'vvs_badrum',
+    category: 'rot',
+    timePerUnit: {
+      unit: 'kvm',
+      min: 2.0,      // Enkel VVS-installation
+      typical: 2.8,  // Normal installation
+      max: 4.0       // Komplicerad (flyttad golvbrunn, gamla rör)
+    },
+    hourlyRate: {
+      budget: 800,
+      standard: 950,
+      premium: 1100
+    },
+    warnings: [
+      'Golvbrunn måste flyttas = +4h',
+      'Gammalt rör som måste bytas = +30% tid'
+    ],
+    assumptions: [
+      'Byte av rör, golvbrunn, blandare, WC, handfat',
+      'Certifierad VVS-montör krävs',
+      'Tryckprovning ingår'
+    ],
+    source: 'VVS-förbundet 2025',
+    lastUpdated: '2025-01-15'
+  },
+  {
+    jobType: 'el_badrum',
+    category: 'rot',
+    timePerUnit: {
+      unit: 'kvm',
+      min: 1.8,      // Enkel el-installation
+      typical: 2.5,  // Normal installation
+      max: 3.2       // Komplicerad (jordfelsbrytare, golvvärme)
+    },
+    hourlyRate: {
+      budget: 850,
+      standard: 950,
+      premium: 1100
+    },
+    warnings: [
+      'Jordfelsbrytare måste bytas = +2h',
+      'IP44-krav i våtrum måste följas'
+    ],
+    assumptions: [
+      'Golvvärme, IP44-armaturer, jordfelsbrytare',
+      'Certifierad elektriker krävs',
+      'Elsäkerhetskontroll ingår'
+    ],
+    source: 'Elinstallatörsförbundet 2025',
+    lastUpdated: '2025-01-15'
+  },
+  {
+    jobType: 'kakel_vagg',
+    category: 'rot',
+    timePerUnit: {
+      unit: 'kvm',
+      min: 1.5,      // Snabb kakelsättning
+      typical: 2.2,  // Normal kakelsättning
+      max: 3.0       // Komplicerad (mönster, små kakelplattor)
+    },
+    hourlyRate: {
+      budget: 700,
+      standard: 800,
+      premium: 950
+    },
+    warnings: [
+      'Mönster ökar tiden med 20%',
+      'Tätskikt måste torka 24h före kakelsättning'
+    ],
+    assumptions: [
+      'Tätskikt, kakel, fog',
+      'Normala kakelplattor (20x30 cm)',
+      'Standardfog (2-3mm)'
+    ],
+    source: 'Kakelsättarförbundet 2025',
+    lastUpdated: '2025-01-15'
+  },
+  {
+    jobType: 'klinker_golv',
+    category: 'rot',
+    timePerUnit: {
+      unit: 'kvm',
+      min: 2.0,      // Snabb klinkersättning
+      typical: 2.8,  // Normal klinkersättning
+      max: 3.5       // Komplicerad (golvvärme, fall mot brunn)
+    },
+    hourlyRate: {
+      budget: 700,
+      standard: 850,
+      premium: 1000
+    },
+    warnings: [
+      'Golvvärme kräver extra precision',
+      'Fall mot brunn ökar tiden med 30%'
+    ],
+    assumptions: [
+      'Golvvärme, klinker, fog, fall mot brunn',
+      'Tätskikt under klinker',
+      'Normal klinkerstorlek (30x30 cm)'
+    ],
+    source: 'Kakelsättarförbundet 2025',
+    lastUpdated: '2025-01-15'
+  },
+  
+  // ============================================
   // ROT - KÖK
   // ============================================
   {

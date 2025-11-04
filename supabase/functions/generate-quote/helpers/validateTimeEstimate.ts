@@ -47,23 +47,33 @@ export function validateTimeEstimate(
   const maxTime = amount * standard.timePerUnit.max * 1.3; // 30% marginal
   const typicalTime = amount * standard.timePerUnit.typical;
   
-  // Om estimerad tid är för låg
-  if (estimatedHours < minTime * 0.7) {
+  // KRITISKT SANITY CHECK: Flagga om något moment är >50h för badrum
+  if (estimatedHours > 50 && workItemName.toLowerCase().includes('badrum')) {
     return {
       isRealistic: false,
-      warning: `⚠️ VARNING: ${estimatedHours.toFixed(1)}h är för lågt för "${workItemName}"! Branschstandard: ${minTime.toFixed(1)}-${maxTime.toFixed(1)}h för ${amount} ${unit}.`,
+      warning: `🚨 KRITISK: ${estimatedHours.toFixed(1)}h är orimligt högt för ett badrumsmoment "${workItemName}"! Detta är troligen ett fel i beräkningen.`,
       suggestedRange: { min: minTime, max: maxTime },
       correctedTime: typicalTime
     };
   }
   
-  // Om estimerad tid är för hög
+  // Om estimerad tid är för låg - KORRIGERA TILL MINTIME (inte typical)
+  if (estimatedHours < minTime * 0.7) {
+    return {
+      isRealistic: false,
+      warning: `⚠️ VARNING: ${estimatedHours.toFixed(1)}h är för lågt för "${workItemName}"! Branschstandard: ${minTime.toFixed(1)}-${maxTime.toFixed(1)}h för ${amount} ${unit}. Justerat till minimum ${minTime.toFixed(1)}h.`,
+      suggestedRange: { min: minTime, max: maxTime },
+      correctedTime: Math.max(estimatedHours, minTime)  // Aldrig under minTime
+    };
+  }
+  
+  // Om estimerad tid är för hög - KORRIGERA TILL MAXTIME (inte typical)
   if (estimatedHours > maxTime) {
     return {
       isRealistic: false,
-      warning: `⚠️ VARNING: ${estimatedHours.toFixed(1)}h är för högt för "${workItemName}"! Branschstandard: ${minTime.toFixed(1)}-${maxTime.toFixed(1)}h för ${amount} ${unit}.`,
+      warning: `⚠️ VARNING: ${estimatedHours.toFixed(1)}h är för högt för "${workItemName}"! Branschstandard: ${minTime.toFixed(1)}-${maxTime.toFixed(1)}h för ${amount} ${unit}. Justerat till maximum ${maxTime.toFixed(1)}h.`,
       suggestedRange: { min: minTime, max: maxTime },
-      correctedTime: typicalTime
+      correctedTime: Math.min(estimatedHours, maxTime)  // Aldrig över maxTime
     };
   }
   
