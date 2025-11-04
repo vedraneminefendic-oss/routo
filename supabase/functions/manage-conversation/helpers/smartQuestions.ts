@@ -72,122 +72,107 @@ export function generateNextQuestion(
 }
 
 // ============================================================================
-// ADAPTIVE QUESTIONS - Project-specific question templates
+// FAS 3: UNIVERSAL DIMENSIONS - Works for ALL job types
 // ============================================================================
 
-interface AdaptiveQuestionSet {
-  low_completeness: string[];
-  missing_materials: string[];
-  missing_scope: string[];
-  missing_budget: string[];
+export interface UniversalDimensions {
+  scope: {
+    key: 'scope';
+    question: string;
+    examples: string[];
+  };
+  size: {
+    key: 'size';
+    question: string;
+    examples: string[];
+  };
+  materials: {
+    key: 'materials';
+    question: string;
+    examples: string[];
+  };
+  complexity: {
+    key: 'complexity';
+    question: string;
+    examples: string[];
+  };
 }
 
-export const ADAPTIVE_QUESTIONS: Record<string, AdaptiveQuestionSet> = {
-  'badrum': {
-    low_completeness: [
-      'Hur ser fuktförhållandena ut i badrummet? Finns risk för fuktproblem?',
-      'Finns det befintlig golvvärme, eller vill du installera ny?',
-      'Ska du köpa kakel/klinker och inredning själv, eller vill du att det ingår i offerten?'
-    ],
-    missing_materials: [
-      'Vilken standard tänker du dig på kakel/klinker? (Budget 200-400 kr/kvm, Mellan 400-800, Premium 800+)',
-      'Har du redan valt inredning (WC, dusch, tvättställ) eller vill du ha hjälp med det?'
-    ],
-    missing_scope: [
-      'Är det en totalrenovering med rivning, eller ska befintliga installationer behållas?',
-      'Behöver ventilationen uppgraderas? (Viktigt i källarbadrum för att undvika mögel)'
-    ],
-    missing_budget: [
-      'Har du en ungefärlig budget i åtanke för projektet?'
+// FAS 3: Universal question templates that adapt to any job type
+export const UNIVERSAL_DIMENSIONS: UniversalDimensions = {
+  scope: {
+    key: 'scope',
+    question: 'Vad ska göras exakt?',
+    examples: [
+      'Totalrenovering eller delrenovering?',
+      'Nyinstallation eller reparation?',
+      'Ska något rivas eller demonteras?',
+      'Vad ingår i arbetet?'
     ]
   },
-  'kök': {
-    low_completeness: [
-      'Behåller du befintliga vitvaror, eller ska nya ingå?',
-      'Tänker du dig IKEA-kök eller specialbeställt snickeri?',
-      'Behöver ventilation och el uppgraderas för nya vitvaror?'
-    ],
-    missing_materials: [
-      'Vilken stil tänker du dig? (Modern, klassisk, lantlig)',
-      'Bänkskiva i laminat, kompositsten eller natursten?'
-    ],
-    missing_scope: [
-      'Ska stomme och rörinstallationer behållas eller göras om helt?',
-      'Behövs nya eluttag eller vattenanslutningar?'
-    ],
-    missing_budget: [
-      'Har du en ungefärlig budget i åtanke för projektet?'
+  size: {
+    key: 'size',
+    question: 'Hur stor är arbetsytan?',
+    examples: [
+      'Hur många kvadratmeter?',
+      'Hur många rum/enheter?',
+      'Vilka mått har ytan?',
+      'Hur mycket ska göras?'
     ]
   },
-  'målning': {
-    low_completeness: [
-      'Vilka ytor ska målas? (Väggar, tak, lister, dörrar)',
-      'Behöver ytorna förberedas (spackling, slipning)?',
-      'Önskar du miljövänlig färg eller standardfärg?'
-    ],
-    missing_materials: [
-      'Har du redan färg hemma, eller ska vi köpa in allt?',
-      'Önskar du matt, sidenmatt eller halvblank färg?'
-    ],
-    missing_scope: [
-      'Ska möbler och golv skyddas/flyttas, eller är rummet redan tomt?'
-    ],
-    missing_budget: [
-      'Har du en ungefärlig budget i åtanke för projektet?'
+  materials: {
+    key: 'materials',
+    question: 'Vilka material ska användas?',
+    examples: [
+      'Ska material ingå i offerten?',
+      'Vilken kvalitetsnivå? (budget/standard/premium)',
+      'Finns det specifika material önskat?',
+      'Har du redan köpt material?'
     ]
   },
-  'default': {
-    low_completeness: [
-      'Hur stor är arbetsytan ungefär? (Kvm, meter, antal rum)',
-      'Finns det några speciella krav eller önskemål?'
-    ],
-    missing_materials: [
-      'Ska material ingå i offerten, eller köper du det själv?'
-    ],
-    missing_scope: [
-      'Kan du beskriva arbetsomfattningen mer detaljerat?'
-    ],
-    missing_budget: [
-      'Har du en ungefärlig budget i åtanke?'
+  complexity: {
+    key: 'complexity',
+    question: 'Finns det speciella förutsättningar?',
+    examples: [
+      'Är det något som gör jobbet svårare?',
+      'Finns speciella krav eller önskemål?',
+      'Behövs förberedelser eller extra arbete?',
+      'Några begränsningar att vara medveten om?'
     ]
   }
 };
 
-export function getAdaptiveQuestions(
-  projectType: string,
-  completeness: number,
-  missingFields: string[]
+// FAS 3: Get universal questions based on missing dimensions
+export function getUniversalQuestions(
+  missingDimensions: string[],
+  projectType?: string
 ): string[] {
   const questions: string[] = [];
   
-  // Determine project category
-  const category = Object.keys(ADAPTIVE_QUESTIONS).find(key => 
-    projectType.toLowerCase().includes(key)
-  ) || 'default';
-  
-  const questionSet = ADAPTIVE_QUESTIONS[category];
-  
-  // Select questions based on completeness and missing fields
-  if (completeness < 30) {
-    // Very incomplete - ask broad questions
-    questions.push(...questionSet.low_completeness.slice(0, 3));
-  } else if (completeness < 70) {
-    // Moderately complete - ask targeted questions
-    missingFields.forEach(field => {
-      const fieldKey = `missing_${field}` as keyof AdaptiveQuestionSet;
-      if (questionSet[fieldKey]) {
-        questions.push(questionSet[fieldKey][0]);
-      }
-    });
-    
-    // Limit to 2 questions
-    questions.splice(2);
-  } else {
-    // Mostly complete - ask 1 confirmation question
-    if (questionSet.missing_budget) {
-      questions.push(questionSet.missing_budget[0]);
+  // For each missing dimension, select the most appropriate question
+  missingDimensions.forEach(dimension => {
+    const dim = UNIVERSAL_DIMENSIONS[dimension as keyof UniversalDimensions];
+    if (dim) {
+      // Use the main question as base
+      questions.push(dim.question);
     }
+  });
+  
+  return questions.slice(0, 3); // Max 3 questions
+}
+
+// FAS 3: Map checklist to universal dimensions
+export function mapChecklistToDimensions(checklist: any): string[] {
+  const missing: string[] = [];
+  
+  if (!checklist) {
+    return ['scope', 'size', 'materials'];
   }
   
-  return questions;
+  if (!checklist.scope) missing.push('scope');
+  if (!checklist.size) missing.push('size');
+  if (!checklist.materials) missing.push('materials');
+  if (!checklist.specialRequirements) missing.push('complexity');
+  
+  return missing;
 }

@@ -1,6 +1,12 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.0";
-import { getProjectRequirements, ProjectRequirements } from "./helpers/smartQuestions.ts";
+import { 
+  getProjectRequirements, 
+  ProjectRequirements,
+  UNIVERSAL_DIMENSIONS,
+  getUniversalQuestions,
+  mapChecklistToDimensions
+} from "./helpers/smartQuestions.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -120,6 +126,7 @@ STRATEGI:
 3. Prioritera de mest kritiska kategorierna först
 `;
   
+  // FAS 3: Use universal dimensions framework
   const prompt = `Du är en AI-assistent som hjälper en HANTVERKARE att skapa en offert.
 
 **VIKTIGT ATT FÖRSTÅ:**
@@ -128,6 +135,29 @@ STRATEGI:
 - Du ska hjälpa hantverkaren att samla in den information som behövs för att skapa en korrekt offert
 - Ställ frågor som en kollega skulle ställa: "Vad är storleken på rummet?", inte "Hur stort är ert rum?"
 - Var professionell och effektiv - hantverkaren vill snabbt kunna skapa offerten
+
+**FAS 3: UNIVERSAL DIMENSIONS - Samma frågetyper för ALLA jobb**
+Vi använder 4 universella dimensioner som fungerar för ALLA typer av jobb:
+
+1. **SCOPE** (Vad ska göras?)
+   - Totalrenovering eller delrenovering?
+   - Nyinstallation eller reparation?
+   - Ska något rivas eller demonteras?
+
+2. **SIZE** (Hur stor arbetsyta?)
+   - Hur många kvadratmeter?
+   - Hur många rum/enheter/träd?
+   - Vilka mått har ytan?
+
+3. **MATERIALS** (Vilka material?)
+   - Ska material ingå i offerten?
+   - Vilken kvalitetsnivå? (budget/standard/premium)
+   - Finns specifika material önskat?
+
+4. **COMPLEXITY** (Speciella förutsättningar?)
+   - Är det något som gör jobbet svårare?
+   - Finns speciella krav eller önskemål?
+   - Behövs förberedelser eller extra arbete?
 
 **FAS 23: TWO-ROUND SYSTEM - Max 2 frågerundor**
 ${refinementPrompt}
@@ -138,13 +168,14 @@ Vi vill INTE överbelasta hantverkaren med frågor. Målet är max 6-7 frågor T
 - Max frågor totalt: 7
 - Du får generera EXAKT: ${maxQuestionsToGenerate} frågor (INTE mer)
 
-**CHECKLIST - Vilka huvudkategorier har vi täckt?**
-- ✅/❌ Scope (vad ska göras?): ${checklist.scope ? '✅ JA' : '❌ NEJ - fråga om detta!'}
-- ✅/❌ Size (hur mycket?): ${checklist.size ? '✅ JA' : '❌ NEJ - fråga om detta!'}
-- ✅/❌ Materials (vilket material?): ${checklist.materials ? '✅ JA' : '❌ NEJ - fråga om detta!'}
-- ✅/❌ Special Requirements (något speciellt?): ${checklist.specialRequirements ? '✅ JA' : '❌ NEJ - fråga om detta!'}
+**CHECKLIST - Vilka universella dimensioner har vi täckt?**
+- ✅/❌ SCOPE (vad ska göras?): ${checklist.scope ? '✅ JA' : '❌ NEJ - fråga om detta!'}
+- ✅/❌ SIZE (hur mycket?): ${checklist.size ? '✅ JA' : '❌ NEJ - fråga om detta!'}
+- ✅/❌ MATERIALS (vilket material?): ${checklist.materials ? '✅ JA' : '❌ NEJ - fråga om detta!'}
+- ✅/❌ COMPLEXITY (något speciellt?): ${checklist.specialRequirements ? '✅ JA' : '❌ NEJ - fråga om detta!'}
 
 PROJEKTBESKRIVNING: ${projectDescription}
+PROJEKTTYP: ${conversationSummary.projectType || 'okänt'}
 
 TIDIGARE STÄLLDA FRÅGOR: ${askedQuestions.join(', ') || 'Inga frågor ställda än'}
 
@@ -154,32 +185,44 @@ ${JSON.stringify(conversationSummary, null, 2)}
 **UPPDRAG:**
 Generera EXAKT ${maxQuestionsToGenerate} relevanta frågor (inte mer, inte mindre).
 
-**STRATEGI - PRIORITERA I DENNA ORDNING:**
-1. **PRIO 1:** Fråga om saknade checklist-kategorier (de som är ❌)
-2. **PRIO 2:** Om alla checklist-kategorier är ✅ → returnera [] (inga fler frågor behövs)
-3. **PRIO 3:** Om användaren varit väldigt otydlig → fyll på med branschspecifika frågor
+**STRATEGI - FAS 3 UNIVERSAL APPROACH:**
+1. **PRIO 1:** Fråga om saknade DIMENSIONER (scope/size/materials/complexity)
+2. **PRIO 2:** Använd samma typ av frågor för alla jobb - bara anpassa språket till jobbtypen
+3. **PRIO 3:** Om alla dimensioner är ✅ → returnera [] (inga fler frågor behövs)
 
 **Frågorna ska:**
-- Vara SPECIFIKA för projekttypen (${conversationSummary.projectType || 'okänt'})
+- Täcka de saknade DIMENSIONERNA först (scope → size → materials → complexity)
 - INTE upprepa frågor som redan ställts
-- Fokusera på de VIKTIGASTE saknade kategorierna först
 - Vara konkreta och enkla att svara på
-- Följa logisk ordning (omfattning → mätningar → material → tidplan)
+- Använda samma frågestruktur oavsett jobbtyp
+- Anpassas till projekttypen (${conversationSummary.projectType || 'okänt'}) men följa samma dimensioner
 
-**BRANSCHKUNSKAP att använda:**
-- För dränering: fråga om dräneringslängd (meter), djup, mark/husgrund, avrinning, material
-- För el-arbete: fråga om belysning, eluttag, säkringsskåp, certifiering
-- För målning: fråga om yta i kvm, antal rum, färgval, tapeter, tak/väggar
-- För badrum: fråga om storlek, kakel, golvvärme, VVS-arbete, ventilation
-- För kök: fråga om storlek, apparater, bänkskivor, VVS, el
-- För trädfällning: fråga om antal träd, höjd, diameter, stubbfräsning, bortforsling
-- För städning: fråga om typ (hem/stor/flytt), area, antal rum, fönster
-- För golv: fråga om area, typ (laminat/parkett), rivning, socklar
-- För tak: fråga om area, material (plåt/tegel), rivning, isolering
-- För trädgård: fråga om area, vad ska göras (gräs/sten/plantering), markarbete
+**EXEMPEL på universella frågor anpassade till olika jobb:**
+
+**Badrum:**
+- SCOPE: "Är det totalrenovering eller delrenovering?"
+- SIZE: "Hur många kvadratmeter är badrummet?"
+- MATERIALS: "Ska material ingå i offerten? Vilken kvalitetsnivå tänker du dig?"
+- COMPLEXITY: "Finns det fukt eller vattenskador som behöver åtgärdas?"
+
+**Målning:**
+- SCOPE: "Ska väggar, tak och lister målas, eller bara vissa delar?"
+- SIZE: "Hur många kvadratmeter yta ska målas?"
+- MATERIALS: "Ska färg ingå, eller har du redan köpt det?"
+- COMPLEXITY: "Behöver ytorna förberedas med spackling och slipning?"
+
+**Trädfällning:**
+- SCOPE: "Ska träden fällas helt eller bara beskäras?"
+- SIZE: "Hur många träd och hur höga är de ungefär?"
+- MATERIALS: "Behövs bortforsling och stubbfräsning?"
+- COMPLEXITY: "Är träden nära hus eller ledningar som gör jobbet svårare?"
+
+**VIKTIGT - FAS 3 REGEL:**
+Använd ALLTID samma 4 dimensioner (scope/size/materials/complexity) oavsett jobbtyp.
+Bara anpassa SPRÅKET och EXEMPLEN till den specifika jobbtypen.
 
 **EXEMPEL:**
-Om checklist visar: scope=false, size=false → fråga först om omfattning och storlek
+Om checklist visar: scope=false, size=false → fråga först om SCOPE och SIZE
 Om checklist visar: alla true → returnera [] (inga fler frågor)
 
 Svara ENDAST med en JSON-array av frågesträngar:
