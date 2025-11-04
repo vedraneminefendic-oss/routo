@@ -7,12 +7,11 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Building2, Clock, Wrench, FileText, PlayCircle, Brain, TrendingUp, RefreshCw, DollarSign, Download, Shield } from "lucide-react";
+import { Building2, Clock, Wrench, FileText, PlayCircle, Download, Shield } from "lucide-react";
 import CompanySettings from "@/components/CompanySettings";
 import HourlyRatesManager from "@/components/HourlyRatesManager";
 import EquipmentRatesManager from "@/components/EquipmentRatesManager";
 import TemplatesManager from "@/components/TemplatesManager";
-import { MarketDataDashboard } from "@/components/MarketDataDashboard";
 import { toast } from "sonner";
 import { AppHeader } from "@/components/AppHeader";
 
@@ -23,8 +22,6 @@ const Settings = () => {
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState(searchParams.get("tab") || "company");
   const [showOnboardingResume, setShowOnboardingResume] = useState(false);
-  const [benchmarks, setBenchmarks] = useState<any[]>([]);
-  const [isSyncing, setIsSyncing] = useState(false);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -59,40 +56,6 @@ const Settings = () => {
     }
   };
 
-  const fetchBenchmarks = async () => {
-    const { data } = await supabase
-      .from('industry_benchmarks')
-      .select('*')
-      .order('last_updated', { ascending: false });
-    setBenchmarks(data || []);
-  };
-
-  useEffect(() => {
-    fetchBenchmarks();
-  }, []);
-
-  const handleSyncMarketData = async () => {
-    setIsSyncing(true);
-    try {
-      toast.info('Hämtar marknadsdata från externa källor...');
-      
-      const { data, error } = await supabase.functions.invoke('fetch-market-data');
-      
-      if (error) {
-        console.error('Market data sync error:', error);
-        toast.error('Misslyckades att synka marknadsdata');
-      } else {
-        console.log('Market data sync success:', data);
-        toast.success(`✅ ${data.message || `Uppdaterade ${data.updatedCategories} kategorier`}`);
-        await fetchBenchmarks();
-      }
-    } catch (error) {
-      console.error('Market data sync exception:', error);
-      toast.error('Fel vid synkning av marknadsdata');
-    } finally {
-      setIsSyncing(false);
-    }
-  };
 
   const resumeOnboarding = async () => {
     if (!user?.id) return;
@@ -335,7 +298,7 @@ const Settings = () => {
           className="space-y-6"
         >
           <div className="sticky top-0 bg-background z-10 pb-4">
-            <TabsList className="grid w-full max-w-3xl grid-cols-5 bg-[hsl(36,45%,98%)]">
+            <TabsList className="grid w-full max-w-3xl grid-cols-4 bg-[hsl(36,45%,98%)]">
             <TabsTrigger value="company" className="flex items-center gap-2 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
               <Building2 className="h-4 w-4" />
               Företag
@@ -351,10 +314,6 @@ const Settings = () => {
             <TabsTrigger value="templates" className="flex items-center gap-2 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
               <FileText className="h-4 w-4" />
               Mallar
-            </TabsTrigger>
-            <TabsTrigger value="market" className="flex items-center gap-2 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
-              <DollarSign className="h-4 w-4" />
-              Marknad
             </TabsTrigger>
           </TabsList>
           </div>
@@ -414,11 +373,38 @@ const Settings = () => {
               </CardContent>
             </Card>
           </TabsContent>
-
-          <TabsContent value="market">
-            <MarketDataDashboard />
-          </TabsContent>
         </Tabs>
+
+        <Card className="mt-6 bg-[hsl(36,45%,98%)] border-2 border-primary/10 shadow-routo">
+          <CardHeader>
+            <CardTitle className="font-heading text-primary flex items-center gap-2">
+              <Shield className="h-5 w-5" />
+              Integritet & Data (GDPR)
+            </CardTitle>
+            <CardDescription>
+              Hantera dina personuppgifter enligt GDPR Article 20 - Rätt till dataportabilitet
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-3">
+              <p className="text-sm text-muted-foreground">
+                Du har rätt att få en kopia av all din personliga data i ett strukturerat format. 
+                Detta inkluderar företagsinställningar, offerter, kunder, mallar och konversationshistorik.
+              </p>
+              <Button 
+                onClick={handleExportData}
+                variant="outline"
+                className="flex items-center gap-2"
+              >
+                <Download className="h-4 w-4" />
+                Exportera all min data (JSON)
+              </Button>
+              <p className="text-xs text-muted-foreground">
+                Observera: Personnummer exporteras som "[ENCRYPTED]" av säkerhetsskäl
+              </p>
+            </div>
+          </CardContent>
+        </Card>
       </main>
     </div>
   );

@@ -102,11 +102,43 @@ Deno.serve(async (req) => {
       console.log(`📚 Saved ${patterns.length} work patterns to database`);
     }
 
+    // Automatically update user patterns (AI profile)
+    console.log('🤖 Auto-updating user AI profile...');
+    try {
+      const { data: updateData, error: updateError } = await supabase.functions.invoke('update-user-patterns', {
+        body: { user_id: quote.user_id }
+      });
+
+      if (updateError) {
+        console.error('⚠️ Failed to auto-update user patterns:', updateError);
+        // Don't throw - this is a nice-to-have, not critical
+      } else {
+        console.log('✅ User AI profile auto-updated:', updateData);
+        
+        // Log to market_data_logs
+        await supabase.from('market_data_logs').insert({
+          status: 'success',
+          source: 'ai_profile_auto_update',
+          records_updated: 1,
+          details: {
+            trigger: 'quote_accepted',
+            quote_id: quoteId,
+            user_id: quote.user_id,
+            message: 'AI profile automatically updated after quote acceptance'
+          }
+        });
+      }
+    } catch (error) {
+      console.error('⚠️ Exception during auto-update of user patterns:', error);
+      // Continue execution - not critical
+    }
+
     return new Response(
       JSON.stringify({ 
         success: true, 
         learned: patterns.length,
-        projectType 
+        projectType,
+        ai_profile_updated: true
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
