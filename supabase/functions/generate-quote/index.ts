@@ -4819,6 +4819,63 @@ Svara med **1**, **2** eller **3** (eller "granska", "generera", "mer info")`;
     // 1. Determine job type from description
     const jobDef = findJobDefinition(completeDescription);
     
+    // ============================================================================
+    // PUNKT 1: LOCATION ENGINE - Derive location and multipliers
+    // ============================================================================
+    
+    console.log('📍 PUNKT 1: Deriving location and regional/seasonal multipliers...');
+    
+    // Extract job location from conversation or quote
+    const allText = (completeDescription + ' ' + actualConversationHistory.map((m: any) => m.content).join(' ')).toLowerCase();
+    const locationMatch = allText.match(/\b(stockholm|göteborg|malmö|uppsala|västerås|örebro|linköping|helsingborg|jönköping|norrköping|lund|umeå|gävle|borås|södertälje|eskilstuna|karlstad|täby|växjö|halmstad|sundsvall|luleå|trollhättan|östersund|borlänge|falun|skövde|karlskrona|kristianstad|kalmar|vänersborg|arvika|nyköping|lidingö|landskrona|enköping|strängnäs|trelleborg|ängelholm|lidköping|katrineholm|sandviken|varberg|uddevalla|motala|kungsbacka|skellefteå|mariestad|Örnsköldsvik|ystad|huskvarna|nässjö|kiruna|åmål)\b/i);
+    const jobLocation = locationMatch ? locationMatch[0] : null;
+    
+    // Extract start month from conversation
+    const monthMatch = allText.match(/\b(januari|februari|mars|april|maj|juni|juli|augusti|september|oktober|november|december)\b/i);
+    const monthNames = ['januari', 'februari', 'mars', 'april', 'maj', 'juni', 'juli', 'augusti', 'september', 'oktober', 'november', 'december'];
+    const startMonth = monthMatch ? monthNames.indexOf(monthMatch[0].toLowerCase()) + 1 : new Date().getMonth() + 1;
+    
+    // Derive location (prioritize: job location > customer address > company address)
+    const locationResult = await deriveLocation(
+      jobLocation,
+      customerId || null,
+      user_id,
+      supabaseClient
+    );
+    
+    console.log(`📍 Location derived: ${locationResult.location} (region: ${locationResult.region}, source: ${locationResult.source}, confidence: ${locationResult.confidence})`);
+    
+    // Get regional and seasonal multipliers
+    const jobCategory = jobDef ? jobDef.jobType : 'målning'; // Default to målning if no jobDef
+    
+    const regionalMultiplier = await getRegionalMultiplier(
+      locationResult.region,
+      jobCategory,
+      supabaseClient
+    );
+    
+    const seasonalMultiplier = await getSeasonalMultiplier(
+      jobCategory,
+      startMonth,
+      supabaseClient
+    );
+    
+    console.log(`📍 Regional multiplier: ${regionalMultiplier.multiplier}x (${regionalMultiplier.reason})`);
+    console.log(`📅 Seasonal multiplier: ${seasonalMultiplier.multiplier}x (${seasonalMultiplier.reason})`);
+    
+    // ============================================================================
+    // PUNKT 3: CATEGORY DETECTION - Detect job category for weighting
+    // ============================================================================
+    
+    const jobCategoryDetected = detectJobCategory(completeDescription);
+    console.log(`🔍 PUNKT 3: Job category detected: ${jobCategoryDetected}`);
+    
+    // Get category-specific user rate weighting from patterns
+    const categoryWeighting = learningContext.userPatterns?.work_type_distribution?.[jobCategoryDetected] || 0;
+    const categoryAvgRate = learningContext.userPatterns?.avg_hourly_rates?.[jobCategoryDetected];
+    
+    console.log(`📊 PUNKT 3: Category weighting: ${categoryWeighting}% (avg rate: ${categoryAvgRate || 'N/A'} kr/h)`);
+    
     if (jobDef && jobDef.jobType !== 'ai_driven') {
       console.log(`✅ Found job definition: ${jobDef.jobType}`);
       
@@ -4876,7 +4933,19 @@ Svara med **1**, **2** eller **3** (eller "granska", "generera", "mer info")`;
           accessibility,
           qualityLevel,
           userHourlyRate,
-          userWeighting
+          userWeighting,
+          // PUNKT 1: Add region & season multipliers
+          regionMultiplier: regionalMultiplier.multiplier,
+          regionReason: regionalMultiplier.reason,
+          seasonMultiplier: seasonalMultiplier.multiplier,
+          seasonReason: seasonalMultiplier.reason,
+          location: locationResult.location,
+          locationSource: locationResult.source,
+          startMonth: startMonth,
+          // PUNKT 3: Add category weighting
+          jobCategory: jobCategoryDetected,
+          categoryWeighting: categoryWeighting,
+          categoryAvgRate: categoryAvgRate
         }, jobDef);
         
         // Replace first work item (huvudarbete) with calculated one
@@ -5603,6 +5672,57 @@ Svara med **1**, **2** eller **3** (eller "granska", "generera", "mer info")`;
       // No deduction - customer pays total with VAT
       quote.summary.customerPays = quote.summary.totalWithVAT;
       console.log(`   Kunden betalar: ${quote.summary.customerPays} kr (inget avdrag)`);
+    }
+    
+    // ============================================
+    // PUNKT 4: TOTAL-GUARD - Validate total price against industry benchmarks
+    // ============================================
+    
+    console.log('🛡️ PUNKT 4: Validating total price with Total-Guard...');
+    
+    if (jobDef && jobDef.jobType !== 'ai_driven') {
+      const areaMatch = allText.match(/(\d+(?:[.,]\d+)?)\s*(?:kvm|kvadratmeter|m2)/i);
+      const lengthMatch = allText.match(/(\d+(?:[.,]\d+)?)\s*(?:meter|löpmeter|m)/i);
+      const quantityMatch = allText.match(/(\d+)\s*(?:st|styck|stycken)/i);
+      
+      const unitQty = (() => {
+        if (jobDef.unitType === 'kvm' && areaMatch) return parseFloat(areaMatch[1].replace(',', '.'));
+        if (jobDef.unitType === 'lm' && lengthMatch) return parseFloat(lengthMatch[1].replace(',', '.'));
+        if (jobDef.unitType === 'st' && quantityMatch) return parseInt(quantityMatch[1]);
+        return 1;
+      })();
+      
+      if (unitQty > 0) {
+        const totalPrice = quote.summary?.totalBeforeVAT || 0;
+        
+        const totalGuardResult = await validateTotalPrice(
+          totalPrice,
+          unitQty,
+          jobDef.unitType,
+          jobDef.jobType,
+          supabaseClient
+        );
+        
+        if (!totalGuardResult.passed && totalGuardResult.warning) {
+          console.warn(`⚠️ TOTAL-GUARD WARNING: ${totalGuardResult.warning.message}`);
+          console.warn(`   Price per unit: ${Math.round(totalGuardResult.pricePerUnit)} kr/${jobDef.unitType}`);
+          console.warn(`   Median: ${Math.round(totalGuardResult.medianPricePerUnit)} kr/${jobDef.unitType}`);
+          console.warn(`   Deviation: ${totalGuardResult.deviation.toFixed(1)}%`);
+          console.warn(`   Suggested action: ${totalGuardResult.warning.suggestedAction}`);
+          
+          // Add warning to quote
+          quote.totalGuardWarning = {
+            type: totalGuardResult.warning.type,
+            message: totalGuardResult.warning.message,
+            deviation: Math.round(totalGuardResult.deviation),
+            pricePerUnit: Math.round(totalGuardResult.pricePerUnit),
+            medianPricePerUnit: Math.round(totalGuardResult.medianPricePerUnit),
+            suggestedAction: totalGuardResult.warning.suggestedAction
+          };
+        } else {
+          console.log(`✅ TOTAL-GUARD: Price within acceptable range (${totalGuardResult.deviation.toFixed(1)}% from median)`);
+        }
+      }
     }
     
     // ============================================
