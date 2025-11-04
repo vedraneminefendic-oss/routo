@@ -4021,21 +4021,17 @@ Deno.serve(async (req) => {
     let user_id: string;
     let isRegressionTest = false;
 
-    // Check for explicit regression test header (highest priority)
+    // Check for regression test mode - requires BOTH header AND service role key for security
     const regHeader = req.headers.get('x-regression-test');
-    const forceRegression = regHeader === '1' || regHeader === 'true';
+    const hasRegressionHeader = regHeader === '1' || regHeader === 'true';
+    const hasServiceRoleKey = token === SUPABASE_SERVICE_ROLE_KEY;
 
-    if (forceRegression) {
-      // Explicit regression test mode via header
+    if (hasRegressionHeader && hasServiceRoleKey) {
+      // Regression test mode - requires both header and service role key
       isRegressionTest = true;
       user_id = '00000000-0000-0000-0000-000000000000';
-      console.log('🧪 Regression mode via x-regression-test header');
+      console.log('🧪 Regression mode activated (header + service role key verified)');
       console.log('🔑 Token (masked):', token.substring(0, 6) + '...');
-    } else if (token === SUPABASE_SERVICE_ROLE_KEY) {
-      // Service role key = regression test mode (fallback)
-      isRegressionTest = true;
-      user_id = '00000000-0000-0000-0000-000000000000';
-      console.log('🧪 Regression mode via service role key detected');
     } else {
       // Normal JWT validation for regular users
       const { data: { user }, error: userError } = await supabaseClient.auth.getUser(token);
