@@ -39,6 +39,11 @@ import { detectDeltaChanges, applyDeltaChanges, validatePriceDelta } from './hel
 // Import industry standards for realistic pricing
 import { findStandard, getStandardPromptAddition, calculateTimeFromStandard } from './helpers/industryStandards.ts';
 import { validateQuoteTimeEstimates, autoCorrectTimeEstimates } from './helpers/validateTimeEstimate.ts';
+// PUNKT 1 & 4: Import location engine and total guard
+import { deriveLocation, getRegionalMultiplier, getSeasonalMultiplier } from './helpers/locationEngine.ts';
+import { validateTotalPrice } from './helpers/totalGuard.ts';
+// PUNKT 3: Import category detector
+import { detectJobCategory } from './helpers/categoryDetector.ts';
 
 // Brand dictionary and synonyms for better language understanding
 const KEYWORD_SYNONYMS: Record<string, string[]> = {
@@ -2799,6 +2804,7 @@ Returnera JSON:
     const layeredContext = await buildLayeredPrompt(
       userId,
       description,
+      'ai_driven', // jobType - detekteras i layeredPrompt
       conversationHistory,
       { area: undefined }, // measurements från beskrivning extraheras i layeredPrompt
       supabaseClient

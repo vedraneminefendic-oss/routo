@@ -12,6 +12,20 @@ export interface ProjectParams {
   qualityLevel: 'budget' | 'standard' | 'premium';
   userHourlyRate?: number;   // Prioritet om finns
   userWeighting: number;     // 0-100% vikt för user rate
+  
+  // NYA FÖR PUNKT 1: Region & Säsong
+  regionMultiplier?: number;  // 1.1 = +10%, 0.9 = -10%
+  regionReason?: string;
+  seasonMultiplier?: number;  // 1.15 = +15%, 0.85 = -15%
+  seasonReason?: string;
+  location?: string;          // 'Stockholm', 'Göteborg'
+  locationSource?: string;    // 'job_location', 'customer_address', etc.
+  startMonth?: number;        // 1-12 för säsong
+  
+  // NYA FÖR PUNKT 3: Kategori-viktning
+  jobCategory?: string;       // 'målning', 'vvs', 'el'
+  categoryWeighting?: number; // 0-100% för denna kategori
+  categoryAvgRate?: number;   // Användarens genomsnittliga timpris i kategorin
 }
 
 export interface CalculatedWorkItem {
@@ -62,6 +76,18 @@ export function calculateWorkItem(
     appliedMultipliers.push(`Kvalitet: ${qualityMult}x`);
   }
   
+  // APPLICERA REGION-MULTIPLIER (PUNKT 1)
+  if (params.regionMultiplier && params.regionMultiplier !== 1.0 && jobDef.regionSensitive !== false) {
+    totalMultiplier *= params.regionMultiplier;
+    appliedMultipliers.push(`Region: ${params.regionMultiplier.toFixed(2)}x`);
+  }
+  
+  // APPLICERA SÄSONG-MULTIPLIER (PUNKT 1)
+  if (params.seasonMultiplier && params.seasonMultiplier !== 1.0 && jobDef.seasonSensitive !== false) {
+    totalMultiplier *= params.seasonMultiplier;
+    appliedMultipliers.push(`Säsong: ${params.seasonMultiplier.toFixed(2)}x`);
+  }
+  
   const finalHours = Math.round(baseHours * totalMultiplier * 10) / 10; // Max 1 decimal
   
   // 3. HYBRIDMODELL: Timpris med viktad prioritering
@@ -70,17 +96,39 @@ export function calculateWorkItem(
   let sourceOfTruth: 'web_market' | 'industry_benchmark' | 'user_rate_weighted';
   let confidence: number;
   
-  if (params.userHourlyRate && params.userWeighting > 0) {
-    // Weighted average: (user_rate * user_weight) + (market_rate * (1 - user_weight))
+  // KATEGORI-VIKTAD HYBRIDMODELL (PUNKT 3)
+  if (params.categoryWeighting && params.categoryWeighting > 0 && (params.categoryAvgRate || params.userHourlyRate)) {
+    // Använd kategori-specifik rate om tillgänglig, annars global
+    const userRate = params.categoryAvgRate || params.userHourlyRate!;
+    const categoryWeight = params.categoryWeighting / 100;
+    const marketWeight = 1 - categoryWeight;
+    
+    hourlyRate = Math.round(
+      (userRate * categoryWeight) + 
+      (jobDef.hourlyRateRange.typical * marketWeight)
+    );
+    
+    sourceOfTruth = params.categoryWeighting >= 50 ? 'user_rate_weighted' : 'web_market';
+    confidence = 0.7 + (params.categoryWeighting / 100) * 0.3;
+    
+    console.log(`💰 Category-weighted rate (${params.jobCategory}):`, {
+      categoryQuotes: Math.round(params.categoryWeighting / 5),
+      userRate,
+      marketRate: jobDef.hourlyRateRange.typical,
+      categoryWeight: params.categoryWeighting,
+      finalRate: hourlyRate
+    });
+  } else if (params.userHourlyRate && params.userWeighting > 0) {
+    // Fallback till global viktning
     const userWeight = params.userWeighting / 100;
     hourlyRate = Math.round(
       (params.userHourlyRate * userWeight) + 
       (jobDef.hourlyRateRange.typical * (1 - userWeight))
     );
     sourceOfTruth = params.userWeighting >= 50 ? 'user_rate_weighted' : 'web_market';
-    confidence = 0.7 + (params.userWeighting / 100) * 0.3; // 0.7-1.0
+    confidence = 0.7 + (params.userWeighting / 100) * 0.3;
     
-    console.log('💰 Using weighted rate:', {
+    console.log('💰 Using global weighted rate:', {
       userRate: params.userHourlyRate,
       marketRate: jobDef.hourlyRateRange.typical,
       userWeight: params.userWeighting,
@@ -98,12 +146,20 @@ export function calculateWorkItem(
   // 4. Subtotal
   const subtotal = Math.round(finalHours * hourlyRate);
   
-  // 5. Reasoning
+  // 5. Reasoning med region & säsong
+  const getMonthName = (month: number): string => {
+    const months = ['Januari', 'Februari', 'Mars', 'April', 'Maj', 'Juni', 
+                    'Juli', 'Augusti', 'September', 'Oktober', 'November', 'December'];
+    return months[month - 1] || '';
+  };
+  
   const reasoning = `
 📐 Bas: ${params.unitQty} ${jobDef.unitType} × ${baseTimePerUnit}h = ${baseHours.toFixed(1)}h
+${params.regionMultiplier && params.regionMultiplier !== 1.0 ? `📍 Region: ${params.location} (${(params.regionMultiplier - 1) * 100 > 0 ? '+' : ''}${((params.regionMultiplier - 1) * 100).toFixed(0)}%) - ${params.regionReason}` : ''}
+${params.seasonMultiplier && params.seasonMultiplier !== 1.0 && params.startMonth ? `📅 Säsong: ${getMonthName(params.startMonth)} (${(params.seasonMultiplier - 1) * 100 > 0 ? '+' : ''}${((params.seasonMultiplier - 1) * 100).toFixed(0)}%) - ${params.seasonReason}` : ''}
 ${appliedMultipliers.length > 0 ? `⚙️ Multiplikatorer: ${appliedMultipliers.join(', ')}` : ''}
 ⏱️ Total tid: ${finalHours}h
-💰 Timpris: ${hourlyRate} kr/h ${params.userWeighting > 0 ? `(${Math.round(params.userWeighting)}% dina priser, ${100 - Math.round(params.userWeighting)}% marknad)` : '(marknadspris)'}
+💰 Timpris: ${hourlyRate} kr/h ${params.categoryWeighting ? `(${Math.round(params.categoryWeighting)}% dina ${params.jobCategory}-priser, ${100 - Math.round(params.categoryWeighting)}% marknad)` : params.userWeighting > 0 ? `(${Math.round(params.userWeighting)}% dina priser, ${100 - Math.round(params.userWeighting)}% marknad)` : '(marknadspris)'}
 💵 Subtotal: ${subtotal.toLocaleString('sv-SE')} kr
   `.trim();
   

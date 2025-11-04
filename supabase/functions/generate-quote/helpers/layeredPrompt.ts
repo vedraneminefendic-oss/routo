@@ -6,7 +6,12 @@ interface LayeredContext {
   layer1_market: string;      // Webben (alltid 100% för nya)
   layer2_industry: string;    // Branschdata (80% vikt)
   layer3_user: string;        // User (0% → 100% efter 20+ offerter)
-  userWeighting: number;      // 0-100% baserat på erfarenhet
+  userWeighting: number;      // 0-100% baserat på erfarenhet (GLOBAL)
+  // NYA FÖR PUNKT 3:
+  jobCategory: string;        // 'målning', 'vvs', 'el', 'övrigt'
+  categoryWeighting: number;  // 0-100% för denna kategori
+  categoryAvgRate: number;    // Användarens genomsnittliga timpris i kategorin
+  categoryQuotes: number;     // Antal offerter i kategorin
 }
 
 interface ConversationMessage {
@@ -23,6 +28,7 @@ interface ConversationMessage {
 export async function buildLayeredPrompt(
   userId: string,
   description: string,
+  jobType: string, // NY PARAMETER för kategori-detektering
   conversationHistory: ConversationMessage[],
   measurements: any,
   supabase: any,
@@ -30,6 +36,30 @@ export async function buildLayeredPrompt(
 ): Promise<LayeredContext> {
   
   console.log('🏗️ FAS 0: Building 3-layer HYBRID prompt structure...');
+  
+  // ============ IMPORTERA KATEGORI-DETEKTOR (PUNKT 3) ============
+  const detectJobCategory = (desc: string, type?: string): string => {
+    const normalized = desc.toLowerCase();
+    if (type) {
+      const t = type.toLowerCase();
+      if (t.includes('målning') || t.includes('måla')) return 'målning';
+      if (t.includes('badrum') || t.includes('våtrum')) return 'badrum';
+      if (t.includes('kök')) return 'kök';
+      if (t.includes('el')) return 'el';
+      if (t.includes('vvs') || t.includes('rör')) return 'vvs';
+      if (t.includes('trädgård') || t.includes('gräs')) return 'trädgård';
+      if (t.includes('städ')) return 'städning';
+      if (t.includes('golv') || t.includes('parkett')) return 'golv';
+    }
+    if (normalized.includes('måla') || normalized.includes('målning')) return 'målning';
+    if (normalized.includes('badrum') || normalized.includes('dusch')) return 'badrum';
+    if (normalized.includes('kök')) return 'kök';
+    if (normalized.includes('el')) return 'el';
+    if (normalized.includes('vvs') || normalized.includes('rör')) return 'vvs';
+    if (normalized.includes('trädgård') || normalized.includes('gräs')) return 'trädgård';
+    if (normalized.includes('städ')) return 'städning';
+    return 'övrigt';
+  };
   
   // ============ BERÄKNA ANVÄNDARVIKTNING (0-100%) ============
   
@@ -43,10 +73,20 @@ export async function buildLayeredPrompt(
   const userWeighting = Math.min(100, (totalQuotes / 20) * 100);
   const marketWeighting = 100 - userWeighting;
   
+  // ============ KATEGORI-SPECIFIK VIKTNING (PUNKT 3) ============
+  const jobCategory = detectJobCategory(description, jobType);
+  const categoryData = userPatterns?.category_weighting?.[jobCategory];
+  const categoryWeighting = categoryData?.user_weighting || 0;
+  const categoryAvgRate = categoryData?.avg_rate || 0;
+  const categoryQuotes = categoryData?.total_quotes || 0;
+  
   console.log('📊 Weighting calculated:', {
     totalQuotes,
-    userWeighting: `${userWeighting.toFixed(0)}%`,
-    marketWeighting: `${marketWeighting.toFixed(0)}%`
+    globalWeighting: `${userWeighting.toFixed(0)}%`,
+    category: jobCategory,
+    categoryQuotes,
+    categoryWeighting: `${categoryWeighting.toFixed(0)}%`,
+    categoryAvgRate: categoryAvgRate || 'N/A'
   });
   
   // ============ LAGER 1: MARKNADSNIVÅ (WEBBEN - HÖGSTA PRIORITET FÖR NYA) ============
@@ -73,7 +113,8 @@ ${liveSearchResult ? `
   - Gäller INTE: Arbete på annans fastighet, material, trädfällning
 
 **INSTRUKTION:** Detta är MARKNADSPRISER som ger användarna genast trovärdiga offerter.
-För nya användare (${totalQuotes} offerter): Använd ${marketWeighting.toFixed(0)}% marknad, ${userWeighting.toFixed(0)}% användarens priser.
+För denna ${jobCategory}-offert: Använd ${100 - categoryWeighting}% marknadspriser + ${categoryWeighting.toFixed(0)}% användarens ${jobCategory}-priser.
+${categoryQuotes > 0 ? `Användarens genomsnittliga timpris i ${jobCategory}: ${categoryAvgRate} kr/h (baserat på ${categoryQuotes} offerter)` : `Ny kategori för användaren - använd 100% marknadspriser`}
 `;
   
   // ============ HÄMTA ANVÄNDARDATA ============
@@ -193,6 +234,11 @@ ${totalQuotes === 0 ? `
     layer1_market, 
     layer2_industry, 
     layer3_user, 
-    userWeighting 
+    userWeighting,
+    // PUNKT 3: Kategori-specifika värden
+    jobCategory,
+    categoryWeighting,
+    categoryAvgRate,
+    categoryQuotes
   };
 }
