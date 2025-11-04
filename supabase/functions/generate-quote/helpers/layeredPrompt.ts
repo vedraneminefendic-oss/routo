@@ -153,6 +153,173 @@ För badrum ska du ALLTID dela upp arbetet i SEPARATA moment med MOMENT-SPECIFIK
 Den standarden är ENDAST för att validera total-tid, inte för att beräkna delmoment.
 
 ` : ''}
+
+${jobCategory === 'kök' ? `
+
+**🚨 KRITISKT FÖR KÖKSRENOVERING:**
+
+För kök ska du ALLTID dela upp arbetet i SEPARATA moment med MOMENT-SPECIFIKA standarder:
+
+1. **Rivning och demontering** (jobType: 'rivning_kok')
+   - Standard: 1.2-3.0h per kvm (typical: 2.0h/kvm)
+   - Timpris: 650-900 kr/h (standard: 750 kr/h)
+   - För 10 kvm kök: ~20h
+
+2. **VVS-installation** (jobType: 'vvs_kok')
+   - Standard: 0.8-2.0h per kvm (typical: 1.2h/kvm)
+   - Timpris: 800-1100 kr/h (standard: 950 kr/h)
+   - För 10 kvm kök: ~12h
+
+3. **El-installation** (jobType: 'el_kok')
+   - Standard: 1.0-2.5h per kvm (typical: 1.5h/kvm)
+   - Timpris: 850-1100 kr/h (standard: 950 kr/h)
+   - För 10 kvm kök: ~15h
+
+4. **Kakel backsplash** (jobType: 'kakel_kok')
+   - Standard: 1.0-2.2h per kvm (typical: 1.5h/kvm)
+   - Timpris: 700-950 kr/h (standard: 800 kr/h)
+   - För 3 kvm backsplash: ~4.5h
+
+5. **Montering köksinredning** (jobType: 'skåp_montering')
+   - Standard: 3.0-7.0h per kvm (typical: 4.5h/kvm)
+   - Timpris: 650-900 kr/h (standard: 750 kr/h)
+   - För 10 kvm kök: ~45h
+
+**TOTALT för 10 kvm kök: 96-110 timmar**
+
+**⚠️ ANVÄND ALDRIG 'kokrenovering' (40h/kvm) för ENSKILDA moment!**
+Den standarden är ENDAST för att validera total-tid, inte för att beräkna delmoment.
+
+` : ''}
+
+${(jobCategory === 'målning' || description.toLowerCase().includes('måla')) ? `
+
+**🚨 KRITISKT FÖR MÅLNING:**
+
+För målning ska du ALLTID dela upp arbetet i SEPARATA moment med MOMENT-SPECIFIKA standarder:
+
+1. **Spackling och slipning** (jobType: 'spackling_sliping')
+   - Standard: 0.08-0.20h per kvm (typical: 0.12h/kvm)
+   - Timpris: 550-800 kr/h (standard: 650 kr/h)
+   - För 50 kvm: ~6h
+
+2. **Grundning** (jobType: 'grundning')
+   - Standard: 0.06-0.15h per kvm (typical: 0.10h/kvm)
+   - Timpris: 550-800 kr/h (standard: 650 kr/h)
+   - För 50 kvm: ~5h
+
+3. **Målning första lagret** (jobType: 'malning_1_lager')
+   - Standard: 0.10-0.20h per kvm (typical: 0.14h/kvm)
+   - Timpris: 550-800 kr/h (standard: 650 kr/h)
+   - För 50 kvm: ~7h
+
+4. **Målning andra lagret** (jobType: 'malning_2_lager')
+   - Standard: 0.06-0.14h per kvm (typical: 0.10h/kvm)
+   - Timpris: 550-800 kr/h (standard: 650 kr/h)
+   - För 50 kvm: ~5h
+
+**TOTALT för 50 kvm målning: 23-27 timmar**
+
+**⚠️ ANVÄND ALDRIG 'malning_inomhus' (0.4h/kvm) för ENSKILDA moment!**
+Den standarden är ENDAST för att validera total-tid, inte för att beräkna delmoment.
+
+` : ''}
+
+${jobCategory === 'fasad' || description.toLowerCase().includes('fasad') ? `
+
+**🚨 KRITISKT FÖR FASADMÅLNING:**
+
+För fasadmålning ska du ALLTID dela upp arbetet i SEPARATA moment med MOMENT-SPECIFIKA standarder:
+
+1. **Rengöring fasad** (jobType: 'fasad_rengoring')
+   - Standard: 0.08-0.18h per kvm (typical: 0.12h/kvm)
+   - Timpris: 550-900 kr/h (standard: 700 kr/h)
+   - För 80 kvm fasad: ~10h
+
+2. **Förberedelse och spackling** (jobType: 'fasad_forberedelse')
+   - Standard: 0.04-0.15h per kvm (typical: 0.08h/kvm)
+   - Timpris: 550-900 kr/h (standard: 700 kr/h)
+   - För 80 kvm fasad: ~6.5h
+
+3. **Målning fasad** (jobType: 'fasad_malning')
+   - Standard: 0.25-0.50h per kvm (typical: 0.35h/kvm)
+   - Timpris: 550-900 kr/h (standard: 700 kr/h)
+   - För 80 kvm fasad: ~28h
+
+4. **Ställning** (jobType: 'stallning') - VID BEHOV om fasad >4m höjd
+   - Standard: 0.5-1.8h per kvm (typical: 1.0h/kvm)
+   - MATERIALKOSTNAD (hyra): 100-250 kr/kvm (standard: 150 kr/kvm)
+   - För 80 kvm fasad: ~12,000 kr i ställningskostnad
+
+**TOTALT för 80 kvm fasad: 44-50 timmar + ställning vid behov**
+
+**⚠️ ANVÄND ALDRIG 'malning_fasad' (0.3h/kvm) för ENSKILDA moment!**
+Den standarden är ENDAST för att validera total-tid, inte för att beräkna delmoment.
+
+` : ''}
+
+${jobCategory === 'trädgård' ? `
+
+**🚨 KRITISKT FÖR TRÄDGÅRDSARBETE:**
+
+För trädgård ska du dela upp arbetet i SEPARATA moment med MOMENT-SPECIFIKA standarder:
+
+1. **Markberedning** (jobType: 'markberedning') - VID BEHOV
+   - Standard: 0.2-0.7h per kvm (typical: 0.4h/kvm)
+   - Timpris: 450-650 kr/h (standard: 550 kr/h)
+   - För 100 kvm: ~40h
+
+2. **Plantering** (jobType: 'plantering')
+   - Standard: 0.3-1.0h per växt (typical: 0.5h/växt)
+   - Timpris: 450-650 kr/h (standard: 550 kr/h)
+   - För 20 växter: ~10h
+
+3. **Gräsklippning** (jobType: 'grasklippning') - OM RELEVANT
+   - Standard: 0.002-0.005h per kvm (typical: 0.003h/kvm)
+   - Timpris: 450-650 kr/h (standard: 550 kr/h)
+   - För 500 kvm: ~1.5h
+
+4. **Häckklippning** (jobType: 'hakkklippning') - OM RELEVANT
+   - Standard: 0.08-0.15h per meter (typical: 0.10h/meter)
+   - Timpris: 450-650 kr/h (standard: 550 kr/h)
+   - För 50 meter: ~5h
+
+**⚠️ VIKTIGT: Trädfällning är EJ RUT-berättigat!**
+
+` : ''}
+
+${jobCategory === 'golv' || description.toLowerCase().includes('parkett') ? `
+
+**🚨 KRITISKT FÖR PARKETTLÄGGNING:**
+
+För parkettläggning ska du ALLTID dela upp arbetet i SEPARATA moment med MOMENT-SPECIFIKA standarder:
+
+1. **Underlagsarbete** (jobType: 'underlagsarbete')
+   - Standard: 0.15-0.40h per kvm (typical: 0.25h/kvm)
+   - Timpris: 600-900 kr/h (standard: 750 kr/h)
+   - För 50 kvm: ~12.5h
+
+2. **Läggning parkett** (jobType: 'parkett_laggning')
+   - Standard: 0.5-1.3h per kvm (typical: 0.8h/kvm)
+   - Timpris: 600-900 kr/h (standard: 750 kr/h)
+   - För 50 kvm: ~40h
+
+3. **Slipning** (jobType: 'slipning') - VID BEHOV
+   - Standard: 0.15-0.40h per kvm (typical: 0.25h/kvm)
+   - Timpris: 600-900 kr/h (standard: 750 kr/h)
+   - För 50 kvm: ~12.5h
+
+4. **Lackering** (jobType: 'lackering') - VID BEHOV
+   - Standard: 0.15-0.35h per kvm (typical: 0.25h/kvm)
+   - Timpris: 600-900 kr/h (standard: 750 kr/h)
+   - För 50 kvm: ~12.5h
+
+**TOTALT för 50 kvm parkett: 77-90 timmar (med slipning och lackering)**
+
+**⚠️ ANVÄND ALDRIG 'parkettläggning' (1.5h/kvm) för ENSKILDA moment!**
+Den standarden är ENDAST för att validera total-tid, inte för att beräkna delmoment.
+
+` : ''}
 `;
   
   // ============ HÄMTA ANVÄNDARDATA ============
