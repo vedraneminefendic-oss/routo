@@ -1,5 +1,120 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
-import { JOB_REGISTRY } from '../generate-quote/helpers/jobRegistry.ts';
+// NOTE: Do not import from other functions' folders. Keep data local to this function for bundling.
+
+type UnitType = 'kvm' | 'lm' | 'st' | 'tim';
+
+interface MinimalJobSpec {
+  jobType: string;
+  category: 'rot' | 'rut' | 'none';
+  unitType: UnitType;
+  timePerUnit: { simple: number; normal: number; complex: number };
+  hourlyRateRange: { min: number; typical: number; max: number };
+  materialRatio: number;
+  standardWorkItems: Array<{ name: string; mandatory: boolean; typicalHours: number }>;
+  applicableDeduction: 'rot' | 'rut' | 'none';
+  deductionPercentage: number;
+  source: string;
+  lastUpdated: string;
+}
+
+const JOB_REGISTRY: MinimalJobSpec[] = [
+  {
+    jobType: 'flyttstadning',
+    category: 'rut',
+    unitType: 'kvm',
+    timePerUnit: { simple: 0.15, normal: 0.18, complex: 0.25 },
+    hourlyRateRange: { min: 350, typical: 450, max: 550 },
+    materialRatio: 0.0,
+    standardWorkItems: [
+      { name: 'Grundstädning', mandatory: true, typicalHours: 0.18 }
+    ],
+    applicableDeduction: 'rut',
+    deductionPercentage: 50,
+    source: 'Webben (Hemfrid, Byggfakta 2025)',
+    lastUpdated: '2025-11-04'
+  },
+  {
+    jobType: 'badrum',
+    category: 'rot',
+    unitType: 'kvm',
+    timePerUnit: { simple: 35, normal: 50, complex: 70 },
+    hourlyRateRange: { min: 550, typical: 750, max: 950 },
+    materialRatio: 0.45,
+    standardWorkItems: [
+      { name: 'Rivning och demontering', mandatory: true, typicalHours: 12 },
+      { name: 'Golvarbete och vattenisolering', mandatory: true, typicalHours: 16 },
+      { name: 'Kakelsättning', mandatory: true, typicalHours: 24 },
+      { name: 'Installation av inredning', mandatory: true, typicalHours: 8 }
+    ],
+    applicableDeduction: 'rot',
+    deductionPercentage: 30,
+    source: 'Webben (Byggfakta, Svensk Byggtjänst 2025)',
+    lastUpdated: '2025-11-04'
+  },
+  {
+    jobType: 'kök',
+    category: 'rot',
+    unitType: 'st',
+    timePerUnit: { simple: 80, normal: 120, complex: 180 },
+    hourlyRateRange: { min: 600, typical: 750, max: 900 },
+    materialRatio: 0.55,
+    standardWorkItems: [
+      { name: 'Rivning och demontering', mandatory: true, typicalHours: 16 },
+      { name: 'El- och rörarbete', mandatory: true, typicalHours: 24 },
+      { name: 'Montering köksinredning', mandatory: true, typicalHours: 32 },
+      { name: 'Installation vitvaror', mandatory: false, typicalHours: 8 }
+    ],
+    applicableDeduction: 'rot',
+    deductionPercentage: 30,
+    source: 'Webben (Byggfakta 2025)',
+    lastUpdated: '2025-11-04'
+  },
+  {
+    jobType: 'målning',
+    category: 'rut',
+    unitType: 'kvm',
+    timePerUnit: { simple: 0.3, normal: 0.4, complex: 0.6 },
+    hourlyRateRange: { min: 400, typical: 500, max: 650 },
+    materialRatio: 0.2,
+    standardWorkItems: [
+      { name: 'Förberedelse (spackling, slipning)', mandatory: true, typicalHours: 0.15 },
+      { name: 'Målning', mandatory: true, typicalHours: 0.25 }
+    ],
+    applicableDeduction: 'rut',
+    deductionPercentage: 50,
+    source: 'Webben (Målarföretagen, Byggfakta 2025)',
+    lastUpdated: '2025-11-04'
+  },
+  {
+    jobType: 'trädgård',
+    category: 'rut',
+    unitType: 'kvm',
+    timePerUnit: { simple: 0.5, normal: 0.8, complex: 1.2 },
+    hourlyRateRange: { min: 350, typical: 450, max: 600 },
+    materialRatio: 0.25,
+    standardWorkItems: [
+      { name: 'Markberedning', mandatory: false, typicalHours: 0.3 },
+      { name: 'Plantering', mandatory: true, typicalHours: 0.5 }
+    ],
+    applicableDeduction: 'rut',
+    deductionPercentage: 50,
+    source: 'Webben (Trädgårdsföretagen 2025)',
+    lastUpdated: '2025-11-04'
+  },
+  {
+    jobType: 'ai_driven',
+    category: 'none',
+    unitType: 'tim',
+    timePerUnit: { simple: 0.8, normal: 1.0, complex: 1.3 },
+    hourlyRateRange: { min: 450, typical: 650, max: 850 },
+    materialRatio: 0.3,
+    standardWorkItems: [],
+    applicableDeduction: 'none',
+    deductionPercentage: 0,
+    source: 'AI-genererad fallback',
+    lastUpdated: '2025-11-04'
+  }
+];
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
