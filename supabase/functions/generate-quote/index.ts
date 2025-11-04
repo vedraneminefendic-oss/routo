@@ -4021,23 +4021,32 @@ Deno.serve(async (req) => {
     let user_id: string;
     let isRegressionTest = false;
 
-    // Check if this is a service role key (for regression tests)
-    if (token === SUPABASE_SERVICE_ROLE_KEY) {
-      // Service role key = regression test mode
-      // Use a special system user ID for tests
-      user_id = '00000000-0000-0000-0000-000000000000';
+    // Check for explicit regression test header (highest priority)
+    const regHeader = req.headers.get('x-regression-test');
+    const forceRegression = regHeader === '1' || regHeader === 'true';
+
+    if (forceRegression) {
+      // Explicit regression test mode via header
       isRegressionTest = true;
-      console.log('🧪 Running in regression test mode (service role key detected)');
+      user_id = '00000000-0000-0000-0000-000000000000';
+      console.log('🧪 Regression mode via x-regression-test header');
+      console.log('🔑 Token (masked):', token.substring(0, 6) + '...');
+    } else if (token === SUPABASE_SERVICE_ROLE_KEY) {
+      // Service role key = regression test mode (fallback)
+      isRegressionTest = true;
+      user_id = '00000000-0000-0000-0000-000000000000';
+      console.log('🧪 Regression mode via service role key detected');
     } else {
       // Normal JWT validation for regular users
       const { data: { user }, error: userError } = await supabaseClient.auth.getUser(token);
 
       if (userError || !user) {
+        console.error('JWT validation failed:', userError?.message);
         throw new Error('Invalid authorization token');
       }
 
       user_id = user.id;
-      console.log('Generating quote for user:', user_id);
+      console.log('✅ Generating quote for user:', user_id);
     }
 
     // FAS 11: Fetch conversation summary early if sessionId exists

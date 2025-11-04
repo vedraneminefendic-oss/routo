@@ -57,11 +57,26 @@ Deno.serve(async (req) => {
         const { data: quoteData, error: quoteError } = await supabase.functions.invoke('generate-quote', {
           body: test.input_data,
           headers: {
-            Authorization: `Bearer ${supabaseKey}`
+            Authorization: `Bearer ${supabaseKey}`,
+            'x-regression-test': '1'
           }
         });
 
-        if (quoteError) throw quoteError;
+        if (quoteError) {
+          // Try to extract detailed error message from response
+          let errorDetail = quoteError.message;
+          if (quoteError.context) {
+            try {
+              const errorBody = await quoteError.context.json();
+              errorDetail = errorBody.error || errorBody.message || errorDetail;
+            } catch {
+              // If can't parse JSON, keep original message
+            }
+          }
+          const enhancedError = new Error(errorDetail);
+          (enhancedError as any).context = quoteError.context;
+          throw enhancedError;
+        }
 
         const actualPrice = quoteData?.summary?.totalBeforeVAT || 0;
         const expectedMid = (test.expected_price_min + test.expected_price_max) / 2;
@@ -114,6 +129,17 @@ Deno.serve(async (req) => {
         console.error(`❌ Error in test ${test.test_name}:`, error);
         failedCount++;
         
+        // Extract detailed error info for better debugging
+        let errorOutput: any = { error: error.message };
+        if (error.context) {
+          try {
+            const errorBody = await error.context.json();
+            errorOutput = { error: error.message, detail: errorBody };
+          } catch {
+            errorOutput = { error: error.message, status: error.context?.status };
+          }
+        }
+        
         await supabase.from('regression_test_results').insert({
           test_name: test.test_name,
           scenario_description: test.scenario_description || test.test_name,
@@ -122,7 +148,7 @@ Deno.serve(async (req) => {
           actual_price: 0,
           price_deviation_percent: 100,
           passed: false,
-          test_output: { error: error.message }
+          test_output: errorOutput
         });
 
         // Uppdatera run_count även vid fel
