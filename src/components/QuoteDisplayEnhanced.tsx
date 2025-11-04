@@ -97,6 +97,57 @@ const formatSourceOfTruth = (source?: string): string => {
   return map[source || ''] || 'Okänd källa';
 };
 
+// FAS 5: Source badge component with color-coding
+const SourceBadge = ({ source }: { source?: string }) => {
+  if (!source) return null;
+  
+  const config: Record<string, { label: string; variant: string; icon: any }> = {
+    'user_patterns': { label: 'Dina priser', variant: 'default', icon: '👤' },
+    'industry_benchmarks': { label: 'Bransch', variant: 'secondary', icon: '📊' },
+    'live_search': { label: 'Webb', variant: 'outline', icon: '🌐' },
+    'assumption': { label: 'Uppskattat', variant: 'outline', icon: '⚠️' }
+  };
+  
+  const { label, variant, icon } = config[source] || { label: 'Okänd', variant: 'outline', icon: '?' };
+  
+  return (
+    <Badge variant={variant as any} className="text-xs">
+      <span className="mr-1">{icon}</span>
+      {label}
+    </Badge>
+  );
+};
+
+// FAS 5: Confidence indicator component
+const ConfidenceIndicator = ({ confidence }: { confidence?: number }) => {
+  if (confidence === undefined) return null;
+  
+  const percent = confidence * 100;
+  let color = 'text-red-500';
+  let label = 'Låg säkerhet';
+  
+  if (percent >= 85) {
+    color = 'text-green-500';
+    label = 'Hög säkerhet';
+  } else if (percent >= 60) {
+    color = 'text-yellow-500';
+    label = 'Medel säkerhet';
+  }
+  
+  return (
+    <TooltipProvider delayDuration={100}>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <span className={`inline-block w-2 h-2 rounded-full ${color.replace('text-', 'bg-')} ml-2`} />
+        </TooltipTrigger>
+        <TooltipContent>
+          <p className="text-xs">{label}: {percent.toFixed(0)}%</p>
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  );
+};
+
 const ReasoningTooltip = ({ 
   reasoning, 
   confidence, 
@@ -244,24 +295,22 @@ export function QuoteDisplayEnhanced({ quote }: QuoteDisplayEnhancedProps) {
                     <div key={index} className="p-4 rounded-lg border bg-muted/30">
                       <div className="flex items-start justify-between">
                         <div className="flex-1">
-                          <div className="flex items-center gap-2">
+                          <div className="flex items-center gap-2 flex-wrap">
                             <h4 className="font-medium">{item.name}</h4>
+                            <ConfidenceIndicator confidence={item.confidence} />
+                            <SourceBadge source={item.sourceOfTruth} />
                             <ReasoningTooltip 
                               reasoning={item.reasoning}
                               confidence={item.confidence}
                               sourceOfTruth={item.sourceOfTruth}
                             />
-                            {item.confidence !== undefined && item.confidence < 0.7 && (
-                              <Badge variant="outline" className="text-xs">
-                                Osäker
-                              </Badge>
-                            )}
                           </div>
                           {item.description && (
                             <p className="text-sm text-muted-foreground mt-1">{item.description}</p>
                           )}
                           <div className="flex items-center gap-4 mt-2 text-sm text-muted-foreground">
-                            <span>{item.hours}h × {formatCurrency(item.hourlyRate)}/h</span>
+                            <span>{item.hours}h</span>
+                            <span className="font-medium text-foreground">{formatCurrency(item.hourlyRate)}/h</span>
                           </div>
                         </div>
                         <div className="text-right">
@@ -300,21 +349,19 @@ export function QuoteDisplayEnhanced({ quote }: QuoteDisplayEnhancedProps) {
                     <div key={index} className="p-4 rounded-lg border bg-muted/30">
                       <div className="flex items-start justify-between">
                         <div className="flex-1">
-                          <div className="flex items-center gap-2">
+                          <div className="flex items-center gap-2 flex-wrap">
                             <h4 className="font-medium">{material.name}</h4>
+                            <ConfidenceIndicator confidence={material.confidence} />
+                            <SourceBadge source={material.sourceOfTruth} />
                             <ReasoningTooltip 
                               reasoning={material.reasoning}
                               confidence={material.confidence}
                               sourceOfTruth={material.sourceOfTruth}
                             />
-                            {material.confidence !== undefined && material.confidence < 0.7 && (
-                              <Badge variant="outline" className="text-xs">
-                                Osäker
-                              </Badge>
-                            )}
                           </div>
                           <div className="flex items-center gap-4 mt-2 text-sm text-muted-foreground">
-                            <span>{material.quantity} {material.unit} × {formatCurrency(material.pricePerUnit)}</span>
+                            <span>{material.quantity} {material.unit}</span>
+                            <span className="font-medium text-foreground">{formatCurrency(material.pricePerUnit)}/{material.unit}</span>
                           </div>
                         </div>
                         <div className="text-right">
@@ -353,8 +400,10 @@ export function QuoteDisplayEnhanced({ quote }: QuoteDisplayEnhancedProps) {
                     <div key={index} className="p-4 rounded-lg border bg-muted/30">
                       <div className="flex items-start justify-between">
                         <div className="flex-1">
-                          <div className="flex items-center gap-2">
+                          <div className="flex items-center gap-2 flex-wrap">
                             <h4 className="font-medium">{equip.name}</h4>
+                            <ConfidenceIndicator confidence={equip.confidence} />
+                            <SourceBadge source={equip.sourceOfTruth} />
                             <ReasoningTooltip 
                               reasoning={equip.reasoning}
                               confidence={equip.confidence}
@@ -362,7 +411,8 @@ export function QuoteDisplayEnhanced({ quote }: QuoteDisplayEnhancedProps) {
                             />
                           </div>
                           <div className="flex items-center gap-4 mt-2 text-sm text-muted-foreground">
-                            <span>{equip.quantity} {equip.unit} × {formatCurrency(equip.pricePerUnit)}</span>
+                            <span>{equip.quantity} {equip.unit}</span>
+                            <span className="font-medium text-foreground">{formatCurrency(equip.pricePerUnit)}/{equip.unit}</span>
                           </div>
                         </div>
                         <div className="text-right">

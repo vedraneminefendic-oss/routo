@@ -335,6 +335,57 @@ const QuoteDisplay = ({
     }).format(amount);
   };
 
+  // FAS 5: Source badge component with color-coding
+  const SourceBadge = ({ source }: { source?: string }) => {
+    if (!source) return null;
+    
+    const config: Record<string, { label: string; variant: string; icon: string }> = {
+      'user_patterns': { label: 'Dina priser', variant: 'default', icon: '👤' },
+      'industry_benchmarks': { label: 'Bransch', variant: 'secondary', icon: '📊' },
+      'live_search': { label: 'Webb', variant: 'outline', icon: '🌐' },
+      'assumption': { label: 'Uppskattat', variant: 'outline', icon: '⚠️' }
+    };
+    
+    const { label, variant, icon } = config[source] || { label: 'Okänd', variant: 'outline', icon: '?' };
+    
+    return (
+      <Badge variant={variant as any} className="text-xs">
+        <span className="mr-1">{icon}</span>
+        {label}
+      </Badge>
+    );
+  };
+
+  // FAS 5: Confidence indicator component
+  const ConfidenceIndicator = ({ confidence }: { confidence?: number }) => {
+    if (confidence === undefined) return null;
+    
+    const percent = confidence * 100;
+    let color = 'text-red-500';
+    let label = 'Låg säkerhet';
+    
+    if (percent >= 85) {
+      color = 'text-green-500';
+      label = 'Hög säkerhet';
+    } else if (percent >= 60) {
+      color = 'text-yellow-500';
+      label = 'Medel säkerhet';
+    }
+    
+    return (
+      <TooltipProvider delayDuration={100}>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <span className={`inline-block w-2 h-2 rounded-full ${color.replace('text-', 'bg-')} ml-2 cursor-help`} />
+          </TooltipTrigger>
+          <TooltipContent>
+            <p className="text-xs">{label}: {percent.toFixed(0)}%</p>
+          </TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
+    );
+  };
+
   // FAS 25 + FAS 27 Del 1: Helper to format values that might be numbers, strings, or ranges
   const formatValue = (value: any): string => {
     // Handle undefined, null, NaN
@@ -921,7 +972,11 @@ const QuoteDisplay = ({
               <div key={index} className="bg-muted/50 rounded-lg p-4">
                 <div className="flex justify-between items-start mb-2">
                   <div className="flex-1">
-                    <h4 className="font-medium">{item.name}</h4>
+                    <div className="flex items-center gap-2 flex-wrap mb-1">
+                      <h4 className="font-medium">{item.name}</h4>
+                      <ConfidenceIndicator confidence={item.confidence} />
+                      <SourceBadge source={item.sourceOfTruth} />
+                    </div>
                     <p className="text-sm text-muted-foreground">{item.description}</p>
                     {/* FAS 25: Show estimate badge if present */}
                     {(item as any).isEstimate && (
@@ -934,9 +989,10 @@ const QuoteDisplay = ({
                     {formatValue(item.subtotal)}
                   </span>
                 </div>
-                <p className="text-sm text-muted-foreground">
-                  {formatValue(item.hours)} {typeof item.hours === 'number' ? 'timmar' : ''} × {formatValue(item.hourlyRate)}/tim
-                </p>
+                <div className="flex items-center gap-4 text-sm text-muted-foreground">
+                  <span>{formatValue(item.hours)} {typeof item.hours === 'number' ? 'timmar' : ''}</span>
+                  <span className="font-medium text-foreground">{formatValue(item.hourlyRate)}/h</span>
+                </div>
                 {/* FAS 25: Show explanation if present */}
                 {(item as any).explanation && (
                   <p className="text-xs text-muted-foreground mt-2 italic">
@@ -957,7 +1013,11 @@ const QuoteDisplay = ({
                 <div key={index} className="bg-muted/50 rounded-lg p-4">
                   <div className="flex justify-between items-start mb-2">
                     <div className="flex-1">
-                      <h4 className="font-medium">{item.name}</h4>
+                      <div className="flex items-center gap-2 flex-wrap mb-1">
+                        <h4 className="font-medium">{item.name}</h4>
+                        <ConfidenceIndicator confidence={item.confidence} />
+                        <SourceBadge source={item.sourceOfTruth} />
+                      </div>
                       {/* FAS 25: Show estimate badge if present */}
                       {(item as any).isEstimate && (
                         <Badge variant="outline" className="mt-1 text-xs">
@@ -969,9 +1029,10 @@ const QuoteDisplay = ({
                       {formatValue(item.subtotal)}
                     </span>
                   </div>
-                  <p className="text-sm text-muted-foreground">
-                    {item.quantity} {item.unit} × {formatValue(item.pricePerUnit)}/{item.unit}
-                  </p>
+                  <div className="flex items-center gap-4 text-sm text-muted-foreground">
+                    <span>{item.quantity} {item.unit}</span>
+                    <span className="font-medium text-foreground">{formatValue(item.pricePerUnit)}/{item.unit}</span>
+                  </div>
                   {/* FAS 25: Show specifications if present */}
                   {(item as any).specifications && (
                     <p className="text-xs text-muted-foreground mt-2 italic">

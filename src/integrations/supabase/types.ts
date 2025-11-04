@@ -951,6 +951,45 @@ export type Database = {
           },
         ]
       }
+      regression_test_results: {
+        Row: {
+          actual_price: number
+          created_at: string | null
+          expected_price_max: number
+          expected_price_min: number
+          id: string
+          passed: boolean
+          price_deviation_percent: number
+          scenario_description: string
+          test_name: string
+          test_output: Json | null
+        }
+        Insert: {
+          actual_price: number
+          created_at?: string | null
+          expected_price_max: number
+          expected_price_min: number
+          id?: string
+          passed: boolean
+          price_deviation_percent: number
+          scenario_description: string
+          test_name: string
+          test_output?: Json | null
+        }
+        Update: {
+          actual_price?: number
+          created_at?: string | null
+          expected_price_max?: number
+          expected_price_min?: number
+          id?: string
+          passed?: boolean
+          price_deviation_percent?: number
+          scenario_description?: string
+          test_name?: string
+          test_output?: Json | null
+        }
+        Relationships: []
+      }
       signature_rate_limits: {
         Row: {
           attempt_count: number | null
