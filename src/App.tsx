@@ -17,6 +17,7 @@ import Privacy from "./pages/Privacy";
 import Terms from "./pages/Terms";
 import Install from "./pages/Install";
 import NotFound from "./pages/NotFound";
+import AdminTests from "./pages/AdminTests";
 import ErrorBoundary from "./components/ErrorBoundary";
 
 const queryClient = new QueryClient();
@@ -42,6 +43,7 @@ const App = () => (
             <Route path="/terms" element={<Terms />} />
             <Route path="/install" element={<Install />} />
             <Route path="/quote/:token" element={<PublicQuote />} />
+            <Route path="/admin/tests" element={<AdminTests />} />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
           </Routes>

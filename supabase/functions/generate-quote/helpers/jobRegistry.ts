@@ -68,6 +68,10 @@ export interface JobDefinition {
     qualityLevel: string;
   };
   
+  // Region & Säsong (NYA FÖR PUNKT 1)
+  regionSensitive?: boolean;  // Om priset ska påverkas av region (default: true)
+  seasonSensitive?: boolean;  // Om priset ska påverkas av säsong (default: true)
+  
   // Metadata
   source: string;
   lastUpdated: string;
@@ -350,25 +354,49 @@ export const JOB_REGISTRY: JobDefinition[] = [
 // ============================================================================
 
 /**
- * Hitta jobbdefinition baserat på jobbtyp
+ * Hitta jobbdefinition baserat på jobbtyp med tracking
  */
-export function findJobDefinition(jobType: string): JobDefinition | null {
+export function findJobDefinition(jobType: string, supabase?: any): JobDefinition | null {
   const normalized = jobType.toLowerCase().trim();
   
   // Exakt match
   let found = JOB_REGISTRY.find(j => j.jobType.toLowerCase() === normalized);
-  if (found) return found;
+  
+  if (found) {
+    if (supabase) logJobMatch(jobType, found.jobType, 'exact', supabase);
+    return found;
+  }
   
   // Partiell match (innehåller)
   found = JOB_REGISTRY.find(j => 
     normalized.includes(j.jobType.toLowerCase()) || 
     j.jobType.toLowerCase().includes(normalized)
   );
-  if (found) return found;
+  
+  if (found) {
+    if (supabase) logJobMatch(jobType, found.jobType, 'partial', supabase);
+    return found;
+  }
   
   // Fallback till AI-driven
   console.log(`⚠️ No specific job definition found for "${jobType}", using AI-driven fallback`);
+  if (supabase) logJobMatch(jobType, 'ai_driven', 'fallback', supabase);
   return JOB_REGISTRY.find(j => j.jobType === 'ai_driven') || null;
+}
+
+/**
+ * Logga jobbmatchningar för observability (90% täckning-mål)
+ */
+async function logJobMatch(userInput: string, matchedType: string, matchType: string, supabase: any) {
+  try {
+    await supabase.from('job_registry_matches').insert({
+      user_input: userInput,
+      matched_type: matchedType,
+      match_type: matchType
+    });
+  } catch (e) {
+    // Logga inte fel - ska inte påverka huvudflödet
+  }
 }
 
 /**
