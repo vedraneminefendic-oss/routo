@@ -34,6 +34,8 @@ import { buildLayeredPrompt } from './helpers/layeredPrompt.ts';
 import { searchMaterialPriceLive } from './helpers/materialPricing.ts';
 // Import assumption engine
 import { generateAssumptions, getHistoricalPatterns, calculateCompleteness } from './helpers/assumptionEngine.ts';
+// FAS 4: Import deduction rules from database
+import { getDeductionRules } from './helpers/deductionRules.ts';
 // FAS 3: Import delta engine for incremental updates
 import { detectDeltaChanges, applyDeltaChanges, validatePriceDelta } from './helpers/deltaEngine.ts';
 // Import industry standards for realistic pricing
@@ -1938,31 +1940,30 @@ function computeQuoteTotals(
 // ROT/RUT CALCULATION (FAS 27 Del 2 + 4)
 // ============================================
 
-// FAS 27 Del 2: Get current deduction rate from database
-async function getCurrentDeductionRate(
+// FAS 4: Get current deduction rules from database (rate + max amount)
+async function getCurrentDeductionRules(
   supabase: any,
   deductionType: 'rot' | 'rut',
   quoteDate: Date = new Date()
-): Promise<number> {
-  const dateStr = quoteDate.toISOString().split('T')[0];
-  
-  const { data, error } = await supabase
-    .from('deduction_limits')
-    .select('deduction_percentage')
-    .eq('deduction_type', deductionType)
-    .lte('valid_from', dateStr)
-    .or(`valid_to.is.null,valid_to.gte.${dateStr}`)
-    .order('valid_from', { ascending: false })
-    .limit(1)
-    .maybeSingle();
-  
-  if (error || !data) {
-    console.warn(`⚠️ Could not fetch deduction rate for ${deductionType}, using 50% fallback`, error);
-    return 0.50; // Fallback to 50%
+): Promise<{ rate: number; maxPerPerson: number }> {
+  try {
+    const rules = await getDeductionRules(supabase, quoteDate);
+    const rule = rules[deductionType];
+    
+    console.log(`✅ FAS 4: ${deductionType.toUpperCase()} regler från DB: ${rule.percentage}%, max ${rule.maxPerPerson} kr`);
+    
+    return {
+      rate: rule.percentage / 100, // Convert to decimal (50 -> 0.50)
+      maxPerPerson: rule.maxPerPerson
+    };
+  } catch (error) {
+    console.warn(`⚠️ FAS 4: Could not fetch deduction rules for ${deductionType}, using fallback`, error);
+    // Fallback to hardcoded values
+    return {
+      rate: 0.50,
+      maxPerPerson: deductionType === 'rot' ? 50000 : 75000
+    };
   }
-  
-  console.log(`✅ Deduction rate for ${deductionType}: ${data.deduction_percentage * 100}%`);
-  return data.deduction_percentage;
 }
 
 // FAS 27 Del 4: Multi-recipient deduction calculation
@@ -1980,13 +1981,13 @@ async function calculateMultiRecipientDeduction(
   workCostWithVAT: number,
   deductionType: 'rot' | 'rut',
   deductionRate: number,
+  maxPerPerson: number, // FAS 4: Pass maxPerPerson from DB
   recipients: Array<{ customer_name: string; customer_personnummer: string; ownership_share: number }>
 ): Promise<{
   totalDeduction: number;
   recipientBreakdown: RecipientDeduction[];
   exceedsCapacity: boolean;
 }> {
-  const maxPerPerson = deductionType === 'rut' ? 75000 : 50000;
   const baseDeduction = Math.round(workCostWithVAT * deductionRate);
   
   // Initialize recipients with their share of deduction
@@ -2031,8 +2032,10 @@ async function calculateROTRUT(
 ) {
   if (deductionType === 'none') return;
 
-  // FAS 27 Del 2: Get dynamic deduction rate from database
-  const deductionRate = await getCurrentDeductionRate(supabase, deductionType as 'rot' | 'rut', quoteDate);
+  // FAS 4: Get dynamic deduction rules from database (rate + max amount)
+  const deductionRules = await getCurrentDeductionRules(supabase, deductionType as 'rot' | 'rut', quoteDate);
+  const deductionRate = deductionRules.rate;
+  const maxPerPerson = deductionRules.maxPerPerson;
   
   const workCost = quote.summary?.workCost || 0;
   const workCostWithVAT = Math.round(workCost * 1.25);
@@ -2052,6 +2055,7 @@ async function calculateROTRUT(
       workCostWithVAT,
       deductionType as 'rot' | 'rut',
       deductionRate,
+      maxPerPerson, // FAS 4: Pass maxPerPerson from DB
       recipients
     );
     
@@ -2063,8 +2067,7 @@ async function calculateROTRUT(
   } else {
     // Single recipient mode (legacy)
     numberOfRecipients = typeof recipients === 'number' ? recipients : 1;
-    const maxDeduction = deductionType === 'rot' ? 50000 : 75000;
-    const totalMaxDeduction = maxDeduction * numberOfRecipients;
+    const totalMaxDeduction = maxPerPerson * numberOfRecipients; // FAS 4: Use maxPerPerson from DB
     const calculatedDeduction = Math.round(workCostWithVAT * deductionRate);
     actualDeduction = Math.min(calculatedDeduction, totalMaxDeduction);
     
@@ -2073,11 +2076,11 @@ async function calculateROTRUT(
 
   const customerPays = quote.summary.totalWithVAT - actualDeduction;
 
-  // FAS 1: Update quote with detailed deduction breakdown AND legacy fields for backward compatibility
+  // FAS 4: Update quote with detailed deduction breakdown using DB values
   quote.summary.deduction = {
     type: deductionType.toUpperCase(),
     deductionRate,
-    maxPerPerson: deductionType === 'rot' ? 50000 : 75000,
+    maxPerPerson, // FAS 4: Use maxPerPerson from DB
     numberOfRecipients,
     laborCost: workCost,
     workCostWithVAT,
