@@ -701,17 +701,49 @@ export const INDUSTRY_STANDARDS: JobStandard[] = [
 /**
  * Hitta branschstandard baserat på jobbtyp
  */
-export function findStandard(jobDescription: string): JobStandard | null {
+export function findStandard(
+  jobDescription: string,
+  context?: { jobType?: string; category?: string }
+): JobStandard | null {
   const lower = jobDescription.toLowerCase();
   
-  // Matcha mot jobbtyper
+  // STEG 1: Om kontext finns, prioritera moment-specifika standarder
+  if (context?.jobType) {
+    const contextType = context.jobType.toLowerCase();
+    
+    // Badrumsmoment - prioritera moment-specifika standarder
+    if (contextType.includes('badrum')) {
+      if (lower.includes('rivning') || lower.includes('demonter')) {
+        return INDUSTRY_STANDARDS.find(s => s.jobType === 'rivning_badrum') || null;
+      }
+      if (lower.includes('vvs') || lower.includes('rör')) {
+        return INDUSTRY_STANDARDS.find(s => s.jobType === 'vvs_badrum') || null;
+      }
+      if (lower.includes('el')) {
+        return INDUSTRY_STANDARDS.find(s => s.jobType === 'el_badrum') || null;
+      }
+      if (lower.includes('kakel') && lower.includes('vägg')) {
+        return INDUSTRY_STANDARDS.find(s => s.jobType === 'kakel_vagg') || null;
+      }
+      if (lower.includes('klinker') || (lower.includes('golv') && !lower.includes('golvvärme'))) {
+        return INDUSTRY_STANDARDS.find(s => s.jobType === 'klinker_golv') || null;
+      }
+    }
+    
+    // Köksmoment (för framtiden)
+    if (contextType.includes('kök')) {
+      // Expandera senare med kök-specifika moment
+    }
+  }
+  
+  // STEG 2: Exakt matchning mot jobbtyper
   for (const standard of INDUSTRY_STANDARDS) {
     if (lower.includes(standard.jobType)) {
       return standard;
     }
   }
   
-  // Försök matcha med alias
+  // STEG 3: Försök matcha med alias (TA BORT badrum-alias!)
   const aliases: Record<string, string> = {
     'städa': 'hemstadning',
     'flytta': 'flyttstadning',
@@ -719,7 +751,7 @@ export function findStandard(jobDescription: string): JobStandard | null {
     'klippagräs': 'grasklippning',
     'klippahäck': 'hakkklippning',
     'fällaträd': 'tradfall',
-    'badrum': 'badrumstotalrenovering',
+    // ❌ TA BORT: 'badrum': 'badrumstotalrenovering',  // Denna orsakade 342h för rivning!
     'kök': 'kokrenovering',
     'måla': 'malning_inomhus',
     'fasad': 'malning_fasad',

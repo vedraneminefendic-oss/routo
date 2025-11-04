@@ -18,10 +18,16 @@ export function validateTimeEstimate(
   workItemName: string,
   estimatedHours: number,
   measurements: { area?: number; rooms?: number; quantity?: number; length?: number },
-  standard?: JobStandard
+  standard?: JobStandard,
+  context?: { jobType?: string }  // NY PARAMETER för kontext-medveten validering
 ): TimeValidationResult {
   
-  // Om ingen standard finns, antag att det är OK
+  // Om ingen standard finns, försök hitta en baserat på kontext
+  if (!standard && context?.jobType) {
+    standard = findStandard(workItemName, context) || undefined;
+  }
+  
+  // Om fortfarande ingen standard finns, antag att det är OK
   if (!standard) {
     return { 
       isRealistic: true, 
@@ -102,7 +108,9 @@ export function validateQuoteTimeEstimates(
   }
   
   for (const workItem of quote.workItems) {
-    const standard = findStandard(workItem.name);
+    // Försök extrahera kontext från quote description
+    const context = quote.description ? { jobType: quote.description } : undefined;
+    const standard = findStandard(workItem.name, context);
     
     if (!standard) {
       console.log(`ℹ️ No standard found for work item: ${workItem.name}`);
@@ -113,7 +121,8 @@ export function validateQuoteTimeEstimates(
       workItem.name,
       workItem.hours,
       measurements,
-      standard
+      standard,
+      context
     );
     
     if (!validation.isRealistic) {
@@ -155,7 +164,8 @@ export function autoCorrectTimeEstimates(
   
   for (let i = 0; i < quote.workItems.length; i++) {
     const workItem = quote.workItems[i];
-    const standard = findStandard(workItem.name);
+    const context = quote.description ? { jobType: quote.description } : undefined;
+    const standard = findStandard(workItem.name, context);
     
     if (!standard) continue;
     
@@ -163,7 +173,8 @@ export function autoCorrectTimeEstimates(
       workItem.name,
       workItem.hours,
       measurements,
-      standard
+      standard,
+      context
     );
     
     if (!validation.isRealistic && validation.correctedTime) {

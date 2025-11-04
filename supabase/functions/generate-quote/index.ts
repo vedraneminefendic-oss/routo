@@ -5347,6 +5347,59 @@ Svara med **1**, **2** eller **3** (eller "granska", "generera", "mer info")`;
     if (completeDescription.toLowerCase().includes('badrum')) {
       console.log('🔍 Running bathroom proportion check...');
       
+      // KRITISK SANITY CHECK: Inget enskilt moment får vara >50h för badrum
+      console.log('🚨 Running critical sanity check for bathroom work items...');
+      let sanityCorrectionsMade = false;
+      
+      for (const workItem of quote.workItems) {
+        if (workItem.hours > 50) {
+          console.error(`🚨 KRITISK FEL: ${workItem.name} har ${workItem.hours}h - EXTREMT ORIMLIGT!`);
+          
+          // Auto-korrigera baserat på moment-typ
+          const lower = workItem.name.toLowerCase();
+          let correctedHours = workItem.hours;
+          let standardName = '';
+          
+          if (lower.includes('rivning') || lower.includes('demonter')) {
+            correctedHours = measurementsForValidation.area ? measurementsForValidation.area * 2.5 : 12.5;
+            standardName = 'rivning_badrum';
+          } else if (lower.includes('vvs') || lower.includes('rör')) {
+            correctedHours = measurementsForValidation.area ? measurementsForValidation.area * 2.8 : 14;
+            standardName = 'vvs_badrum';
+          } else if (lower.includes('el')) {
+            correctedHours = measurementsForValidation.area ? measurementsForValidation.area * 2.5 : 12.5;
+            standardName = 'el_badrum';
+          } else if (lower.includes('kakel') && lower.includes('vägg')) {
+            correctedHours = measurementsForValidation.area ? measurementsForValidation.area * 2.2 : 11;
+            standardName = 'kakel_vagg';
+          } else if (lower.includes('klinker') || lower.includes('golv')) {
+            correctedHours = measurementsForValidation.area ? measurementsForValidation.area * 2.8 : 14;
+            standardName = 'klinker_golv';
+          } else {
+            // Generiskt fall: använd 30% av original (säkerhetsnät)
+            correctedHours = workItem.hours * 0.3;
+            standardName = 'generisk korrigering';
+          }
+          
+          console.log(`✅ Auto-korrigerat ${workItem.name}: ${workItem.hours}h → ${correctedHours.toFixed(1)}h (${standardName} standard)`);
+          
+          // Applicera korrigering
+          const originalHours = workItem.hours;
+          workItem.hours = correctedHours;
+          workItem.subtotal = correctedHours * workItem.hourlyRate;
+          workItem.reasoning = (workItem.reasoning || '') + 
+            ` [AUTO-KORRIGERAD: Ursprunglig ${originalHours.toFixed(1)}h överskred sanity-limit 50h och justerades till ${correctedHours.toFixed(1)}h baserat på ${standardName}]`;
+          
+          sanityCorrectionsMade = true;
+        }
+      }
+      
+      // Om sanity-korrigeringar gjordes, räkna om totaler
+      if (sanityCorrectionsMade) {
+        console.log('💰 Recalculating totals after sanity corrections...');
+        quote = computeQuoteTotals(quote, hourlyRates || [], equipmentRates || [], isDraft);
+      }
+      
       const { checkBathroomProportions } = await import('./helpers/proportionCheck.ts');
       const proportionCheck = checkBathroomProportions(quote);
       

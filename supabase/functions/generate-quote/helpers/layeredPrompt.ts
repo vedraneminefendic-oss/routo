@@ -115,6 +115,44 @@ ${liveSearchResult ? `
 **INSTRUKTION:** Detta är MARKNADSPRISER som ger användarna genast trovärdiga offerter.
 För denna ${jobCategory}-offert: Använd ${100 - categoryWeighting}% marknadspriser + ${categoryWeighting.toFixed(0)}% användarens ${jobCategory}-priser.
 ${categoryQuotes > 0 ? `Användarens genomsnittliga timpris i ${jobCategory}: ${categoryAvgRate} kr/h (baserat på ${categoryQuotes} offerter)` : `Ny kategori för användaren - använd 100% marknadspriser`}
+
+${jobCategory === 'badrum' ? `
+
+**🚨 KRITISKT FÖR BADRUMSRENOVERING:**
+
+För badrum ska du ALLTID dela upp arbetet i SEPARATA moment med MOMENT-SPECIFIKA standarder:
+
+1. **Rivning och demontering** (jobType: 'rivning_badrum')
+   - Standard: 1.5-3.5h per kvm (typical: 2.5h/kvm)
+   - Timpris: 650-900 kr/h (standard: 750 kr/h)
+   - För 5 kvm badrum: ~12.5h
+
+2. **VVS-installation** (jobType: 'vvs_badrum')
+   - Standard: 2.0-4.0h per kvm (typical: 2.8h/kvm)
+   - Timpris: 800-1100 kr/h (standard: 950 kr/h)
+   - För 5 kvm badrum: ~14h
+
+3. **El-installation** (jobType: 'el_badrum')
+   - Standard: 1.8-3.2h per kvm (typical: 2.5h/kvm)
+   - Timpris: 850-1100 kr/h (standard: 950 kr/h)
+   - För 5 kvm badrum: ~12.5h
+
+4. **Kakelsättning väggar** (jobType: 'kakel_vagg')
+   - Standard: 1.5-3.0h per kvm (typical: 2.2h/kvm)
+   - Timpris: 700-950 kr/h (standard: 800 kr/h)
+   - För 5 kvm badrum: ~11h
+
+5. **Klinkersättning golv** (jobType: 'klinker_golv')
+   - Standard: 2.0-3.5h per kvm (typical: 2.8h/kvm)
+   - Timpris: 700-1000 kr/h (standard: 850 kr/h)
+   - För 5 kvm badrum: ~14h
+
+**TOTALT för 5 kvm badrum: 64-70 timmar (inte 300+!)**
+
+**⚠️ ANVÄND ALDRIG 'badrumstotalrenovering' (50h/kvm) för ENSKILDA moment!**
+Den standarden är ENDAST för att validera total-tid, inte för att beräkna delmoment.
+
+` : ''}
 `;
   
   // ============ HÄMTA ANVÄNDARDATA ============
