@@ -5347,12 +5347,12 @@ Svara med **1**, **2** eller **3** (eller "granska", "generera", "mer info")`;
     if (completeDescription.toLowerCase().includes('badrum')) {
       console.log('🔍 Running bathroom proportion check...');
       
-      // KRITISK SANITY CHECK: Inget enskilt moment får vara >50h för badrum
-      console.log('🚨 Running critical sanity check for bathroom work items...');
+      // KRITISK SANITY CHECK: Inget enskilt moment får vara >60h (sänkt från 100h)
+      console.log('🚨 Running critical sanity check for work items...');
       let sanityCorrectionsMade = false;
       
       for (const workItem of quote.workItems) {
-        if (workItem.hours > 100) {  // Endast extrema fall - låt P0-valideringen hantera <100h
+        if (workItem.hours > 60) {  // Sänkt från 100h - P0-validering hanterar <60h
           console.error(`🚨 KRITISK FEL: ${workItem.name} har ${workItem.hours}h - EXTREMT ORIMLIGT!`);
           
           // Auto-korrigera baserat på moment-typ
@@ -5400,8 +5400,27 @@ Svara med **1**, **2** eller **3** (eller "granska", "generera", "mer info")`;
         quote = computeQuoteTotals(quote, hourlyRates || [], equipmentRates || [], isDraft);
       }
       
-      const { checkBathroomProportions } = await import('./helpers/proportionCheck.ts');
-      const proportionCheck = checkBathroomProportions(quote);
+      // ============================================
+      // PROPORTION-CHECKS (jobbtypspecifika)
+      // ============================================
+      
+      const { checkBathroomProportions, checkKitchenProportions, checkPaintingProportions, checkGeneralProportions } = await import('./helpers/proportionCheck.ts');
+      
+      let proportionCheck;
+      
+      if (completeDescription.toLowerCase().includes('badrum')) {
+        console.log('🛁 Running bathroom proportion check...');
+        proportionCheck = checkBathroomProportions(quote);
+      } else if (completeDescription.toLowerCase().includes('kök')) {
+        console.log('🍳 Running kitchen proportion check...');
+        proportionCheck = checkKitchenProportions(quote);
+      } else if (completeDescription.toLowerCase().includes('måla') || completeDescription.toLowerCase().includes('målning')) {
+        console.log('🎨 Running painting proportion check...');
+        proportionCheck = checkPaintingProportions(quote);
+      } else {
+        console.log('📊 Running general proportion check...');
+        proportionCheck = checkGeneralProportions(quote, completeDescription);
+      }
       
       if (!proportionCheck.passed) {
         console.warn('⚠️ Proportion-check failed:');
