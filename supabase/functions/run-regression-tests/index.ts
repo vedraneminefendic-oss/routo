@@ -5,65 +5,6 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-// Standard test scenarios
-const TEST_SCENARIOS = [
-  {
-    name: 'Badrumsrenovering 6kvm standard',
-    description: 'Renovera badrum 6 kvadratmeter, byta kakel, golvvärme, dusch',
-    expected_min: 70000,
-    expected_max: 90000,
-    input: {
-      description: 'Renovera badrum 6 kvadratmeter, byta kakel, golvvärme, installera dusch',
-      measurements: { area: 6 },
-      qualityLevel: 'standard'
-    }
-  },
-  {
-    name: 'Målning lägenhet 100kvm',
-    description: 'Måla väggar och tak i lägenhet 100kvm',
-    expected_min: 25000,
-    expected_max: 35000,
-    input: {
-      description: 'Måla väggar och tak i lägenhet 100 kvadratmeter',
-      measurements: { area: 100 },
-      qualityLevel: 'standard'
-    }
-  },
-  {
-    name: 'Kök renovering 12kvm premium',
-    description: 'Köksomsättning 12 kvadratmeter med nya luckor, bänkskiva, vitvaror',
-    expected_min: 120000,
-    expected_max: 160000,
-    input: {
-      description: 'Renovera kök 12 kvadratmeter, nya luckor, bänkskiva, vitvaror premium',
-      measurements: { area: 12 },
-      qualityLevel: 'premium'
-    }
-  },
-  {
-    name: 'Trädgård - fälla träd 3 st',
-    description: 'Fälla 3 medelstora träd och ta bort stubbar',
-    expected_min: 15000,
-    expected_max: 25000,
-    input: {
-      description: 'Fälla 3 träd i trädgård, medelstor höjd, ta bort stubbar',
-      measurements: { quantity: 3 },
-      qualityLevel: 'standard'
-    }
-  },
-  {
-    name: 'RUT-städning villa 150kvm',
-    description: 'Storstädning av villa 150 kvadratmeter',
-    expected_min: 8000,
-    expected_max: 12000,
-    input: {
-      description: 'Storstädning av villa 150 kvadratmeter med fönsterputs',
-      measurements: { area: 150 },
-      qualityLevel: 'standard'
-    }
-  }
-];
-
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -74,75 +15,125 @@ Deno.serve(async (req) => {
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    console.log('🧪 Starting regression tests...');
+    console.log('🧪 Starting database-driven regression tests...');
+
+    // Hämta alla golden tests från databasen
+    const { data: goldenTests, error: fetchError } = await supabase
+      .from('golden_tests')
+      .select('*')
+      .order('job_type', { ascending: true });
+
+    if (fetchError) {
+      console.error('❌ Error fetching golden tests:', fetchError);
+      throw fetchError;
+    }
+
+    if (!goldenTests || goldenTests.length === 0) {
+      console.log('⚠️ No golden tests found in database');
+      return new Response(
+        JSON.stringify({ 
+          success: true,
+          message: 'No golden tests configured',
+          total: 0,
+          passed: 0,
+          failed: 0,
+          results: []
+        }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    console.log(`📋 Found ${goldenTests.length} golden tests`);
 
     const results = [];
     let passedCount = 0;
     let failedCount = 0;
 
-    for (const scenario of TEST_SCENARIOS) {
-      console.log(`Testing: ${scenario.name}`);
+    for (const test of goldenTests) {
+      console.log(`Testing: ${test.test_name} (${test.job_type})`);
 
       try {
-        // Call generate-quote edge function
+        // Call generate-quote edge function med input_data från databasen
         const { data: quoteData, error: quoteError } = await supabase.functions.invoke('generate-quote', {
-          body: scenario.input
+          body: test.input_data
         });
 
         if (quoteError) throw quoteError;
 
         const actualPrice = quoteData?.summary?.totalBeforeVAT || 0;
+        const expectedMid = (test.expected_price_min + test.expected_price_max) / 2;
         const deviationPercent = actualPrice > 0 
-          ? (Math.abs(actualPrice - (scenario.expected_min + scenario.expected_max) / 2) / ((scenario.expected_min + scenario.expected_max) / 2)) * 100
+          ? (Math.abs(actualPrice - expectedMid) / expectedMid) * 100
           : 100;
 
-        const passed = actualPrice >= scenario.expected_min && actualPrice <= scenario.expected_max;
+        const passed = actualPrice >= test.expected_price_min && actualPrice <= test.expected_price_max;
         
         if (passed) {
           passedCount++;
-          console.log(`✅ PASSED: ${scenario.name} (${actualPrice} kr)`);
+          console.log(`✅ PASSED: ${test.test_name} (${actualPrice} kr)`);
         } else {
           failedCount++;
-          console.log(`❌ FAILED: ${scenario.name} (${actualPrice} kr, expected ${scenario.expected_min}-${scenario.expected_max})`);
+          console.log(`❌ FAILED: ${test.test_name} (${actualPrice} kr, expected ${test.expected_price_min}-${test.expected_price_max})`);
         }
 
-        // Store result
+        // Store result i regression_test_results
         await supabase.from('regression_test_results').insert({
-          test_name: scenario.name,
-          scenario_description: scenario.description,
-          expected_price_min: scenario.expected_min,
-          expected_price_max: scenario.expected_max,
+          test_name: test.test_name,
+          scenario_description: test.scenario_description || test.test_name,
+          expected_price_min: test.expected_price_min,
+          expected_price_max: test.expected_price_max,
           actual_price: actualPrice,
           price_deviation_percent: deviationPercent,
           passed,
           test_output: quoteData
         });
 
+        // Uppdatera golden_tests med run_count och pass_count
+        await supabase
+          .from('golden_tests')
+          .update({
+            run_count: (test.run_count || 0) + 1,
+            pass_count: passed ? (test.pass_count || 0) + 1 : test.pass_count,
+            last_run_at: new Date().toISOString()
+          })
+          .eq('id', test.id);
+
         results.push({
-          test: scenario.name,
+          test: test.test_name,
+          jobType: test.job_type,
           passed,
-          expected: `${scenario.expected_min}-${scenario.expected_max} kr`,
+          expected: `${test.expected_price_min}-${test.expected_price_max} kr`,
           actual: `${actualPrice} kr`,
           deviation: `${deviationPercent.toFixed(1)}%`
         });
 
       } catch (error: any) {
-        console.error(`Error in test ${scenario.name}:`, error);
+        console.error(`❌ Error in test ${test.test_name}:`, error);
         failedCount++;
         
         await supabase.from('regression_test_results').insert({
-          test_name: scenario.name,
-          scenario_description: scenario.description,
-          expected_price_min: scenario.expected_min,
-          expected_price_max: scenario.expected_max,
+          test_name: test.test_name,
+          scenario_description: test.scenario_description || test.test_name,
+          expected_price_min: test.expected_price_min,
+          expected_price_max: test.expected_price_max,
           actual_price: 0,
           price_deviation_percent: 100,
           passed: false,
           test_output: { error: error.message }
         });
 
+        // Uppdatera run_count även vid fel
+        await supabase
+          .from('golden_tests')
+          .update({
+            run_count: (test.run_count || 0) + 1,
+            last_run_at: new Date().toISOString()
+          })
+          .eq('id', test.id);
+
         results.push({
-          test: scenario.name,
+          test: test.test_name,
+          jobType: test.job_type,
           passed: false,
           error: error.message
         });
@@ -155,7 +146,7 @@ Deno.serve(async (req) => {
       source: 'regression_tests',
       records_updated: passedCount,
       details: {
-        total: TEST_SCENARIOS.length,
+        total: goldenTests.length,
         passed: passedCount,
         failed: failedCount,
         results,
@@ -163,12 +154,12 @@ Deno.serve(async (req) => {
       }
     });
 
-    console.log(`✅ Regression tests complete: ${passedCount}/${TEST_SCENARIOS.length} passed`);
+    console.log(`✅ Regression tests complete: ${passedCount}/${goldenTests.length} passed`);
 
     return new Response(
       JSON.stringify({ 
         success: true,
-        total: TEST_SCENARIOS.length,
+        total: goldenTests.length,
         passed: passedCount,
         failed: failedCount,
         results

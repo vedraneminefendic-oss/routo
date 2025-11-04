@@ -2,6 +2,40 @@ import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.75.0';
 
+// Import category detector
+function detectJobCategory(description: string, jobType?: string): string {
+  const normalized = description.toLowerCase();
+  
+  if (jobType) {
+    const type = jobType.toLowerCase();
+    if (type.includes('målning') || type.includes('måla')) return 'målning';
+    if (type.includes('badrum') || type.includes('våtrum')) return 'badrum';
+    if (type.includes('kök')) return 'kök';
+    if (type.includes('el')) return 'el';
+    if (type.includes('vvs') || type.includes('rör')) return 'vvs';
+    if (type.includes('trädgård') || type.includes('gräs')) return 'trädgård';
+    if (type.includes('städ')) return 'städning';
+    if (type.includes('golv') || type.includes('parkett') || type.includes('klinker')) return 'golv';
+    if (type.includes('puts') || type.includes('fasad')) return 'fasad';
+    if (type.includes('fönster') || type.includes('dörr')) return 'fönster_dörr';
+    if (type.includes('tak')) return 'tak';
+  }
+  
+  if (normalized.includes('måla') || normalized.includes('målning') || normalized.includes('färg')) return 'målning';
+  if (normalized.includes('badrum') || normalized.includes('dusch') || normalized.includes('wc')) return 'badrum';
+  if (normalized.includes('kök')) return 'kök';
+  if (normalized.includes('el') || normalized.includes('uttag') || normalized.includes('belysning')) return 'el';
+  if (normalized.includes('vvs') || normalized.includes('rör') || normalized.includes('avlopp')) return 'vvs';
+  if (normalized.includes('trädgård') || normalized.includes('gräs') || normalized.includes('träd')) return 'trädgård';
+  if (normalized.includes('städ') || normalized.includes('flytt')) return 'städning';
+  if (normalized.includes('parkett') || normalized.includes('golv') || normalized.includes('klinker')) return 'golv';
+  if (normalized.includes('puts') || normalized.includes('fasad')) return 'fasad';
+  if (normalized.includes('fönster') || normalized.includes('dörr')) return 'fönster_dörr';
+  if (normalized.includes('tak')) return 'tak';
+  
+  return 'övrigt';
+}
+
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
@@ -78,6 +112,9 @@ serve(async (req) => {
     const descriptions: string[] = [];
     const detailLevels: string[] = [];
 
+    // Kategori-analys (NYT)
+    const categoryData = new Map<string, { quotes: number; totalValue: number; rates: number[] }>();
+
     quotes.forEach(q => {
       const quote = q.edited_quote || q.generated_quote;
       if (!quote) return;
@@ -89,6 +126,21 @@ serve(async (req) => {
 
       if (q.detail_level) {
         detailLevels.push(q.detail_level);
+      }
+
+      // Detektera kategori för denna offert
+      const jobType = quote.projectType || '';
+      const description = quote.description || '';
+      const category = detectJobCategory(description, jobType);
+
+      // Uppdatera kategori-data
+      if (!categoryData.has(category)) {
+        categoryData.set(category, { quotes: 0, totalValue: 0, rates: [] });
+      }
+      const catData = categoryData.get(category)!;
+      catData.quotes += 1;
+      if (quote.summary?.customerPays) {
+        catData.totalValue += quote.summary.customerPays;
       }
 
       // Analysera arbetstyper och timpriser
@@ -104,7 +156,13 @@ serve(async (req) => {
           if (!workTypeRates.has(workType)) {
             workTypeRates.set(workType, []);
           }
-          workTypeRates.get(workType)!.push(item.hourlyRate || 0);
+          const rate = item.hourlyRate || 0;
+          workTypeRates.get(workType)!.push(rate);
+          
+          // Lägg till timpris i kategori-data
+          if (rate > 0) {
+            catData.rates.push(rate);
+          }
 
           // Samla beskrivningar för stil-analys
           if (item.description) {
@@ -168,6 +226,22 @@ serve(async (req) => {
       ? Math.round(descriptions.reduce((sum, d) => sum + d.length, 0) / descriptions.length)
       : null;
 
+    // Beräkna kategori-viktning (NYT)
+    const categoryWeighting: Record<string, any> = {};
+    categoryData.forEach((data, category) => {
+      const userWeighting = Math.min(100, (data.quotes / 20) * 100);
+      const avgRate = data.rates.length > 0
+        ? Math.round(data.rates.reduce((sum, r) => sum + r, 0) / data.rates.length)
+        : null;
+      
+      categoryWeighting[category] = {
+        total_quotes: data.quotes,
+        user_weighting: Math.round(userWeighting),
+        avg_rate: avgRate,
+        avg_value: data.totalValue > 0 ? Math.round(data.totalValue / data.quotes) : null
+      };
+    });
+
     // Bygg patterns-objekt
     const patterns = {
       user_id: user.id,
@@ -180,6 +254,7 @@ serve(async (req) => {
       common_project_types: projectTypes.slice(0, 5), // Top 5
       uses_emojis: usesEmojis,
       avg_description_length: avgDescriptionLength,
+      category_weighting: categoryWeighting,  // NYT
       sample_size: quotes.length,
       last_updated: new Date().toISOString()
     };
