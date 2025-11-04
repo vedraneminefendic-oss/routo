@@ -23,6 +23,12 @@ interface TestResult {
   actual?: string;
   deviation?: string;
   error?: string;
+  errorDetails?: {
+    status?: number;
+    contentType?: string;
+    bodyText?: string;
+    json?: any;
+  };
 }
 
 interface TestSummary {
@@ -37,17 +43,19 @@ export function RegressionTestRunner() {
   const [summary, setSummary] = useState<TestSummary | null>(null);
   const { toast } = useToast();
 
-  const runTests = async () => {
+  const runTests = async (limit?: number) => {
     setIsRunning(true);
     setSummary(null);
 
     try {
+      const testType = limit ? `Snabbtest (${limit})` : 'Alla regressionstester';
       toast({
-        title: '🧪 Startar regressionstester',
-        description: 'Detta kan ta flera minuter...',
+        title: `🧪 Startar ${testType}`,
+        description: limit ? 'Kör begränsat antal tester...' : 'Detta kan ta flera minuter...',
       });
 
-      const { data, error } = await supabase.functions.invoke('run-regression-tests', {
+      const url = limit ? `run-regression-tests?limit=${limit}` : 'run-regression-tests';
+      const { data, error } = await supabase.functions.invoke(url, {
         body: {}
       });
 
@@ -93,24 +101,45 @@ export function RegressionTestRunner() {
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
-        <Button 
-          onClick={runTests} 
-          disabled={isRunning}
-          size="lg"
-          className="w-full"
-        >
-          {isRunning ? (
-            <>
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              Kör tester...
-            </>
-          ) : (
-            <>
-              <PlayCircle className="mr-2 h-4 w-4" />
-              Kör alla regressionstester
-            </>
-          )}
-        </Button>
+        <div className="flex gap-2">
+          <Button 
+            onClick={() => runTests()} 
+            disabled={isRunning}
+            size="lg"
+            className="flex-1"
+          >
+            {isRunning ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Kör tester...
+              </>
+            ) : (
+              <>
+                <PlayCircle className="mr-2 h-4 w-4" />
+                Kör alla tester
+              </>
+            )}
+          </Button>
+          <Button 
+            onClick={() => runTests(5)} 
+            disabled={isRunning}
+            size="lg"
+            variant="outline"
+            className="flex-1"
+          >
+            {isRunning ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Testar...
+              </>
+            ) : (
+              <>
+                <PlayCircle className="mr-2 h-4 w-4" />
+                Snabbtest (5)
+              </>
+            )}
+          </Button>
+        </div>
 
         {summary && (
           <div className="space-y-4">
@@ -152,7 +181,8 @@ export function RegressionTestRunner() {
                     <TableHead>Jobbtyp</TableHead>
                     <TableHead>Förväntat</TableHead>
                     <TableHead>Faktiskt</TableHead>
-                    <TableHead className="text-right">Avvikelse</TableHead>
+                    <TableHead>Avvikelse</TableHead>
+                    <TableHead>Feldetaljer</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -171,16 +201,25 @@ export function RegressionTestRunner() {
                       </TableCell>
                       <TableCell className="text-sm">{result.expected}</TableCell>
                       <TableCell className="text-sm">{result.actual}</TableCell>
-                      <TableCell className="text-right">
+                      <TableCell>
                         {result.deviation && (
                           <Badge variant={result.passed ? 'default' : 'destructive'}>
                             {result.deviation}
                           </Badge>
                         )}
+                      </TableCell>
+                      <TableCell className="text-sm">
                         {result.error && (
-                          <Badge variant="destructive" className="text-xs">
-                            Error
-                          </Badge>
+                          <div className="space-y-1">
+                            <Badge variant="destructive" className="text-xs mb-1">
+                              {result.errorDetails?.status || 'Error'}
+                            </Badge>
+                            <div className="text-xs text-muted-foreground max-w-[300px] truncate">
+                              {result.errorDetails?.json?.hint || 
+                               result.errorDetails?.json?.error || 
+                               result.error}
+                            </div>
+                          </div>
                         )}
                       </TableCell>
                     </TableRow>

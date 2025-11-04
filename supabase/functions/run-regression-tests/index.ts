@@ -2,7 +2,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.75.0';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-regression-test, x-internal-regression-secret',
 };
 
 Deno.serve(async (req) => {
@@ -15,13 +15,31 @@ Deno.serve(async (req) => {
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    console.log('🧪 Starting database-driven regression tests...');
+    console.log('📊 Running regression tests on all golden tests...');
 
-    // Hämta alla golden tests från databasen
-    const { data: goldenTests, error: fetchError } = await supabase
+    // Parse query parameters for filtering
+    const url = new URL(req.url);
+    const limitParam = url.searchParams.get('limit');
+    const jobTypeParam = url.searchParams.get('job_type');
+    
+    const limit = limitParam ? parseInt(limitParam, 10) : undefined;
+    const jobType = jobTypeParam || undefined;
+
+    // Fetch golden tests with optional filtering
+    let query = supabase
       .from('golden_tests')
       .select('*')
-      .order('job_type', { ascending: true });
+      .order('created_at', { ascending: false });
+    
+    if (limit) {
+      query = query.limit(limit);
+    }
+    
+    if (jobType) {
+      query = query.eq('job_type', jobType);
+    }
+
+    const { data: goldenTests, error: fetchError } = await query;
 
     if (fetchError) {
       console.error('❌ Error fetching golden tests:', fetchError);
@@ -50,32 +68,57 @@ Deno.serve(async (req) => {
     let failedCount = 0;
 
     for (const test of goldenTests) {
-      console.log(`Testing: ${test.test_name} (${test.job_type})`);
+      console.log(`🧪 Running test: ${test.test_name} (${test.job_type})...`);
 
       try {
-        // Call generate-quote edge function med input_data från databasen
-        const { data: quoteData, error: quoteError } = await supabase.functions.invoke('generate-quote', {
-          body: test.input_data,
+        // Call generate-quote edge function with internal regression headers
+        const response = await fetch(`${supabaseUrl}/functions/v1/generate-quote`, {
+          method: 'POST',
           headers: {
-            Authorization: `Bearer ${supabaseKey}`,
-            'x-regression-test': '1'
-          }
+            'Content-Type': 'application/json',
+            'Authorization': ' ', // Neutralize auth header to avoid JWT validation
+            'x-regression-test': '1',
+            'x-internal-regression-secret': supabaseKey,
+            'apikey': Deno.env.get('SUPABASE_ANON_KEY')!
+          },
+          body: JSON.stringify(test.input_data)
         });
 
-        if (quoteError) {
-          // Try to extract detailed error message from response
-          let errorDetail = quoteError.message;
-          if (quoteError.context) {
-            try {
-              const errorBody = await quoteError.context.json();
-              errorDetail = errorBody.error || errorBody.message || errorDetail;
-            } catch {
-              // If can't parse JSON, keep original message
-            }
+        let quoteData;
+        let quoteError = null;
+        let errorDetails = null;
+
+        if (!response.ok) {
+          const responseClone = response.clone();
+          const contentType = response.headers.get('content-type');
+          const bodyText = await responseClone.text();
+          
+          errorDetails = {
+            status: response.status,
+            contentType,
+            bodyText: bodyText.substring(0, 500), // First 500 chars
+            json: undefined as any
+          };
+
+          try {
+            const errorJson = JSON.parse(bodyText);
+            errorDetails.json = errorJson;
+            quoteError = {
+              message: errorJson.error || errorJson.message || `HTTP ${response.status}`,
+              details: errorJson
+            };
+          } catch {
+            quoteError = {
+              message: `HTTP ${response.status}: ${bodyText.substring(0, 100)}`,
+              details: errorDetails
+            };
           }
-          const enhancedError = new Error(errorDetail);
-          (enhancedError as any).context = quoteError.context;
-          throw enhancedError;
+        } else {
+          quoteData = await response.json();
+        }
+
+        if (quoteError) {
+          throw quoteError;
         }
 
         const actualPrice = quoteData?.summary?.totalBeforeVAT || 0;
@@ -94,8 +137,9 @@ Deno.serve(async (req) => {
           console.log(`❌ FAILED: ${test.test_name} (${actualPrice} kr, expected ${test.expected_price_min}-${test.expected_price_max})`);
         }
 
-        // Store result i regression_test_results
+        // Store result with golden_test_id
         await supabase.from('regression_test_results').insert({
+          golden_test_id: test.id,
           test_name: test.test_name,
           scenario_description: test.scenario_description || test.test_name,
           expected_price_min: test.expected_price_min,
@@ -103,6 +147,9 @@ Deno.serve(async (req) => {
           actual_price: actualPrice,
           price_deviation_percent: deviationPercent,
           passed,
+          expected_output: test.expected_output,
+          actual_output: quoteData,
+          test_input: test.input_data,
           test_output: quoteData
         });
 
@@ -129,18 +176,11 @@ Deno.serve(async (req) => {
         console.error(`❌ Error in test ${test.test_name}:`, error);
         failedCount++;
         
-        // Extract detailed error info for better debugging
-        let errorOutput: any = { error: error.message };
-        if (error.context) {
-          try {
-            const errorBody = await error.context.json();
-            errorOutput = { error: error.message, detail: errorBody };
-          } catch {
-            errorOutput = { error: error.message, status: error.context?.status };
-          }
-        }
+        // Use error details from the enhanced error structure
+        const errorDetails = error.details || { error: error.message };
         
         await supabase.from('regression_test_results').insert({
+          golden_test_id: test.id,
           test_name: test.test_name,
           scenario_description: test.scenario_description || test.test_name,
           expected_price_min: test.expected_price_min,
@@ -148,7 +188,11 @@ Deno.serve(async (req) => {
           actual_price: 0,
           price_deviation_percent: 100,
           passed: false,
-          test_output: errorOutput
+          expected_output: test.expected_output,
+          actual_output: null,
+          error_message: error.message || 'Unknown error',
+          test_input: test.input_data,
+          test_output: errorDetails
         });
 
         // Uppdatera run_count även vid fel
@@ -164,7 +208,8 @@ Deno.serve(async (req) => {
           test: test.test_name,
           jobType: test.job_type,
           passed: false,
-          error: error.message
+          error: error.message || 'Unknown error',
+          errorDetails: error.details
         });
       }
     }

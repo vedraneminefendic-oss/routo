@@ -12,7 +12,7 @@ import { z } from 'https://deno.land/x/zod@v3.22.4/mod.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-regression-test',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-regression-test, x-internal-regression-secret',
 };
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
@@ -4012,6 +4012,7 @@ Deno.serve(async (req) => {
     // Get auth token and detect regression mode
     const rawAuth = req.headers.get('Authorization') || req.headers.get('authorization') || '';
     const token = rawAuth.split(' ')[1]?.trim() || '';
+    const internalSecret = req.headers.get('x-internal-regression-secret');
 
     const supabaseClient = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
@@ -4021,8 +4022,14 @@ Deno.serve(async (req) => {
     const regHeader = req.headers.get('x-regression-test');
     const hasRegressionHeader = regHeader === '1' || regHeader === 'true';
 
-    // Activate regression mode if service role key is used
-    if (token && token === SUPABASE_SERVICE_ROLE_KEY) {
+    // Regression mode via internal secret header (preferred for run-regression-tests)
+    if (hasRegressionHeader && internalSecret === SUPABASE_SERVICE_ROLE_KEY) {
+      isRegressionTest = true;
+      user_id = '00000000-0000-0000-0000-000000000000';
+      console.log('🧪 Regression via secret header detected', { hasRegressionHeader, secretMatches: true });
+    }
+    // Fallback: Regression mode via service key in Authorization
+    else if (token && token === SUPABASE_SERVICE_ROLE_KEY) {
       isRegressionTest = true;
       user_id = '00000000-0000-0000-0000-000000000000';
       console.log('🧪 Regression via service key detected', { hasRegressionHeader, tokenPrefix: token.substring(0, 6) });
