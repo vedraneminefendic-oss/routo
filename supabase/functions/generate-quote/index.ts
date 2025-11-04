@@ -4017,14 +4017,28 @@ Deno.serve(async (req) => {
 
     const supabaseClient = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
     const token = authHeader.replace('Bearer ', '');
-    const { data: { user }, error: userError } = await supabaseClient.auth.getUser(token);
 
-    if (userError || !user) {
-      throw new Error('Invalid authorization token');
+    let user_id: string;
+    let isRegressionTest = false;
+
+    // Check if this is a service role key (for regression tests)
+    if (token === SUPABASE_SERVICE_ROLE_KEY) {
+      // Service role key = regression test mode
+      // Use a special system user ID for tests
+      user_id = '00000000-0000-0000-0000-000000000000';
+      isRegressionTest = true;
+      console.log('🧪 Running in regression test mode (service role key detected)');
+    } else {
+      // Normal JWT validation for regular users
+      const { data: { user }, error: userError } = await supabaseClient.auth.getUser(token);
+
+      if (userError || !user) {
+        throw new Error('Invalid authorization token');
+      }
+
+      user_id = user.id;
+      console.log('Generating quote for user:', user_id);
     }
-
-    const user_id = user.id;
-    console.log('Generating quote for user:', user_id);
 
     // FAS 11: Fetch conversation summary early if sessionId exists
     let conversationSummary: any = null;
@@ -4075,24 +4089,41 @@ Deno.serve(async (req) => {
     // STEP 1: FETCH USER DATA
     // ============================================
 
-    console.log('📚 Fetching learning context...');
-    const learningContext = await fetchLearningContext(supabaseClient, user_id, sessionId);
+    // Skip user-specific data for regression tests
+    let learningContext: LearningContext;
+    let hourlyRates = null;
+    let equipmentRates = null;
 
-    // Fetch hourly rates
-    const { data: hourlyRates } = await supabaseClient
-      .from('hourly_rates')
-      .select('work_type, rate')
-      .eq('user_id', user_id);
+    if (!isRegressionTest) {
+      console.log('📚 Fetching learning context...');
+      learningContext = await fetchLearningContext(supabaseClient, user_id, sessionId);
 
-    console.log('Using hourly rates:', hourlyRates || []);
+      // Fetch hourly rates
+      const hourlyRatesResult = await supabaseClient
+        .from('hourly_rates')
+        .select('work_type, rate')
+        .eq('user_id', user_id);
+      hourlyRates = hourlyRatesResult.data;
 
-    // Fetch equipment
-    const { data: equipmentRates } = await supabaseClient
-      .from('equipment_rates')
-      .select('name, equipment_type, price_per_day, price_per_hour, is_rented, default_quantity')
-      .eq('user_id', user_id);
+      console.log('Using hourly rates:', hourlyRates || []);
 
-    console.log('Using equipment:', equipmentRates || []);
+      // Fetch equipment
+      const equipmentRatesResult = await supabaseClient
+        .from('equipment_rates')
+        .select('name, equipment_type, price_per_day, price_per_hour, is_rented, default_quantity')
+        .eq('user_id', user_id);
+      equipmentRates = equipmentRatesResult.data;
+
+      console.log('Using equipment:', equipmentRates || []);
+    } else {
+      console.log('🧪 Skipping user-specific data for regression test - using only industry standards');
+      // Create empty learning context for regression tests
+      learningContext = {
+        learnedPreferences: {},
+        industryData: [],
+        userPatterns: null
+      };
+    }
 
     // SPRINT 1.5: FETCH PREVIOUS QUOTE (DELTA MODE / DRAFT UPDATE)
     let previousQuote = null;
@@ -4131,7 +4162,7 @@ Deno.serve(async (req) => {
 
     let similarQuotes: any[] = [];
     
-    if (referenceQuoteId === 'auto') {
+    if (referenceQuoteId === 'auto' && !isRegressionTest) {
       console.log('🔍 Auto-finding similar quotes...');
       const { data: similar } = await supabaseClient
         .rpc('find_similar_quotes', {
@@ -4210,7 +4241,7 @@ Deno.serve(async (req) => {
               .from('conversation_sessions')
               .update({
                 learned_preferences: {
-                  ...learningContext.learnedPreferences,
+                  ...learningContext?.learnedPreferences,
                   deductionType: finalDeductionType
                 }
               })
@@ -4893,8 +4924,8 @@ Svara med **1**, **2** eller **3** (eller "granska", "generera", "mer info")`;
     console.log(`🔍 PUNKT 3: Job category detected: ${jobCategoryDetected}`);
     
     // Get category-specific user rate weighting from patterns
-    const categoryWeighting = learningContext.userPatterns?.work_type_distribution?.[jobCategoryDetected] || 0;
-    const categoryAvgRate = learningContext.userPatterns?.avg_hourly_rates?.[jobCategoryDetected];
+    const categoryWeighting = learningContext?.userPatterns?.work_type_distribution?.[jobCategoryDetected] || 0;
+    const categoryAvgRate = learningContext?.userPatterns?.avg_hourly_rates?.[jobCategoryDetected];
     
     console.log(`📊 PUNKT 3: Category weighting: ${categoryWeighting}% (avg rate: ${categoryAvgRate || 'N/A'} kr/h)`);
     
@@ -4902,8 +4933,8 @@ Svara med **1**, **2** eller **3** (eller "granska", "generera", "mer info")`;
       console.log(`✅ Found job definition: ${jobDef.jobType}`);
       
       // 2. Calculate user weighting (0-100% based on total quotes)
-      const userWeighting = calculateUserWeighting(learningContext.userPatterns?.total_quotes || 0);
-      console.log(`📊 User weighting: ${userWeighting}% (${learningContext.userPatterns?.total_quotes || 0} quotes)`);
+      const userWeighting = calculateUserWeighting(learningContext?.userPatterns?.total_quotes || 0);
+      console.log(`📊 User weighting: ${userWeighting}% (${learningContext?.userPatterns?.total_quotes || 0} quotes)`);
       
       // 3. Extract measurements from conversation
       const allText = (completeDescription + ' ' + actualConversationHistory.map((m: any) => m.content).join(' ')).toLowerCase();
@@ -5007,7 +5038,7 @@ Svara med **1**, **2** eller **3** (eller "granska", "generera", "mer info")`;
       }
       
       // 8. Update materials with buckets + user markup (if user has markup in patterns)
-      const userMarkup = learningContext.userPatterns?.typical_margins?.avg || 0;
+      const userMarkup = learningContext?.userPatterns?.typical_margins?.avg || 0;
       
       if (quote.materials && quote.materials.length > 0 && userMarkup > 0) {
         console.log(`💰 Applying ${userMarkup}% user markup to materials...`);
@@ -5031,7 +5062,7 @@ Svara med **1**, **2** eller **3** (eller "granska", "generera", "mer info")`;
       const globalValidation = validateQuote(
         quote,
         jobDef,
-        learningContext.industryData || []
+        learningContext?.industryData || []
       );
       
       if (!globalValidation.isValid) {
@@ -5256,7 +5287,7 @@ Svara med **1**, **2** eller **3** (eller "granska", "generera", "mer info")`;
       conversation_history,
       description,
       detectedProjectForValidation?.projectType || null,
-      user.id,
+      user_id,
       LOVABLE_API_KEY,
       supabaseClient
     );
@@ -5530,8 +5561,8 @@ Svara med **1**, **2** eller **3** (eller "granska", "generera", "mer info")`;
     console.log('🔬 Validating realism...');
     const realismWarnings = validateRealism(
       quote,
-      learningContext.userPatterns,
-      learningContext.industryData || []
+      learningContext?.userPatterns,
+      learningContext?.industryData || []
     );
     
     // SPRINT 1: Combine all warnings
@@ -6097,7 +6128,7 @@ Svara med **1**, **2** eller **3** (eller "granska", "generera", "mer info")`;
       hourly_rates_used: (hourlyRates?.length || 0) > 0,
       equipment_used: (equipmentRates?.length || 0) > 0,
       deduction_type: finalDeductionType,
-      ai_reasoning: `Baserat på: ${completeDescription.length > 0 ? 'beskrivning' : ''}${conversation_history.length > 0 ? ' + konversation' : ''}${similarQuotes.length > 0 ? ` + ${similarQuotes.length} liknande offerter` : ''}${(hourlyRates?.length || 0) > 0 ? ' + användarens timpriser' : ' + standardpriser'}${learningContext.userPatterns ? ' + användarmönster' : ''}${learningContext.industryData && learningContext.industryData.length > 0 ? ' + branschdata' : ''}`,
+      ai_reasoning: `Baserat på: ${completeDescription.length > 0 ? 'beskrivning' : ''}${conversation_history.length > 0 ? ' + konversation' : ''}${similarQuotes.length > 0 ? ` + ${similarQuotes.length} liknande offerter` : ''}${(hourlyRates?.length || 0) > 0 ? ' + användarens timpriser' : ' + standardpriser'}${learningContext?.userPatterns ? ' + användarmönster' : ''}${learningContext?.industryData && learningContext.industryData.length > 0 ? ' + branschdata' : ''}`,
       validation: {
         conversation_validation: !conversationValidation.isValid ? {
           removed_items: conversationValidation.unmentionedItems,
