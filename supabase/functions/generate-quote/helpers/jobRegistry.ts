@@ -118,6 +118,8 @@ export const JOB_REGISTRY: JobDefinition[] = [
       accessibility: 'Vilken våning? (påverkar pris om hiss saknas)',
       qualityLevel: 'Standard- eller grundligstädning?'
     },
+    regionSensitive: false,
+    seasonSensitive: false,
     source: 'Webben (Hemfrid, Byggfakta 2025)',
     lastUpdated: '2025-11-04'
   },
@@ -195,8 +197,10 @@ export const JOB_REGISTRY: JobDefinition[] = [
     },
     standardWorkItems: [
       { name: 'Rivning och demontering', mandatory: true, typicalHours: 16 },
-      { name: 'El- och rörarbete', mandatory: true, typicalHours: 24 },
-      { name: 'Montering köksinredning', mandatory: true, typicalHours: 32 },
+      { name: 'VVS-installation', mandatory: true, typicalHours: 10 },
+      { name: 'El-installation', mandatory: true, typicalHours: 12 },
+      { name: 'Kakel backsplash', mandatory: false, typicalHours: 8 },
+      { name: 'Montering köksinredning', mandatory: true, typicalHours: 36 },
       { name: 'Installation vitvaror', mandatory: false, typicalHours: 8 }
     ],
     applicableDeduction: 'rot',
@@ -212,6 +216,8 @@ export const JOB_REGISTRY: JobDefinition[] = [
       accessibility: 'Vilken våning? Finns hiss?',
       qualityLevel: 'IKEA-kök, mellanklass eller specialsnickeri?'
     },
+    regionSensitive: true,
+    seasonSensitive: false,
     source: 'Webben (Byggfakta 2025)',
     lastUpdated: '2025-11-04'
   },
@@ -241,8 +247,12 @@ export const JOB_REGISTRY: JobDefinition[] = [
       totalMax: 80000
     },
     standardWorkItems: [
-      { name: 'Förberedelse (spackling, slipning)', mandatory: true, typicalHours: 0.15 },
-      { name: 'Målning', mandatory: true, typicalHours: 0.25 }
+      { name: 'Förberedelse och skydd', mandatory: true, typicalHours: 0.05 },
+      { name: 'Spackling och slipning', mandatory: true, typicalHours: 0.12 },
+      { name: 'Grundning', mandatory: false, typicalHours: 0.10 },
+      { name: 'Målning 1:a lagret', mandatory: true, typicalHours: 0.14 },
+      { name: 'Målning 2:a lagret', mandatory: true, typicalHours: 0.10 },
+      { name: 'Städning och efterarbete', mandatory: true, typicalHours: 0.03 }
     ],
     applicableDeduction: 'rut',
     deductionPercentage: 50,
@@ -257,6 +267,8 @@ export const JOB_REGISTRY: JobDefinition[] = [
       accessibility: 'Takhöjd? Möbler som ska skyddas?',
       qualityLevel: 'Standard-, miljömärkt eller premiumfärg?'
     },
+    regionSensitive: false,
+    seasonSensitive: false,
     source: 'Webben (Målarföretagen, Byggfakta 2025)',
     lastUpdated: '2025-11-04'
   },
@@ -286,8 +298,10 @@ export const JOB_REGISTRY: JobDefinition[] = [
       totalMax: 100000
     },
     standardWorkItems: [
-      { name: 'Markberedning', mandatory: false, typicalHours: 0.3 },
-      { name: 'Plantering', mandatory: true, typicalHours: 0.5 }
+      { name: 'Markberedning', mandatory: false, typicalHours: 0.4 },
+      { name: 'Plantering', mandatory: true, typicalHours: 0.5 },
+      { name: 'Gräsklippning', mandatory: false, typicalHours: 0.003 },
+      { name: 'Häckklippning', mandatory: false, typicalHours: 0.10 }
     ],
     applicableDeduction: 'rut',
     deductionPercentage: 50,
@@ -302,6 +316,8 @@ export const JOB_REGISTRY: JobDefinition[] = [
       accessibility: 'Lätt åtkomst eller svårt terräng?',
       qualityLevel: 'Standardväxter eller specialbeställda?'
     },
+    regionSensitive: false,
+    seasonSensitive: true,
     source: 'Webben (Trädgårdsföretagen 2025)',
     lastUpdated: '2025-11-04'
   },
@@ -397,8 +413,10 @@ export const JOB_REGISTRY: JobDefinition[] = [
     },
     priceBounds: { minPerUnit: 200, maxPerUnit: 700, totalMin: 10000, totalMax: 200000 },
     standardWorkItems: [
-      { name: 'Rengöring och förberedelse', mandatory: true, typicalHours: 0.2 },
-      { name: 'Målning', mandatory: true, typicalHours: 0.4 }
+      { name: 'Rengöring fasad', mandatory: true, typicalHours: 0.12 },
+      { name: 'Förberedelse och spackling', mandatory: true, typicalHours: 0.08 },
+      { name: 'Målning fasad', mandatory: true, typicalHours: 0.35 },
+      { name: 'Ställning', mandatory: false, typicalHours: 0 }
     ],
     applicableDeduction: 'rot',
     deductionPercentage: 30,
@@ -435,8 +453,10 @@ export const JOB_REGISTRY: JobDefinition[] = [
     },
     priceBounds: { minPerUnit: 600, maxPerUnit: 2500, totalMin: 10000, totalMax: 150000 },
     standardWorkItems: [
-      { name: 'Förberedelse underlag', mandatory: true, typicalHours: 0.3 },
-      { name: 'Läggning parkett', mandatory: true, typicalHours: 1.2 }
+      { name: 'Underlagsarbete', mandatory: true, typicalHours: 0.25 },
+      { name: 'Läggning parkett', mandatory: true, typicalHours: 0.8 },
+      { name: 'Slipning', mandatory: false, typicalHours: 0.25 },
+      { name: 'Lackering', mandatory: false, typicalHours: 0.25 }
     ],
     applicableDeduction: 'rot',
     deductionPercentage: 30,

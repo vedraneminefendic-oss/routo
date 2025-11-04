@@ -297,6 +297,72 @@ export const INDUSTRY_STANDARDS: JobStandard[] = [
   },
   
   // ============================================
+  // RUT - TRÄDGÅRD MOMENT-SPECIFIKA STANDARDER
+  // ============================================
+  {
+    jobType: 'plantering',
+    category: 'rut',
+    timePerUnit: {
+      unit: 'styck',
+      min: 0.3,      // Snabb plantering (små växter)
+      typical: 0.5,  // Normal plantering
+      max: 1.0       // Stor växt eller komplicerad plantering
+    },
+    hourlyRate: {
+      budget: 450,
+      standard: 550,
+      premium: 650
+    },
+    materialCostPerUnit: {
+      min: 50,
+      typical: 150,
+      max: 500
+    },
+    warnings: [
+      'Stora träd och buskar tar längre tid',
+      'Markberedning kan behövas (separat moment)'
+    ],
+    assumptions: [
+      'Plantering av växt i förberedd jord',
+      'Normal växtstorlek',
+      'Enkel åtkomst'
+    ],
+    source: 'Trädgårdsföreningen 2025',
+    lastUpdated: '2025-11-04'
+  },
+  {
+    jobType: 'markberedning',
+    category: 'rut',
+    timePerUnit: {
+      unit: 'kvm',
+      min: 0.2,      // Lätt markberedning (bra jord)
+      typical: 0.4,  // Normal markberedning
+      max: 0.7       // Tung markberedning (stenar, rötter)
+    },
+    hourlyRate: {
+      budget: 450,
+      standard: 550,
+      premium: 650
+    },
+    materialCostPerUnit: {
+      min: 20,
+      typical: 40,
+      max: 80
+    },
+    warnings: [
+      'Mycket stenar och rötter ökar tiden kraftigt',
+      'Ny jord kan behöva tillföras (extra kostnad)'
+    ],
+    assumptions: [
+      'Grävning och grovberedning av mark',
+      'Borttagning av stenar och rötter',
+      'Normal jordkvalitet'
+    ],
+    source: 'Trädgårdsföreningen 2025',
+    lastUpdated: '2025-11-04'
+  },
+  
+  // ============================================
   // ROT - BADRUM
   // ============================================
   {
@@ -500,6 +566,140 @@ export const INDUSTRY_STANDARDS: JobStandard[] = [
   },
   
   // ============================================
+  // ROT - KÖK MOMENT-SPECIFIKA STANDARDER
+  // ============================================
+  {
+    jobType: 'rivning_kok',
+    category: 'rot',
+    timePerUnit: {
+      unit: 'kvm',
+      min: 1.2,      // Snabb rivning (IKEA-kök)
+      typical: 2.0,  // Normal rivning
+      max: 3.0       // Komplicerad (gamla skåp, mycket vitvaror)
+    },
+    hourlyRate: {
+      budget: 650,
+      standard: 750,
+      premium: 900
+    },
+    warnings: [
+      'Gamla skåp som är fastskruvade tar längre tid',
+      'Vitvaror måste kopplas bort av certifierad elektriker'
+    ],
+    assumptions: [
+      'Demontering av skåp, bänkskiva och backsplash',
+      'Alla vitvaror kopplas bort',
+      'Transport och flakning ingår'
+    ],
+    source: 'Byggfakta ROT 2025',
+    lastUpdated: '2025-11-04'
+  },
+  {
+    jobType: 'vvs_kok',
+    category: 'rot',
+    timePerUnit: {
+      unit: 'kvm',
+      min: 0.8,      // Enkel VVS (bara diskho)
+      typical: 1.2,  // Normal (diskho + diskmaskin)
+      max: 2.0       // Komplicerad (flyttad diskho, nya rör)
+    },
+    hourlyRate: {
+      budget: 800,
+      standard: 950,
+      premium: 1100
+    },
+    warnings: [
+      'Flyttad diskho kräver nya rör = +4h',
+      'Gamla rör kan behöva bytas = +30% tid'
+    ],
+    assumptions: [
+      'Installation av diskho, diskblandare, diskmaskin',
+      'Certifierad VVS-montör krävs',
+      'Tryckprovning ingår'
+    ],
+    source: 'VVS-förbundet 2025',
+    lastUpdated: '2025-11-04'
+  },
+  {
+    jobType: 'el_kok',
+    category: 'rot',
+    timePerUnit: {
+      unit: 'kvm',
+      min: 1.0,      // Enkel el (bara uttag)
+      typical: 1.5,  // Normal (uttag + spisplatta + fläkt)
+      max: 2.5       // Komplicerad (ny elcentral, golvvärme)
+    },
+    hourlyRate: {
+      budget: 850,
+      standard: 950,
+      premium: 1100
+    },
+    warnings: [
+      'Spisplatta på 400V kräver separat uttag',
+      'Fläkt måste kopplas till ventilation'
+    ],
+    assumptions: [
+      'Installation av uttag, spisplatta, ugn, fläkt',
+      'Certifierad elektriker krävs',
+      'Elsäkerhetskontroll ingår'
+    ],
+    source: 'Elinstallatörsförbundet 2025',
+    lastUpdated: '2025-11-04'
+  },
+  {
+    jobType: 'kakel_kok',
+    category: 'rot',
+    timePerUnit: {
+      unit: 'kvm',
+      min: 1.0,      // Snabb kakelsättning (backsplash)
+      typical: 1.5,  // Normal kakelsättning
+      max: 2.2       // Komplicerad (mönster, små kakelplattor)
+    },
+    hourlyRate: {
+      budget: 700,
+      standard: 800,
+      premium: 950
+    },
+    warnings: [
+      'Mönster ökar tiden med 20%',
+      'Tätskikt rekommenderas bakom diskho'
+    ],
+    assumptions: [
+      'Backsplash bakom diskbänk och spis',
+      'Normala kakelplattor (20x30 cm)',
+      'Standardfog (2-3mm)'
+    ],
+    source: 'Kakelsättarförbundet 2025',
+    lastUpdated: '2025-11-04'
+  },
+  {
+    jobType: 'skåp_montering',
+    category: 'rot',
+    timePerUnit: {
+      unit: 'kvm',
+      min: 3.0,      // Snabb montering (IKEA, färdigskåp)
+      typical: 4.5,  // Normal montering (mellanklass)
+      max: 7.0       // Komplicerad (specialsnickeri, justering)
+    },
+    hourlyRate: {
+      budget: 650,
+      standard: 750,
+      premium: 900
+    },
+    warnings: [
+      'Specialsnickeri tar dubbla tiden',
+      'Bänkskiva i natursten kräver specialverktyg'
+    ],
+    assumptions: [
+      'Montering av alla skåp, lådor och bänkskiva',
+      'Justering av luckor och lådor',
+      'Installation av handtag och knoppar'
+    ],
+    source: 'Byggfakta 2025',
+    lastUpdated: '2025-11-04'
+  },
+  
+  // ============================================
   // ROT - MÅLNING
   // ============================================
   {
@@ -533,6 +733,134 @@ export const INDUSTRY_STANDARDS: JobStandard[] = [
     source: 'Målarförbundet - 2025',
     lastUpdated: '2025-11-02'
   },
+  
+  // ============================================
+  // ROT/RUT - MÅLNING MOMENT-SPECIFIKA STANDARDER
+  // ============================================
+  {
+    jobType: 'spackling_sliping',
+    category: 'rut',
+    timePerUnit: {
+      unit: 'kvm',
+      min: 0.08,     // Minimal spackling (små hål)
+      typical: 0.12, // Normal spackling
+      max: 0.20      // Mycket spackling (stora skador)
+    },
+    hourlyRate: {
+      budget: 550,
+      standard: 650,
+      premium: 800
+    },
+    materialCostPerUnit: {
+      min: 8,
+      typical: 12,
+      max: 20
+    },
+    warnings: [
+      'Stora hål och sprickor tar längre tid',
+      'Strukturputsade väggar kan inte spacklas'
+    ],
+    assumptions: [
+      'Spackling av hål och sprickor',
+      'Slipning för jämn yta',
+      'Grundning ingår EJ (separat moment)'
+    ],
+    source: 'Målarförbundet 2025',
+    lastUpdated: '2025-11-04'
+  },
+  {
+    jobType: 'grundning',
+    category: 'rut',
+    timePerUnit: {
+      unit: 'kvm',
+      min: 0.06,     // Snabb grundning (rullning)
+      typical: 0.10, // Normal grundning
+      max: 0.15      // Noggrann grundning (pensling i kanter)
+    },
+    hourlyRate: {
+      budget: 550,
+      standard: 650,
+      premium: 800
+    },
+    materialCostPerUnit: {
+      min: 10,
+      typical: 15,
+      max: 25
+    },
+    warnings: [
+      'Grundfärg måste torka 4-6h innan målning',
+      'Mörka färger kräver pigmenterad grundning'
+    ],
+    assumptions: [
+      'En grundstrykning',
+      'Täcker spacklad yta',
+      'Normalt uttorkningstid'
+    ],
+    source: 'Målarförbundet 2025',
+    lastUpdated: '2025-11-04'
+  },
+  {
+    jobType: 'malning_1_lager',
+    category: 'rut',
+    timePerUnit: {
+      unit: 'kvm',
+      min: 0.10,     // Snabb målning (rullning)
+      typical: 0.14, // Normal målning
+      max: 0.20      // Noggrann målning (pensling, kanter)
+    },
+    hourlyRate: {
+      budget: 550,
+      standard: 650,
+      premium: 800
+    },
+    materialCostPerUnit: {
+      min: 15,
+      typical: 25,
+      max: 40
+    },
+    warnings: [
+      'Första lagret tar längst tid (täcker ojämnheter)',
+      'Strukturputsade väggar kräver mer färg'
+    ],
+    assumptions: [
+      'Första strykning på grundad yta',
+      'Normal täckförmåga',
+      'Måste torka 4-6h innan andra lagret'
+    ],
+    source: 'Målarförbundet 2025',
+    lastUpdated: '2025-11-04'
+  },
+  {
+    jobType: 'malning_2_lager',
+    category: 'rut',
+    timePerUnit: {
+      unit: 'kvm',
+      min: 0.06,     // Snabb slutstrykning
+      typical: 0.10, // Normal slutstrykning
+      max: 0.14      // Noggrann slutstrykning
+    },
+    hourlyRate: {
+      budget: 550,
+      standard: 650,
+      premium: 800
+    },
+    materialCostPerUnit: {
+      min: 10,
+      typical: 20,
+      max: 35
+    },
+    warnings: [
+      'Andra lagret går snabbare (redan täckt yta)',
+      'Vissa mörka färger kan kräva tredje lager'
+    ],
+    assumptions: [
+      'Slutstrykning på första lagret',
+      'Snabbare arbete (redan täckt)',
+      'Normal täckförmåga'
+    ],
+    source: 'Målarförbundet 2025',
+    lastUpdated: '2025-11-04'
+  },
   {
     jobType: 'malning_fasad',
     category: 'rot',
@@ -563,6 +891,135 @@ export const INDUSTRY_STANDARDS: JobStandard[] = [
     ],
     source: 'Målarförbundet - 2025',
     lastUpdated: '2025-11-02'
+  },
+  
+  // ============================================
+  // ROT - FASADMÅLNING MOMENT-SPECIFIKA STANDARDER
+  // ============================================
+  {
+    jobType: 'fasad_rengoring',
+    category: 'rot',
+    timePerUnit: {
+      unit: 'kvm',
+      min: 0.08,     // Snabb rengöring (högtryck)
+      typical: 0.12, // Normal rengöring
+      max: 0.18      // Noggrann rengöring (mögel, alger)
+    },
+    hourlyRate: {
+      budget: 550,
+      standard: 700,
+      premium: 900
+    },
+    materialCostPerUnit: {
+      min: 5,
+      typical: 10,
+      max: 20
+    },
+    warnings: [
+      'Mögel och alger kräver specialbehandling',
+      'Fasaden måste torka 24-48h innan målning'
+    ],
+    assumptions: [
+      'Högtryckstvätt av fasad',
+      'Borttagning av lös färg',
+      'Normal smutsgrad'
+    ],
+    source: 'Målarförbundet 2025',
+    lastUpdated: '2025-11-04'
+  },
+  {
+    jobType: 'fasad_forberedelse',
+    category: 'rot',
+    timePerUnit: {
+      unit: 'kvm',
+      min: 0.04,     // Minimal förberedelse
+      typical: 0.08, // Normal förberedelse
+      max: 0.15      // Mycket förberedelse (sprickor, skador)
+    },
+    hourlyRate: {
+      budget: 550,
+      standard: 700,
+      premium: 900
+    },
+    materialCostPerUnit: {
+      min: 8,
+      typical: 15,
+      max: 30
+    },
+    warnings: [
+      'Stora sprickor måste lagas innan målning',
+      'Träfasad kräver mer slipning än puts'
+    ],
+    assumptions: [
+      'Spackling av sprickor',
+      'Slipning av lös färg',
+      'Grundbehandling av träytor'
+    ],
+    source: 'Målarförbundet 2025',
+    lastUpdated: '2025-11-04'
+  },
+  {
+    jobType: 'fasad_malning',
+    category: 'rot',
+    timePerUnit: {
+      unit: 'kvm',
+      min: 0.25,     // Snabb målning (spray)
+      typical: 0.35, // Normal målning
+      max: 0.50      // Noggrann målning (pensling, detaljer)
+    },
+    hourlyRate: {
+      budget: 550,
+      standard: 700,
+      premium: 900
+    },
+    materialCostPerUnit: {
+      min: 40,
+      typical: 70,
+      max: 120
+    },
+    warnings: [
+      'Träfasad kräver 2-3 lager',
+      'Detaljer och prydnader ökar tiden med 30%'
+    ],
+    assumptions: [
+      '2 lager fasadfärg',
+      'Normal fasad utan mycket detaljer',
+      'Standard sprayning eller rullning'
+    ],
+    source: 'Målarförbundet 2025',
+    lastUpdated: '2025-11-04'
+  },
+  {
+    jobType: 'stallning',
+    category: 'rot',
+    timePerUnit: {
+      unit: 'kvm',
+      min: 0.5,      // Enkel ställning (lågpris hyra)
+      typical: 1.0,  // Normal ställning
+      max: 1.8       // Komplicerad ställning (högt, svår mark)
+    },
+    hourlyRate: {
+      budget: 0,     // Ställning är oftast hyra, inte arbetskostnad
+      standard: 0,
+      premium: 0
+    },
+    materialCostPerUnit: {
+      min: 100,      // Hyra per kvm fasad
+      typical: 150,
+      max: 250
+    },
+    warnings: [
+      'Ställning över 4m höjd är lagkrav',
+      'Hyra beräknas per vecka (ca 4-6 veckor)',
+      'Uppställning och nedtagning tillkommer'
+    ],
+    assumptions: [
+      'Hyra av ställning för 4-6 veckor',
+      'Uppställning och nedtagning ingår',
+      'Normal fasadhöjd (4-8m)'
+    ],
+    source: 'Byggfakta 2025',
+    lastUpdated: '2025-11-04'
   },
   
   // ============================================
@@ -691,6 +1148,134 @@ export const INDUSTRY_STANDARDS: JobStandard[] = [
     ],
     source: 'Takläggareförbundet - 2025',
     lastUpdated: '2025-11-02'
+  },
+  
+  // ============================================
+  // ROT - PARKETTLÄGGNING MOMENT-SPECIFIKA STANDARDER
+  // ============================================
+  {
+    jobType: 'underlagsarbete',
+    category: 'rot',
+    timePerUnit: {
+      unit: 'kvm',
+      min: 0.15,     // Lätt underlagsarbete (jämnt golv)
+      typical: 0.25, // Normal utjämning
+      max: 0.40      // Mycket utjämning (ojämnt golv)
+    },
+    hourlyRate: {
+      budget: 600,
+      standard: 750,
+      premium: 900
+    },
+    materialCostPerUnit: {
+      min: 30,
+      typical: 50,
+      max: 100
+    },
+    warnings: [
+      'Mycket ojämna golv kräver mer tid',
+      'Fuktisolering kan behövas i källare'
+    ],
+    assumptions: [
+      'Utjämning av undergolv',
+      'Plastfolie och underlagsmatta',
+      'Normal nivåskillnad (<5mm)'
+    ],
+    source: 'Byggfakta 2025',
+    lastUpdated: '2025-11-04'
+  },
+  {
+    jobType: 'parkett_laggning',
+    category: 'rot',
+    timePerUnit: {
+      unit: 'kvm',
+      min: 0.5,      // Snabb läggning (klickparkett)
+      typical: 0.8,  // Normal läggning
+      max: 1.3       // Komplicerad (mönster, trappor)
+    },
+    hourlyRate: {
+      budget: 600,
+      standard: 750,
+      premium: 900
+    },
+    materialCostPerUnit: {
+      min: 200,
+      typical: 400,
+      max: 800
+    },
+    warnings: [
+      'Komplicerade mönster ökar tiden med 50%',
+      'Trappor och dörrtrösklar tar extra tid'
+    ],
+    assumptions: [
+      'Klickparkett eller limmat',
+      'Rak läggning (ej mönster)',
+      'Normal rumsstorlek'
+    ],
+    source: 'Byggfakta 2025',
+    lastUpdated: '2025-11-04'
+  },
+  {
+    jobType: 'slipning',
+    category: 'rot',
+    timePerUnit: {
+      unit: 'kvm',
+      min: 0.15,     // Lätt slipning (nylagt)
+      typical: 0.25, // Normal slipning
+      max: 0.40      // Tung slipning (gammalt golv)
+    },
+    hourlyRate: {
+      budget: 600,
+      standard: 750,
+      premium: 900
+    },
+    materialCostPerUnit: {
+      min: 10,
+      typical: 20,
+      max: 40
+    },
+    warnings: [
+      'Gammalt golv med djupa spår tar längre tid',
+      'Dammsugning måste göras mellan slipningar'
+    ],
+    assumptions: [
+      '2-3 slipningar med olika kornstorlekar',
+      'Dammfri slipning',
+      'Normal slitning'
+    ],
+    source: 'Byggfakta 2025',
+    lastUpdated: '2025-11-04'
+  },
+  {
+    jobType: 'lackering',
+    category: 'rot',
+    timePerUnit: {
+      unit: 'kvm',
+      min: 0.15,     // Snabb lackering
+      typical: 0.25, // Normal lackering
+      max: 0.35      // Noggrann lackering (flera lager)
+    },
+    hourlyRate: {
+      budget: 600,
+      standard: 750,
+      premium: 900
+    },
+    materialCostPerUnit: {
+      min: 30,
+      typical: 50,
+      max: 100
+    },
+    warnings: [
+      'Varje lager måste torka 4-6h',
+      'Minst 2 lager rekommenderas'
+    ],
+    assumptions: [
+      '2 lager golvlack',
+      'Normal torktid',
+      'Standard lack (ej oljning)'
+    ],
+    source: 'Byggfakta 2025',
+    lastUpdated: '2025-11-04'
   }
 ];
 
@@ -730,9 +1315,81 @@ export function findStandard(
       }
     }
     
-    // Köksmoment (för framtiden)
+    // Köksmoment
     if (contextType.includes('kök')) {
-      // Expandera senare med kök-specifika moment
+      if (lower.includes('rivning') || lower.includes('demonter')) {
+        return INDUSTRY_STANDARDS.find(s => s.jobType === 'rivning_kok') || null;
+      }
+      if (lower.includes('vvs') || lower.includes('rör') || lower.includes('diskho')) {
+        return INDUSTRY_STANDARDS.find(s => s.jobType === 'vvs_kok') || null;
+      }
+      if (lower.includes('el')) {
+        return INDUSTRY_STANDARDS.find(s => s.jobType === 'el_kok') || null;
+      }
+      if (lower.includes('kakel') || lower.includes('backsplash')) {
+        return INDUSTRY_STANDARDS.find(s => s.jobType === 'kakel_kok') || null;
+      }
+      if (lower.includes('skåp') || lower.includes('monter') || lower.includes('bänk')) {
+        return INDUSTRY_STANDARDS.find(s => s.jobType === 'skåp_montering') || null;
+      }
+    }
+    
+    // Målningsmoment
+    if (contextType.includes('måla') || contextType.includes('målning')) {
+      if (lower.includes('spackling') || lower.includes('spackla') || lower.includes('slipning')) {
+        return INDUSTRY_STANDARDS.find(s => s.jobType === 'spackling_sliping') || null;
+      }
+      if (lower.includes('grundning') || lower.includes('grund')) {
+        return INDUSTRY_STANDARDS.find(s => s.jobType === 'grundning') || null;
+      }
+      if (lower.includes('första') || lower.includes('1 lager')) {
+        return INDUSTRY_STANDARDS.find(s => s.jobType === 'malning_1_lager') || null;
+      }
+      if (lower.includes('andra') || lower.includes('2 lager') || lower.includes('slut')) {
+        return INDUSTRY_STANDARDS.find(s => s.jobType === 'malning_2_lager') || null;
+      }
+    }
+    
+    // Fasadmoment
+    if (contextType.includes('fasad')) {
+      if (lower.includes('rengör') || lower.includes('tvätt') || lower.includes('högtryck')) {
+        return INDUSTRY_STANDARDS.find(s => s.jobType === 'fasad_rengoring') || null;
+      }
+      if (lower.includes('förberedelse') || lower.includes('spackling')) {
+        return INDUSTRY_STANDARDS.find(s => s.jobType === 'fasad_forberedelse') || null;
+      }
+      if (lower.includes('målning') || lower.includes('måla')) {
+        return INDUSTRY_STANDARDS.find(s => s.jobType === 'fasad_malning') || null;
+      }
+      if (lower.includes('ställning')) {
+        return INDUSTRY_STANDARDS.find(s => s.jobType === 'stallning') || null;
+      }
+    }
+    
+    // Trädgårdsmoment
+    if (contextType.includes('trädgård')) {
+      if (lower.includes('plantering') || lower.includes('plantera')) {
+        return INDUSTRY_STANDARDS.find(s => s.jobType === 'plantering') || null;
+      }
+      if (lower.includes('markberedning') || lower.includes('gräv')) {
+        return INDUSTRY_STANDARDS.find(s => s.jobType === 'markberedning') || null;
+      }
+    }
+    
+    // Parkettmoment
+    if (contextType.includes('parkett') || contextType.includes('golv')) {
+      if (lower.includes('underlag') || lower.includes('utjämn')) {
+        return INDUSTRY_STANDARDS.find(s => s.jobType === 'underlagsarbete') || null;
+      }
+      if (lower.includes('läggning') || lower.includes('lägg')) {
+        return INDUSTRY_STANDARDS.find(s => s.jobType === 'parkett_laggning') || null;
+      }
+      if (lower.includes('slipning') || lower.includes('slipa')) {
+        return INDUSTRY_STANDARDS.find(s => s.jobType === 'slipning') || null;
+      }
+      if (lower.includes('lackering') || lower.includes('lacka')) {
+        return INDUSTRY_STANDARDS.find(s => s.jobType === 'lackering') || null;
+      }
     }
   }
   
