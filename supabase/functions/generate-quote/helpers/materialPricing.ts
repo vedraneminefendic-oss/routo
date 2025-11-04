@@ -1,6 +1,18 @@
-// FAS 4: Materialprissättning med caching
+// ============================================================================
+// FAS 2: MATERIALPRISSÄTTNING MED BUCKETS + ANVÄNDARPÅSLAG
+// ============================================================================
+
+import { JobDefinition } from './jobRegistry.ts';
 
 const TEXT_MODEL = 'google/gemini-2.5-flash';
+
+interface MaterialPrice {
+  budget: number;
+  standard: number;
+  premium: number;
+  source: string;
+  confidence: number;
+}
 
 /**
  * Helper: Kontrollera om cached data är färsk nog
@@ -13,23 +25,26 @@ export function isRecentEnough(lastUpdated: string, maxDaysOld: number): boolean
 }
 
 /**
- * FAS 4: Söker materialpris med fallback-strategi
- * 1. Kolla cache först (industry_benchmarks)
- * 2. Om inte: Sök på webben via AI
- * 3. Spara resultatet i cache för framtida användning
+ * FAS 2: Hämta materialpris med 3 nivåer + användarens påslag
+ * 1. Kolla cache först (30 dagar)
+ * 2. Om inte: Sök på webben med 3 prisnivåer
+ * 3. Applicera användarens påslag
+ * 4. Spara i cache för framtida användning
  */
-export async function searchMaterialPriceLive(
+export async function getMaterialPrice(
   materialName: string,
-  unit: string,
+  qualityLevel: 'budget' | 'standard' | 'premium',
+  jobDef: JobDefinition,
+  userMarkup: number = 0, // % påslag (t.ex. 12%)
   lovableApiKey: string,
   supabase: any
-): Promise<{ price: number; source: string; confidence: number } | null> {
+): Promise<{ price: number; source: string; confidence: number }> {
   
-  console.log(`🔍 FAS 4: Live search for material: ${materialName}`);
+  console.log(`🔍 FAS 2: Fetching material price for: ${materialName} (${qualityLevel})`);
   
   const cacheKey = `material_${materialName.toLowerCase().replace(/\s+/g, '_')}`;
   
-  // 1. Kolla cache först (industry_benchmarks)
+  // 1. Kolla cache först (industry_benchmarks) - innehåller 3 nivåer
   const { data: cachedPrice } = await supabase
     .from('industry_benchmarks')
     .select('*')
@@ -38,37 +53,47 @@ export async function searchMaterialPriceLive(
     .single();
   
   if (cachedPrice && isRecentEnough(cachedPrice.last_updated, 30)) { // 30 dagar
-    console.log(`✅ Using cached price: ${cachedPrice.median_value} kr`);
+    // Cache innehåller: min_value (budget), median_value (standard), max_value (premium)
+    const priceMap = {
+      budget: cachedPrice.min_value,
+      standard: cachedPrice.median_value,
+      premium: cachedPrice.max_value
+    };
+    
+    const basePrice = priceMap[qualityLevel];
+    const finalPrice = Math.round(basePrice * (1 + userMarkup / 100));
+    
+    console.log(`✅ Using cached price: ${basePrice} kr → ${finalPrice} kr (with ${userMarkup}% markup)`);
     return {
-      price: cachedPrice.median_value,
-      source: 'cached_industry_benchmarks',
-      confidence: 0.8
+      price: finalPrice,
+      source: 'cached_with_user_markup',
+      confidence: 0.85
     };
   }
   
-  // 2. Annars: Sök på webben via AI
+  // 2. Annars: Sök på webben med 3 prisnivåer
   const prompt = `Sök på svenska byggvaruhus (Bauhaus, Hornbach, K-Rauta, Beijer, ByggMax) och hitta aktuellt pris för:
 
 **Material:** ${materialName}
-**Enhet:** ${unit}
 
-Returnera JSON:
+Returnera JSON med 3 prisnivåer:
 {
-  "averagePrice": X,
-  "priceRange": { "min": Y, "max": Z },
+  "budgetPrice": X,
+  "standardPrice": Y,
+  "premiumPrice": Z,
   "sources": ["byggvaruhus1", "byggvaruhus2"]
 }
 
 **EXEMPEL:**
-- "Innerväggsfärg 10L" → averagePrice: 1200, priceRange: {min: 900, max: 1500}
-- "Kakel 1 kvm" → averagePrice: 350, priceRange: {min: 200, max: 600}
-- "Gips 25 kg" → averagePrice: 120, priceRange: {min: 90, max: 150}
-- "Trall 28x120mm löpmeter" → averagePrice: 85, priceRange: {min: 65, max: 110}
+- "Innerväggsfärg 10L" → budgetPrice: 900, standardPrice: 1200, premiumPrice: 1800
+- "Kakel per kvm" → budgetPrice: 200, standardPrice: 400, premiumPrice: 800
+- "Gips 25 kg" → budgetPrice: 90, standardPrice: 120, premiumPrice: 160
 
 **VIKTIGT:**
-- Basera på FAKTISKA priser från svenska byggvaruhus
-- Om du hittar flera källor, ta genomsnitt
-- Om osäker, ge ett rimligt intervall`;
+- budgetPrice = lågprismärken från ByggMax/Bauhaus
+- standardPrice = mellanklassmärken (Alcro, Beckers basic)
+- premiumPrice = premiummärken (Beckers Designer, specialprodukter)
+- Basera på FAKTISKA priser från svenska byggvaruhus`;
 
   try {
     const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
@@ -89,19 +114,30 @@ Returnera JSON:
 
     if (!response.ok) {
       console.error('❌ Material price search failed:', response.status);
-      return null;
+      // Fallback till jobDef.materialBuckets vid API-fel
+      const bucket = jobDef.materialBuckets[qualityLevel];
+      const estimatedPrice = Math.round(
+        jobDef.hourlyRateRange.typical * jobDef.materialRatio * bucket.priceMultiplier
+      );
+      const finalPrice = Math.round(estimatedPrice * (1 + userMarkup / 100));
+      
+      return {
+        price: finalPrice,
+        source: 'job_definition_estimate_api_error',
+        confidence: 0.5
+      };
     }
 
     const data = await response.json();
     const result = JSON.parse(data.choices[0].message.content);
     
-    // 3. Spara i cache (industry_benchmarks)
+    // 3. Spara i cache med 3 nivåer
     await supabase.from('industry_benchmarks').upsert({
       work_category: cacheKey,
       metric_type: 'price_per_unit',
-      median_value: result.averagePrice,
-      min_value: result.priceRange.min,
-      max_value: result.priceRange.max,
+      min_value: result.budgetPrice,
+      median_value: result.standardPrice,
+      max_value: result.premiumPrice,
       sample_size: result.sources?.length || 1,
       last_updated: new Date().toISOString()
     }, {
@@ -109,16 +145,71 @@ Returnera JSON:
       ignoreDuplicates: false
     });
     
-    console.log(`✅ Learned material price from web: ${materialName} = ${result.averagePrice} kr (cached for 30 days)`);
+    // 4. Applicera användarens påslag
+    const priceMap = {
+      budget: result.budgetPrice,
+      standard: result.standardPrice,
+      premium: result.premiumPrice
+    };
+    
+    const basePrice = priceMap[qualityLevel];
+    const finalPrice = Math.round(basePrice * (1 + userMarkup / 100));
+    
+    console.log(`✅ Learned material from web: ${materialName} = ${basePrice} kr → ${finalPrice} kr (with ${userMarkup}% markup)`);
     
     return {
-      price: result.averagePrice,
-      source: 'live_web_search',
-      confidence: 0.6 // Lägre confidence för extern data
+      price: finalPrice,
+      source: 'web_search_with_user_markup',
+      confidence: 0.75
     };
     
   } catch (error) {
     console.error('❌ Failed to search material price:', error);
-    return null;
+    
+    // 5. Fallback till jobDef.materialBuckets
+    const bucket = jobDef.materialBuckets[qualityLevel];
+    const estimatedPrice = Math.round(
+      jobDef.hourlyRateRange.typical * jobDef.materialRatio * bucket.priceMultiplier
+    );
+    const finalPrice = Math.round(estimatedPrice * (1 + userMarkup / 100));
+    
+    console.log(`⚠️ Using job definition estimate: ${estimatedPrice} kr → ${finalPrice} kr`);
+    
+    return {
+      price: finalPrice,
+      source: 'job_definition_estimate',
+      confidence: 0.6
+    };
   }
+}
+
+/**
+ * LEGACY: Backwards compatibility with old searchMaterialPriceLive
+ */
+export async function searchMaterialPriceLive(
+  materialName: string,
+  unit: string,
+  lovableApiKey: string,
+  supabase: any
+): Promise<{ price: number; source: string; confidence: number } | null> {
+  // Fallback till ny funktion med standard quality och 0% markup
+  const result = await getMaterialPrice(
+    materialName,
+    'standard',
+    {
+      jobType: 'ai_driven',
+      materialRatio: 0.3,
+      hourlyRateRange: { min: 450, typical: 650, max: 850 },
+      materialBuckets: {
+        budget: { priceMultiplier: 0.8, examples: [] },
+        standard: { priceMultiplier: 1.0, examples: [] },
+        premium: { priceMultiplier: 1.3, examples: [] }
+      }
+    } as any,
+    0,
+    lovableApiKey,
+    supabase
+  );
+  
+  return result;
 }

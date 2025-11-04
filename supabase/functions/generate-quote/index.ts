@@ -4798,6 +4798,179 @@ Svara med **1**, **2** eller **3** (eller "granska", "generera", "mer info")`;
       user_id // FAS 1: userId för layered prompt
     );
     
+    // ============================================================================
+    // FAS 1-2: FORMULA ENGINE INTEGRATION + SERVICEBIL
+    // ============================================================================
+    
+    console.log('🔧 FAS 1-2: Post-processing quote with Formula Engine...');
+    
+    // Import Formula Engine and Global Validator
+    const { calculateWorkItem, calculateServiceVehicle } = await import('./helpers/formulaEngine.ts');
+    const { findJobDefinition, calculateUserWeighting } = await import('./helpers/jobRegistry.ts');
+    const { validateQuote } = await import('./helpers/globalValidator.ts');
+    const { getMaterialPrice } = await import('./helpers/materialPricing.ts');
+    
+    // 1. Determine job type from description
+    const jobDef = findJobDefinition(completeDescription);
+    
+    if (jobDef && jobDef.jobType !== 'ai_driven') {
+      console.log(`✅ Found job definition: ${jobDef.jobType}`);
+      
+      // 2. Calculate user weighting (0-100% based on total quotes)
+      const userWeighting = calculateUserWeighting(learningContext.userPatterns?.total_quotes || 0);
+      console.log(`📊 User weighting: ${userWeighting}% (${learningContext.userPatterns?.total_quotes || 0} quotes)`);
+      
+      // 3. Extract measurements from conversation
+      const allText = (completeDescription + ' ' + actualConversationHistory.map((m: any) => m.content).join(' ')).toLowerCase();
+      const areaMatch = allText.match(/(\d+(?:[.,]\d+)?)\s*(?:kvm|kvadratmeter|m2)/i);
+      const lengthMatch = allText.match(/(\d+(?:[.,]\d+)?)\s*(?:meter|löpmeter|m)/i);
+      const quantityMatch = allText.match(/(\d+)\s*(?:st|styck|stycken)/i);
+      
+      const unitQty = (() => {
+        if (jobDef.unitType === 'kvm' && areaMatch) return parseFloat(areaMatch[1].replace(',', '.'));
+        if (jobDef.unitType === 'lm' && lengthMatch) return parseFloat(lengthMatch[1].replace(',', '.'));
+        if (jobDef.unitType === 'st' && quantityMatch) return parseInt(quantityMatch[1]);
+        return 1; // Fallback
+      })();
+      
+      // 4. Detect complexity, accessibility, quality from conversation
+      const complexity: 'simple' | 'normal' | 'complex' = (() => {
+        if (allText.includes('enkel') || allText.includes('basic')) return 'simple';
+        if (allText.includes('komple') || allText.includes('svår')) return 'complex';
+        return 'normal';
+      })();
+      
+      const accessibility: 'easy' | 'normal' | 'hard' = (() => {
+        if (allText.includes('hiss') || allText.includes('lätt åtkomst')) return 'easy';
+        if (allText.includes('trång') || allText.includes('svåråtkomlig') || allText.match(/\d+\s*våning/)) return 'hard';
+        return 'normal';
+      })();
+      
+      const qualityLevel: 'budget' | 'standard' | 'premium' = (() => {
+        if (allText.includes('budget') || allText.includes('billig')) return 'budget';
+        if (allText.includes('premium') || allText.includes('lyxig')) return 'premium';
+        return 'standard';
+      })();
+      
+      console.log(`📐 Extracted params: unitQty=${unitQty}, complexity=${complexity}, accessibility=${accessibility}, quality=${qualityLevel}`);
+      
+      // 5. Find user's hourly rate for this job type
+      const userHourlyRate = hourlyRates?.find(r => 
+        r.work_type.toLowerCase().includes(jobDef.jobType.toLowerCase())
+      )?.rate;
+      
+      // 6. Recalculate workItems with Formula Engine (only main work item, keep AI's detailed breakdown)
+      if (quote.workItems && quote.workItems.length > 0) {
+        console.log(`🔧 Recalculating main work item with Formula Engine...`);
+        
+        const calculatedItem = calculateWorkItem({
+          jobType: jobDef.jobType,
+          unitQty,
+          complexity,
+          accessibility,
+          qualityLevel,
+          userHourlyRate,
+          userWeighting
+        }, jobDef);
+        
+        // Replace first work item (huvudarbete) with calculated one
+        quote.workItems[0] = {
+          name: calculatedItem.name,
+          hours: calculatedItem.hours,
+          hourlyRate: calculatedItem.hourlyRate,
+          subtotal: calculatedItem.subtotal,
+          reasoning: calculatedItem.reasoning,
+          sourceOfTruth: calculatedItem.sourceOfTruth,
+          confidence: calculatedItem.confidence
+        };
+        
+        console.log(`✅ Main work item recalculated: ${calculatedItem.name} (${calculatedItem.hours}h @ ${calculatedItem.hourlyRate} kr/h = ${calculatedItem.subtotal} kr)`);
+      }
+      
+      // 7. Check and add service vehicle if needed
+      const totalHours = quote.workItems?.reduce((sum: number, item: any) => sum + item.hours, 0) || 0;
+      const serviceVehicle = calculateServiceVehicle(
+        totalHours,
+        jobDef,
+        equipmentRates?.find(e => e.name?.toLowerCase().includes('service'))?.price_per_day
+      );
+      
+      if (serviceVehicle) {
+        quote.equipment = quote.equipment || [];
+        quote.equipment.push({
+          name: serviceVehicle.name,
+          days: jobDef.serviceVehicle?.unit === 'dag' ? 1 : 0.5,
+          dailyRate: serviceVehicle.subtotal,
+          subtotal: serviceVehicle.subtotal,
+          reasoning: serviceVehicle.reasoning,
+          sourceOfTruth: serviceVehicle.sourceOfTruth,
+          confidence: serviceVehicle.confidence
+        });
+        console.log(`✅ Service vehicle added: ${serviceVehicle.name} (${serviceVehicle.subtotal} kr)`);
+      }
+      
+      // 8. Update materials with buckets + user markup (if user has markup in patterns)
+      const userMarkup = learningContext.userPatterns?.typical_margins?.avg || 0;
+      
+      if (quote.materials && quote.materials.length > 0 && userMarkup > 0) {
+        console.log(`💰 Applying ${userMarkup}% user markup to materials...`);
+        
+        for (const material of quote.materials) {
+          if (material.pricePerUnit && material.pricePerUnit > 0) {
+            const originalPrice = material.pricePerUnit;
+            material.pricePerUnit = Math.round(originalPrice * (1 + userMarkup / 100));
+            material.subtotal = material.quantity * material.pricePerUnit;
+            material.reasoning = (material.reasoning || '') + ` [+${userMarkup}% användarpåslag]`;
+            console.log(`  ✅ ${material.name}: ${originalPrice} kr → ${material.pricePerUnit} kr`);
+          }
+        }
+      }
+      
+      // 9. Recalculate totals
+      quote = computeQuoteTotals(quote, hourlyRates || [], equipmentRates || [], isDraft);
+      console.log(`💰 Totals recalculated after Formula Engine: ${quote.summary?.totalBeforeVAT} kr`);
+      
+      // 10. Run Global Validator
+      const globalValidation = validateQuote(
+        quote,
+        jobDef,
+        learningContext.industryData || []
+      );
+      
+      if (!globalValidation.isValid) {
+        console.error('❌ Global validation failed:', globalValidation.errors);
+        globalValidation.errors.forEach(e => console.error(`  - ${e}`));
+      }
+      
+      if (globalValidation.warnings.length > 0) {
+        console.warn('⚠️ Global validation warnings:');
+        globalValidation.warnings.forEach(w => console.warn(`  - ${w}`));
+      }
+      
+      if (globalValidation.suggestions.length > 0) {
+        console.log('💡 Global validation suggestions:');
+        globalValidation.suggestions.forEach(s => console.log(`  - ${s}`));
+      }
+      
+      // Apply auto-corrections if any
+      if (globalValidation.autoCorrections.length > 0) {
+        console.log(`🔧 Applying ${globalValidation.autoCorrections.length} auto-corrections...`);
+        const { applyAutoCorrections } = await import('./helpers/globalValidator.ts');
+        quote = applyAutoCorrections(quote, globalValidation.autoCorrections);
+        
+        // Recalculate after corrections
+        quote = computeQuoteTotals(quote, hourlyRates || [], equipmentRates || [], isDraft);
+      }
+      
+      console.log('✅ FAS 1-2: Formula Engine integration complete');
+    } else {
+      console.log('⚠️ No specific job definition found, using AI-generated values');
+    }
+    
+    // ============================================================================
+    // END FAS 1-2
+    // ============================================================================
+    
     // FAS 4: Material pricing fallback efter quote-generering
     console.log('🔍 FAS 4: Checking for missing material prices...');
     for (const material of quote.materials || []) {
