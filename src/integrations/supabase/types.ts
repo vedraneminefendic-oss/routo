@@ -385,6 +385,57 @@ export type Database = {
         }
         Relationships: []
       }
+      golden_tests: {
+        Row: {
+          created_at: string | null
+          expected_hours_max: number | null
+          expected_hours_min: number | null
+          expected_price_max: number
+          expected_price_min: number
+          id: string
+          input_data: Json
+          job_type: string
+          last_run_at: string | null
+          pass_count: number | null
+          run_count: number | null
+          scenario_description: string
+          test_name: string
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          expected_hours_max?: number | null
+          expected_hours_min?: number | null
+          expected_price_max: number
+          expected_price_min: number
+          id?: string
+          input_data: Json
+          job_type: string
+          last_run_at?: string | null
+          pass_count?: number | null
+          run_count?: number | null
+          scenario_description: string
+          test_name: string
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          expected_hours_max?: number | null
+          expected_hours_min?: number | null
+          expected_price_max?: number
+          expected_price_min?: number
+          id?: string
+          input_data?: Json
+          job_type?: string
+          last_run_at?: string | null
+          pass_count?: number | null
+          run_count?: number | null
+          scenario_description?: string
+          test_name?: string
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
       hourly_rates: {
         Row: {
           created_at: string | null
