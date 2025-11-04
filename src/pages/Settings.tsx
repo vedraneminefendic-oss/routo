@@ -12,6 +12,7 @@ import CompanySettings from "@/components/CompanySettings";
 import HourlyRatesManager from "@/components/HourlyRatesManager";
 import EquipmentRatesManager from "@/components/EquipmentRatesManager";
 import TemplatesManager from "@/components/TemplatesManager";
+import { RegressionTestRunner } from "@/components/RegressionTestRunner";
 import { toast } from "sonner";
 import { AppHeader } from "@/components/AppHeader";
 
@@ -256,6 +257,10 @@ const Settings = () => {
             </div>
           </CardContent>
         </Card>
+
+        <div className="mt-6">
+          <RegressionTestRunner />
+        </div>
       </main>
     </div>
   );

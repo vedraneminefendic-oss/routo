@@ -57,3 +57,6 @@ verify_jwt = true
 
 [functions.seed-industry-standards]
 verify_jwt = false
+
+[functions.run-regression-tests]
+verify_jwt = false
