@@ -5352,7 +5352,7 @@ Svara med **1**, **2** eller **3** (eller "granska", "generera", "mer info")`;
       let sanityCorrectionsMade = false;
       
       for (const workItem of quote.workItems) {
-        if (workItem.hours > 50) {
+        if (workItem.hours > 100) {  // Endast extrema fall - låt P0-valideringen hantera <100h
           console.error(`🚨 KRITISK FEL: ${workItem.name} har ${workItem.hours}h - EXTREMT ORIMLIGT!`);
           
           // Auto-korrigera baserat på moment-typ
@@ -5429,9 +5429,11 @@ Svara med **1**, **2** eller **3** (eller "granska", "generera", "mer info")`;
     
     for (let i = 0; i < (quote.workItems || []).length; i++) {
       const workItem = quote.workItems[i];
-      const standard = findStandard(workItem.name);
+      const standard = findStandard(workItem.name, { jobType: completeDescription });
       
-      if (!standard) {
+      if (standard) {
+        console.log(`   📏 ${workItem.name}: Använder standard '${standard.jobType}' (${standard.timePerUnit.typical}h/${standard.timePerUnit.unit})`);
+      } else {
         console.log(`   ℹ️ ${workItem.name}: No standard found, skipping forced validation`);
         continue;
       }
@@ -5451,8 +5453,14 @@ Svara med **1**, **2** eller **3** (eller "granska", "generera", "mer info")`;
       }
       
       const typicalTime = amount * standard.timePerUnit.typical;
-      const minAllowed = typicalTime * 0.85; // -15%
-      const maxAllowed = typicalTime * 1.15; // +15%
+      
+      // För badrum: använd ±25% (mer realistiskt för naturlig variation)
+      // För andra jobb: behåll ±15%
+      const isBathroom = completeDescription.toLowerCase().includes('badrum');
+      const tolerance = isBathroom ? 0.25 : 0.15;
+      
+      const minAllowed = typicalTime * (1 - tolerance);
+      const maxAllowed = typicalTime * (1 + tolerance);
       
       // FORCED CORRECTION if outside ±15%
       if (workItem.hours < minAllowed || workItem.hours > maxAllowed) {
