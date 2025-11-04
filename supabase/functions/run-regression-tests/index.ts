@@ -55,7 +55,10 @@ Deno.serve(async (req) => {
       try {
         // Call generate-quote edge function med input_data från databasen
         const { data: quoteData, error: quoteError } = await supabase.functions.invoke('generate-quote', {
-          body: test.input_data
+          body: test.input_data,
+          headers: {
+            Authorization: `Bearer ${supabaseKey}`
+          }
         });
 
         if (quoteError) throw quoteError;
