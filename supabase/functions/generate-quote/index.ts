@@ -3156,15 +3156,15 @@ ${previousQuote.materials?.map((m: any, i: number) => `${i+1}. ${m.name} - ${m.s
 
 ---
 
-${layeredContext.layer1}
+${layeredContext.layer1_market}
 
 ---
 
-${layeredContext.layer2}
+${layeredContext.layer2_industry}
 
 ---
 
-${layeredContext.layer3}
+${layeredContext.layer3_user}
 
 `;
 
@@ -3713,7 +3713,7 @@ ALLA texter i offerten MÅSTE vara på SVENSKA:
     
     // P1: Generate deterministic seed for consistency
     const deterministicSeed = generateDeterministicSeed(
-      layeredContext.layer1,
+      layeredContext.layer1_market,
       conversationHistory
     );
     console.log(`🎲 Deterministic seed generated: ${deterministicSeed}`);

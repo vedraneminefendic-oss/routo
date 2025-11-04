@@ -1,9 +1,12 @@
-// FAS 1: Tredelad promptstruktur för Handoff-liknande AI
+// ============================================================================
+// LAYERED PROMPT - FAS 0: HYBRIDMODELL (WEB → BRANSCH → USER)
+// ============================================================================
 
 interface LayeredContext {
-  layer1: string;
-  layer2: string;
-  layer3: string;
+  layer1_market: string;      // Webben (alltid 100% för nya)
+  layer2_industry: string;    // Branschdata (80% vikt)
+  layer3_user: string;        // User (0% → 100% efter 20+ offerter)
+  userWeighting: number;      // 0-100% baserat på erfarenhet
 }
 
 interface ConversationMessage {
@@ -12,10 +15,10 @@ interface ConversationMessage {
 }
 
 /**
- * FAS 1: Bygger tredelad promptstruktur
- * Lager 1: Användarspecifik kontext (högsta prioritet)
- * Lager 2: Global branschdata (medium prioritet)
- * Lager 3: Extern kunskap (lägsta prioritet, fallback)
+ * FAS 0: HYBRIDMODELL - Ny prioritering
+ * Lager 1 (högst): Webben/marknadsnivå (för nya användare)
+ * Lager 2 (medium): Branschdata/benchmarks (validering)
+ * Lager 3 (viktad): Användarens egna priser (0-100% baserat på antal offerter)
  */
 export async function buildLayeredPrompt(
   userId: string,
@@ -26,60 +29,66 @@ export async function buildLayeredPrompt(
   liveSearchResult?: any
 ): Promise<LayeredContext> {
   
-  console.log('🏗️ FAS 1: Building 3-layer prompt structure...');
+  console.log('🏗️ FAS 0: Building 3-layer HYBRID prompt structure...');
   
-  // ============ LAGER 1: ANVÄNDARSPECIFIK KONTEXT (HÖGSTA PRIORITET) ============
+  // ============ BERÄKNA ANVÄNDARVIKTNING (0-100%) ============
   
-  // 1.1 Hämta användarens historik från user_quote_patterns
   const { data: userPatterns } = await supabase
     .from('user_quote_patterns')
     .select('*')
     .eq('user_id', userId)
     .single();
   
-  // 1.2 Hämta användarens timpriser
+  const totalQuotes = userPatterns?.total_quotes || 0;
+  const userWeighting = Math.min(100, (totalQuotes / 20) * 100);
+  const marketWeighting = 100 - userWeighting;
+  
+  console.log('📊 Weighting calculated:', {
+    totalQuotes,
+    userWeighting: `${userWeighting.toFixed(0)}%`,
+    marketWeighting: `${marketWeighting.toFixed(0)}%`
+  });
+  
+  // ============ LAGER 1: MARKNADSNIVÅ (WEBBEN - HÖGSTA PRIORITET FÖR NYA) ============
+  
+  const layer1_market = `
+**LAGER 1: MARKNADSNIVÅ (WEBBEN - ${marketWeighting.toFixed(0)}% vikt)**
+
+${liveSearchResult ? `
+**Live-webbsökning utförd:**
+- Arbetstyp: ${description}
+- Tidsuppskattning: ${liveSearchResult.timeEstimate} timmar
+- Prisklass: ${liveSearchResult.priceRange.min}-${liveSearchResult.priceRange.max} kr
+- Timpris: ${liveSearchResult.hourlyRate} kr/h
+- Källa: ${liveSearchResult.source}
+- Confidence: ${liveSearchResult.confidence}
+` : 'Webbaserad prisinformation från jobbdefinitioner och branschstandarder'}
+
+**ROT/RUT-regler (från Skatteverket):**
+- ROT: 30% avdrag på arbetskostnad, max 50 000 kr/år per person
+  - Gäller: Renovering, ombyggnad, tillbyggnad, underhåll i BOSTAD
+  - Gäller INTE: Nybyggnation, fritidshus som inte är permanentbostad
+- RUT: 50% avdrag på arbetskostnad, max 75 000 kr/år per person
+  - Gäller: Hushållsnära tjänster (städning, trädgård, snöröjning, flytthjälp)
+  - Gäller INTE: Arbete på annans fastighet, material, trädfällning
+
+**INSTRUKTION:** Detta är MARKNADSPRISER som ger användarna genast trovärdiga offerter.
+För nya användare (${totalQuotes} offerter): Använd ${marketWeighting.toFixed(0)}% marknad, ${userWeighting.toFixed(0)}% användarens priser.
+`;
+  
+  // ============ HÄMTA ANVÄNDARDATA ============
+  
   const { data: userRates } = await supabase
     .from('hourly_rates')
     .select('*')
     .eq('user_id', userId);
   
-  // 1.3 Hämta användarens utrustningspriser
   const { data: userEquipment } = await supabase
     .from('equipment_rates')
     .select('*')
     .eq('user_id', userId);
-  
-  // 1.4 Bygg Lager 1-text
-  const layer1 = `
-**LAGER 1: ANVÄNDARSPECIFIK KONTEXT (HÖGSTA PRIORITET)**
 
-**Konversationshistorik:**
-${conversationHistory.map(m => `${m.role === 'user' ? 'Kund' : 'Du'}: ${m.content}`).join('\n')}
-
-**Användarens prissättningsprofil:**
-${userPatterns ? `
-- Prissättningsstil: ${userPatterns.pricing_style || 'market_rate'} 
-  (budget = lägre än marknad, premium = högre än marknad)
-- Genomsnittlig marginal: ${userPatterns.typical_margins?.avg || 'okänd'}%
-- Material/arbete-ratio: ${userPatterns.avg_material_to_work_ratio || 'okänd'}
-- Detaljnivå-preferens: ${userPatterns.preferred_detail_level || 'standard'}
-- Totalt ${userPatterns.total_quotes || 0} offerter skapade
-` : 'Ingen historik tillgänglig - använd branschstandarder'}
-
-**Användarens egna timpriser:**
-${userRates && userRates.length > 0 ? userRates.map((r: any) => 
-  `- ${r.work_type}: ${r.rate} kr/h`
-).join('\n') : 'Inga egna timpriser angivna'}
-
-**Användarens utrustningspriser:**
-${userEquipment && userEquipment.length > 0 ? userEquipment.map((e: any) => 
-  `- ${e.equipment_name}: ${e.rate_per_day} kr/dag`
-).join('\n') : 'Ingen egen utrustning angiven'}
-
-**INSTRUKTION:** Detta är DIN användares preferenser. Prioritera dessa framför allt annat!
-`;
-
-  // ============ LAGER 2: GLOBAL BRANSCHDATA (MEDIUM PRIORITET) ============
+  // ============ LAGER 2: BRANSCHDATA (VALIDERING - 80% VIKT) ============
   
   // 2.1 Hämta liknande accepterade offerter
   const { data: similarQuotes } = await supabase
@@ -96,7 +105,7 @@ ${userEquipment && userEquipment.length > 0 ? userEquipment.map((e: any) =>
     .order('sample_size', { ascending: false })
     .limit(20);
   
-  // 2.3 Hämta aggregerad kunskap från industry_knowledge (FAS 7)
+  // 2.3 Hämta aggregerad kunskap från industry_knowledge
   const { data: industryKnowledge } = await supabase
     .from('industry_knowledge')
     .select('*')
@@ -105,9 +114,8 @@ ${userEquipment && userEquipment.length > 0 ? userEquipment.map((e: any) =>
     .order('content->acceptanceRate', { ascending: false })
     .limit(20);
   
-  // 2.4 Bygg Lager 2-text
-  const layer2 = `
-**LAGER 2: GLOBAL BRANSCHDATA (MEDIUM PRIORITET)**
+  const layer2_industry = `
+**LAGER 2: BRANSCHDATA (VALIDERING - 80% vikt)**
 
 **Liknande accepterade offerter (från andra användare):**
 ${similarQuotes && similarQuotes.length > 0 ? similarQuotes.map((q: any) => `
@@ -121,7 +129,7 @@ ${benchmarks && benchmarks.length > 0 ? benchmarks.map((b: any) =>
   `- ${b.work_category}: ${b.median_value} ${b.metric_type} (${b.min_value}-${b.max_value}) [${b.sample_size} användare]`
 ).join('\n') : 'Inga branschstandarder tillgängliga'}
 
-**Standardmoment (baserat på ${industryKnowledge?.length || 0} accepterade mönster från FAS 7):**
+**Standardmoment (baserat på ${industryKnowledge?.length || 0} accepterade mönster):**
 ${industryKnowledge && industryKnowledge.length > 0 ? industryKnowledge.map((item: any) => `
 - "${item.content.workItem}" 
   ✓ Accepterat av ${item.content.uniqueUsers} användare (${item.content.acceptanceRate} ggr)
@@ -129,39 +137,62 @@ ${industryKnowledge && industryKnowledge.length > 0 ? industryKnowledge.map((ite
   ✓ Confidence: ${(item.content.avgConfidence * 100).toFixed(0)}%
 `).join('\n') : 'Inga standardmoment identifierade än (kräver minst 3 olika användare)'}
 
-**INSTRUKTION:** Använd denna data om Lager 1 saknar information, eller för att validera användarens priser mot marknaden.
-Om ett projekt liknar dessa standardmoment, överväg att inkludera dem (men bara om relevanta för just detta projekt).
+**INSTRUKTION:** Använd denna data för att VALIDERA marknadspriser och föreslå standardmoment.
+Om ett projekt liknar dessa standardmoment, överväg att inkludera dem.
 `;
 
-  // ============ LAGER 3: EXTERN KUNSKAP (LÄGSTA PRIORITET - FALLBACK) ============
+  // ============ LAGER 3: ANVÄNDARDATA (VIKTAD 0-100% EFTER ERFARENHET) ============
   
-  // 3.1 Bygg Lager 3-text med eventuell live-sökning
-  const layer3 = `
-**LAGER 3: EXTERN KUNSKAP (FALLBACK - LÄGSTA PRIORITET)**
+  const layer3_user = `
+**LAGER 3: ANVÄNDARDATA (VIKTAD ${userWeighting.toFixed(0)}% efter ${totalQuotes} offerter)**
 
-${liveSearchResult ? `
-**Live-webbsökning utförd:**
-- Arbetstyp: ${description}
-- Tidsuppskattning: ${liveSearchResult.timeEstimate} timmar
-- Prisklass: ${liveSearchResult.priceRange.min}-${liveSearchResult.priceRange.max} kr
-- Källa: ${liveSearchResult.source}
-- Confidence: 0.6 (extern data, ej verifierad)
+**Konversationshistorik:**
+${conversationHistory.map(m => `${m.role === 'user' ? 'Kund' : 'Du'}: ${m.content}`).join('\n')}
 
-**OBS:** Denna data är hämtad från öppna källor och har lägre tillförlitlighet än Lager 1 och 2.
-` : 'Ingen live-sökning utförd - tillräcklig data finns i Lager 1 och 2'}
+**Användarens prissättningsprofil:**
+${userPatterns ? `
+- Prissättningsstil: ${userPatterns.pricing_style || 'market_rate'}
+- Genomsnittlig marginal: ${userPatterns.typical_margins?.avg || 'okänd'}%
+- Material/arbete-ratio: ${userPatterns.avg_material_to_work_ratio || 'okänd'}
+- Detaljnivå-preferens: ${userPatterns.preferred_detail_level || 'standard'}
+- Totalt ${totalQuotes} offerter skapade → ${userWeighting.toFixed(0)}% vikt
+` : 'Ingen historik tillgänglig (ny användare)'}
 
-**ROT/RUT-regler (från Skatteverket):**
-- ROT: 50% avdrag på arbetskostnad, max 75 000 kr/år per person
-  - Gäller: Renovering, ombyggnad, tillbyggnad, underhåll i BOSTAD
-  - Gäller INTE: Nybyggnation, fritidshus som inte är permanentbostad
-- RUT: 50% avdrag på arbetskostnad, max 75 000 kr/år per person
-  - Gäller: Hushållsnära tjänster (städning, trädgård, snöröjning, flytthjälp)
-  - Gäller INTE: Arbete på annans fastighet, material, trädfällning
+**Användarens egna timpriser (${userWeighting.toFixed(0)}% vikt):**
+${userRates && userRates.length > 0 ? userRates.map((r: any) => 
+  `- ${r.work_type}: ${r.rate} kr/h`
+).join('\n') : 'Inga egna timpriser angivna → använd marknadspriser'}
 
-**INSTRUKTION:** Använd denna data ENDAST om Lager 1 och 2 saknar information. Markera alltid med lägre confidence (0.5-0.7) om du använder Lager 3.
+**Användarens utrustningspriser:**
+${userEquipment && userEquipment.length > 0 ? userEquipment.map((e: any) => 
+  `- ${e.equipment_name}: ${e.rate_per_day} kr/dag`
+).join('\n') : 'Ingen egen utrustning angiven → använd standardpriser'}
+
+**INSTRUKTION VIKTAD HYBRIDMODELL:**
+${totalQuotes === 0 ? `
+🆕 NY ANVÄNDARE (0 offerter):
+- Använd 100% marknadspriser från Lager 1
+- Ge genast trovärdiga priser som matchar marknaden
+- Bygg förtroende genom realistiska estimat
+` : totalQuotes < 10 ? `
+📊 VÄXANDE ANVÄNDARE (${totalQuotes} offerter):
+- Använd ${marketWeighting.toFixed(0)}% marknadspriser + ${userWeighting.toFixed(0)}% användarens priser
+- Weighted average: (user_rate × ${userWeighting.toFixed(0)}%) + (market_rate × ${marketWeighting.toFixed(0)}%)
+- Gradvis anpassning till användarens prisnivå
+` : `
+👤 ERFAREN ANVÄNDARE (${totalQuotes} offerter):
+- Använd ${userWeighting.toFixed(0)}% användarens priser + ${marketWeighting.toFixed(0)}% marknadspriser
+- Systemet är nu anpassat till användarens faktiska prisnivå
+- Marknadspriser används endast för validering
+`}
 `;
 
-  console.log('✅ FAS 1: Layered prompt built successfully');
+  console.log('✅ FAS 0: Hybrid layered prompt built successfully');
   
-  return { layer1, layer2, layer3 };
+  return { 
+    layer1_market, 
+    layer2_industry, 
+    layer3_user, 
+    userWeighting 
+  };
 }
