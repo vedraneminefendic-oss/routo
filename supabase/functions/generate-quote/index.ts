@@ -12,7 +12,7 @@ import { z } from 'https://deno.land/x/zod@v3.22.4/mod.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-regression-test',
 };
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
@@ -4009,39 +4009,44 @@ Deno.serve(async (req) => {
     console.log('Intent:', intent);
     console.log('Previous quote ID:', previous_quote_id || 'None (new quote)');
 
-    // Get user ID from JWT
-    const authHeader = req.headers.get('Authorization');
-    if (!authHeader) {
-      throw new Error('Missing authorization header');
-    }
+    // Get auth token and detect regression mode
+    const rawAuth = req.headers.get('Authorization') || req.headers.get('authorization') || '';
+    const token = rawAuth.split(' ')[1]?.trim() || '';
 
     const supabaseClient = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
-    const token = authHeader.replace('Bearer ', '');
 
     let user_id: string;
     let isRegressionTest = false;
 
-    // Check for regression test mode - requires BOTH header AND service role key for security
     const regHeader = req.headers.get('x-regression-test');
     const hasRegressionHeader = regHeader === '1' || regHeader === 'true';
-    const hasServiceRoleKey = token === SUPABASE_SERVICE_ROLE_KEY;
 
-    if (hasRegressionHeader && hasServiceRoleKey) {
-      // Regression test mode - requires both header and service role key
+    // Activate regression mode if service role key is used
+    if (token && token === SUPABASE_SERVICE_ROLE_KEY) {
       isRegressionTest = true;
       user_id = '00000000-0000-0000-0000-000000000000';
-      console.log('🧪 Regression mode activated (header + service role key verified)');
-      console.log('🔑 Token (masked):', token.substring(0, 6) + '...');
+      console.log('🧪 Regression via service key detected', { hasRegressionHeader, tokenPrefix: token.substring(0, 6) });
     } else {
+      if (!token) {
+        console.error('Missing authorization header or token');
+        return new Response(
+          JSON.stringify({ error: 'Missing authorization header', hint: 'Send a valid user JWT or the service role key for regression' }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 401 }
+        );
+      }
+
       // Normal JWT validation for regular users
       const { data: { user }, error: userError } = await supabaseClient.auth.getUser(token);
-
       if (userError || !user) {
         console.error('JWT validation failed:', userError?.message);
-        throw new Error('Invalid authorization token');
+        return new Response(
+          JSON.stringify({ error: 'Invalid authorization token', hint: 'Expected service role for regression or a valid user JWT' }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 401 }
+        );
       }
 
       user_id = user.id;
+      console.log('🔐 Normal user JWT path', { tokenPrefix: token.substring(0, 6) });
       console.log('✅ Generating quote for user:', user_id);
     }
 
