@@ -5505,13 +5505,18 @@ Svara med **1**, **2** eller **3** (eller "granska", "generera", "mer info")`;
 
     
     // ============================================
-    // P0: FORCED TIME ESTIMATE VALIDATION - STRICT ±15% ENFORCEMENT
+    // P0: FORCED TIME ESTIMATE VALIDATION - INAKTIVERAD (BRUTEN LOGIK)
     // ============================================
     
-    console.log('🚨 P0: Applying FORCED time estimate validation (±15% strict enforcement)...');
+    // INAKTIVERAD: Denna auto-korrigering gav felaktiga resultat
+    // Exempel: "AUTO-KORRIGERAD: 0.9h → 0.4h (+127% från branschstandard)"
+    // Detta är logiskt inkonsekvent - +127% skulle innebära ÖKNING, inte minskning
+    
+    console.log('⚠️ P0: Auto-korrigering INAKTIVERAD (väntar på fix av logik)');
     
     let forcedCorrections = 0;
     
+    /* TEMPORARILY DISABLED - BROKEN LOGIC
     for (let i = 0; i < (quote.workItems || []).length; i++) {
       const workItem = quote.workItems[i];
       const standard = findStandard(workItem.name, { jobType: completeDescription });
@@ -5566,6 +5571,7 @@ Svara med **1**, **2** eller **3** (eller "granska", "generera", "mer info")`;
         console.log(`   ✅ ${workItem.name}: ${workItem.hours.toFixed(1)}h är inom ±15% av ${typicalTime.toFixed(1)}h`);
       }
     }
+    */
     
     if (forcedCorrections > 0) {
       console.log(`✅ P0: Forced ${forcedCorrections} corrections to match industry standards`);
@@ -6207,6 +6213,45 @@ Svara med **1**, **2** eller **3** (eller "granska", "generera", "mer info")`;
       } catch (error) {
         console.error('Error calculating time saved:', error);
       }
+    }
+
+    // ============================================
+    // STEP 8.5: MATEMATIK SANITY CHECK
+    // ============================================
+    
+    console.log('🔍 SANITY CHECK: Verifierar att summary stämmer med workItems...');
+    
+    const calculatedWorkCost = quote.workItems?.reduce((sum: number, w: any) => sum + (w.subtotal || 0), 0) || 0;
+    const declaredWorkCost = quote.summary?.workCost || 0;
+    const difference = Math.abs(calculatedWorkCost - declaredWorkCost);
+    const differencePercent = declaredWorkCost > 0 ? ((difference / declaredWorkCost) * 100) : 0;
+    
+    if (difference > 100) {
+      console.error(`❌ MATEMATIKFEL UPPTÄCKT!`);
+      console.error(`   Deklarerad workCost: ${declaredWorkCost.toFixed(2)} kr`);
+      console.error(`   Beräknad från workItems: ${calculatedWorkCost.toFixed(2)} kr`);
+      console.error(`   Differens: ${difference.toFixed(2)} kr (${differencePercent.toFixed(1)}%)`);
+      console.error(`   🔧 AUTO-KORRIGERAR nu...`);
+      
+      // Auto-fix: Räkna om alla summor från workItems
+      quote.summary.workCost = calculatedWorkCost;
+      quote.summary.totalBeforeVAT = calculatedWorkCost + (quote.summary.materialCost || 0) + (quote.summary.equipmentCost || 0);
+      quote.summary.vatAmount = Math.round(quote.summary.totalBeforeVAT * 0.25);
+      quote.summary.totalWithVAT = quote.summary.totalBeforeVAT + quote.summary.vatAmount;
+      
+      // ROT/RUT correction if applicable
+      if (quote.summary.rotRutDeduction) {
+        quote.summary.customerPays = quote.summary.totalWithVAT - quote.summary.rotRutDeduction;
+      } else {
+        quote.summary.customerPays = quote.summary.totalWithVAT;
+      }
+      
+      console.log(`   ✅ KORRIGERAT: Ny workCost = ${quote.summary.workCost.toFixed(2)} kr`);
+      console.log(`   ✅ Ny totalBeforeVAT = ${quote.summary.totalBeforeVAT.toFixed(2)} kr`);
+      console.log(`   ✅ Ny totalWithVAT = ${quote.summary.totalWithVAT.toFixed(2)} kr`);
+      console.log(`   ✅ Ny customerPays = ${quote.summary.customerPays.toFixed(2)} kr`);
+    } else {
+      console.log(`✅ MATEMATIK OK: workCost stämmer med workItems (differens: ${difference.toFixed(2)} kr)`);
     }
 
     // ============================================
