@@ -216,9 +216,13 @@ const Quotes = () => {
 
 
   const filteredQuotes = quotes.filter((quote) => {
+    const searchLower = searchTerm.toLowerCase();
     const matchesSearch = searchTerm === "" || 
-      quote.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      quote.description?.toLowerCase().includes(searchTerm.toLowerCase());
+      quote.title.toLowerCase().includes(searchLower) ||
+      quote.description?.toLowerCase().includes(searchLower) ||
+      quote.customers?.name?.toLowerCase().includes(searchLower) ||
+      quote.customers?.address?.toLowerCase().includes(searchLower) ||
+      (quote as any).work_address?.toLowerCase().includes(searchLower);
     
     let matchesStatus = true;
     

@@ -23,6 +23,7 @@ interface Quote {
   edited_quote?: any;
   project_type?: string;
   customer_id?: string;
+  work_address?: string;
   customers?: {
     name: string;
     address?: string;
@@ -170,9 +171,14 @@ const QuoteList = ({ quotes, onQuoteClick }: QuoteListProps) => {
                     {quote.customers && (
                       <div className="text-sm text-muted-foreground mb-1">
                         <span className="font-medium">{quote.customers.name}</span>
-                        {quote.customers.address && (
-                          <span className="ml-2">• {quote.customers.address}</span>
-                        )}
+                      </div>
+                    )}
+                    
+                    {/* Work address - show work_address if available, fallback to customer address */}
+                    {(quote as any).work_address && (
+                      <div className="text-sm text-muted-foreground mb-1 flex items-start gap-1">
+                        <span className="text-primary mt-0.5">📍</span>
+                        <span>{(quote as any).work_address}</span>
                       </div>
                     )}
                     

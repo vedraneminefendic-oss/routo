@@ -928,6 +928,7 @@ export type Database = {
           updated_at: string
           user_id: string
           viewed_at: string | null
+          work_address: string | null
         }
         Insert: {
           auto_followup_enabled?: boolean | null
@@ -956,6 +957,7 @@ export type Database = {
           updated_at?: string
           user_id: string
           viewed_at?: string | null
+          work_address?: string | null
         }
         Update: {
           auto_followup_enabled?: boolean | null
@@ -984,6 +986,7 @@ export type Database = {
           updated_at?: string
           user_id?: string
           viewed_at?: string | null
+          work_address?: string | null
         }
         Relationships: [
           {

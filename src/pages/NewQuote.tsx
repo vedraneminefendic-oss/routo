@@ -15,6 +15,7 @@ import { ExpressQuoteForm } from "@/components/ExpressQuoteForm";
 import { Breadcrumbs } from "@/components/Breadcrumbs";
 import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
 import { MobileNav } from "@/components/MobileNav";
+import { QuoteMetadataDialog } from "@/components/QuoteMetadataDialog";
 
 const NewQuote = () => {
   const navigate = useNavigate();
@@ -31,6 +32,8 @@ const NewQuote = () => {
   const [currentCustomerId, setCurrentCustomerId] = useState<string | undefined>(undefined);
   const [hasCustomRates, setHasCustomRates] = useState(false);
   const [hourlyRate, setHourlyRate] = useState<number>(650);
+  const [showMetadataDialog, setShowMetadataDialog] = useState(false);
+  const [pendingSaveAction, setPendingSaveAction] = useState<'save' | 'save_and_continue'>('save');
   
   // P1: Live preview state
   const [conversationSummary, setConversationSummary] = useState<any>(null);
@@ -239,19 +242,44 @@ const NewQuote = () => {
   const handleSaveQuote = async (action: 'save' | 'save_and_continue' = 'save') => {
     if (!currentQuote || !user) return;
 
+    // Check if we need to show metadata dialog
+    const needsMetadata = !currentCustomerId && !currentQuote.workAddress;
+    
+    if (needsMetadata) {
+      setPendingSaveAction(action);
+      setShowMetadataDialog(true);
+      return;
+    }
+
+    // Proceed with save
+    await performSaveQuote(action);
+  };
+
+  const performSaveQuote = async (
+    action: 'save' | 'save_and_continue' = 'save',
+    metadata?: {
+      customerId: string | null;
+      workAddress: string;
+      projectType: string;
+    }
+  ) => {
+    if (!currentQuote || !user) return;
+
     setIsSaving(true);
     try {
-      // Determine project type from description
-      const description = currentDescription.toLowerCase();
-      let projectType = 'övrigt';
-      if (description.includes('badrum')) projectType = 'badrum';
-      else if (description.includes('kök')) projectType = 'kök';
-      else if (description.includes('målning') || description.includes('måla')) projectType = 'målning';
-      else if (description.includes('städ')) projectType = 'städning';
-      else if (description.includes('trädgård')) projectType = 'trädgård';
-      else if (description.includes('el') || description.includes('elektr')) projectType = 'el';
-      else if (description.includes('vvs') || description.includes('rör')) projectType = 'vvs';
-      else if (description.includes('fönster')) projectType = 'fönster';
+      // Determine project type from description if not provided
+      let projectType = metadata?.projectType || 'övrigt';
+      if (!metadata?.projectType) {
+        const description = currentDescription.toLowerCase();
+        if (description.includes('badrum')) projectType = 'badrum';
+        else if (description.includes('kök')) projectType = 'kök';
+        else if (description.includes('målning') || description.includes('måla')) projectType = 'målning';
+        else if (description.includes('städ')) projectType = 'städning';
+        else if (description.includes('trädgård')) projectType = 'trädgård';
+        else if (description.includes('el') || description.includes('elektr')) projectType = 'el';
+        else if (description.includes('vvs') || description.includes('rör')) projectType = 'vvs';
+        else if (description.includes('fönster')) projectType = 'fönster';
+      }
 
       const { data, error } = await supabase
         .from('quotes')
@@ -262,7 +290,8 @@ const NewQuote = () => {
           generated_quote: currentQuote,
           project_type: projectType,
           status: 'draft',
-          customer_id: currentCustomerId || null
+          customer_id: metadata?.customerId || currentCustomerId || null,
+          work_address: metadata?.workAddress || currentQuote.workAddress || null,
         })
         .select()
         .single();
@@ -271,7 +300,7 @@ const NewQuote = () => {
 
       if (action === 'save') {
         toast.success("Offert sparad!");
-        navigate('/quotes');
+        navigate('/queries');
       } else {
         toast.success("Offert sparad! Du kan fortsätta redigera.");
         navigate(`/quotes?id=${data.id}`, { replace: true });
@@ -282,6 +311,14 @@ const NewQuote = () => {
     } finally {
       setIsSaving(false);
     }
+  };
+
+  const handleMetadataSave = (metadata: {
+    customerId: string | null;
+    workAddress: string;
+    projectType: string;
+  }) => {
+    performSaveQuote(pendingSaveAction, metadata);
   };
 
   const handleEditQuote = () => {
@@ -561,6 +598,15 @@ const NewQuote = () => {
           </div>
         )}
       </main>
+
+      <QuoteMetadataDialog
+        open={showMetadataDialog}
+        onOpenChange={setShowMetadataDialog}
+        onSave={handleMetadataSave}
+        initialCustomerId={currentCustomerId}
+        initialWorkAddress={currentQuote?.workAddress || ""}
+        initialProjectType=""
+      />
       
       <MobileNav />
     </div>
