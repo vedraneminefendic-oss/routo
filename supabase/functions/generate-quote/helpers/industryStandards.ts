@@ -1285,12 +1285,20 @@ export const INDUSTRY_STANDARDS: JobStandard[] = [
 
 /**
  * Hitta branschstandard baserat på jobbtyp
+ * 
+ * FAS 3: DOKUMENTATION
+ * STEG 1 behövs endast för jobbtyper med många delmoment och moment-specifika standarder.
+ * Exempel: badrum, kök, målning, fasad har separata standarder för varje delmoment.
+ * Generella jobbtyper (städning, gräsklippning etc) fungerar automatiskt med STEG 2/3.
  */
 export function findStandard(
   jobDescription: string,
   context?: { jobType?: string; category?: string }
 ): JobStandard | null {
   const lower = jobDescription.toLowerCase();
+  
+  // FAS 1.2: Logga inkommande sökning för debugging
+  console.log(`🔍 findStandard: Söker standard för "${jobDescription}"${context?.jobType ? ` (kontext: ${context.jobType})` : ''}`);
   
   // STEG 1: Om kontext finns, prioritera moment-specifika standarder
   if (context?.jobType) {
@@ -1304,13 +1312,23 @@ export function findStandard(
       if (lower.includes('vvs') || lower.includes('rör')) {
         return INDUSTRY_STANDARDS.find(s => s.jobType === 'vvs_badrum') || null;
       }
+      // FAS 2.1: Förbättrad matchning för el-installation (inkl. "våtrum", "installation")
       if (lower.includes('el')) {
         return INDUSTRY_STANDARDS.find(s => s.jobType === 'el_badrum') || null;
       }
-      if (lower.includes('kakel') && lower.includes('vägg')) {
-        return INDUSTRY_STANDARDS.find(s => s.jobType === 'kakel_vagg') || null;
+      // FAS 2.1: Förbättrad matchning för kakel och klinker kombinerat
+      if (lower.includes('kakel')) {
+        // Om både kakel och klinker nämns, eller bara "kakel och", använd kakel_vagg
+        if (lower.includes('klinker') || lower.includes('vägg')) {
+          return INDUSTRY_STANDARDS.find(s => s.jobType === 'kakel_vagg') || null;
+        }
       }
-      if (lower.includes('klinker') || (lower.includes('golv') && !lower.includes('golvvärme'))) {
+      // Separat matchning för bara klinker
+      if (lower.includes('klinker') && !lower.includes('kakel')) {
+        return INDUSTRY_STANDARDS.find(s => s.jobType === 'klinker_golv') || null;
+      }
+      // Matchning för golv (men inte golvvärme)
+      if (lower.includes('golv') && !lower.includes('golvvärme') && !lower.includes('kakel')) {
         return INDUSTRY_STANDARDS.find(s => s.jobType === 'klinker_golv') || null;
       }
     }
@@ -1396,6 +1414,8 @@ export function findStandard(
   // STEG 2: Exakt matchning mot jobbtyper
   for (const standard of INDUSTRY_STANDARDS) {
     if (lower.includes(standard.jobType)) {
+      // FAS 1.2: Logga när standard hittas via exakt matchning
+      console.log(`✅ Hittade standard via exakt matchning: ${standard.jobType}`);
       return standard;
     }
   }
@@ -1420,10 +1440,17 @@ export function findStandard(
   
   for (const [alias, jobType] of Object.entries(aliases)) {
     if (lower.includes(alias)) {
-      return INDUSTRY_STANDARDS.find(s => s.jobType === jobType) || null;
+      const result = INDUSTRY_STANDARDS.find(s => s.jobType === jobType) || null;
+      if (result) {
+        // FAS 1.2: Logga när standard hittas via alias
+        console.log(`✅ Hittade standard via alias "${alias}" → ${result.jobType}`);
+        return result;
+      }
     }
   }
   
+  // FAS 1.2: Logga när ingen standard hittas
+  console.warn(`❌ Ingen standard hittades för "${jobDescription}"`);
   return null;
 }
 

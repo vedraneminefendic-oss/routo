@@ -75,11 +75,31 @@ export function validateTimeEstimate(
   
   // Om estimerad tid är för hög - KORRIGERA TILL MAXTIME (inte typical)
   if (estimatedHours > maxTime) {
+    const correctedTime = Math.min(estimatedHours, maxTime);
+    const reductionPercent = ((estimatedHours - correctedTime) / estimatedHours) * 100;
+    
+    // ⚠️ FAS 1.1: SAFETY CHECK - Förhindra extrema reduktioner (>70%) som ofta indikerar fel standard
+    if (reductionPercent > 70) {
+      console.error(`🚨 KRITISK VARNING: ${workItemName}`);
+      console.error(`   Original: ${estimatedHours.toFixed(1)}h`);
+      console.error(`   Skulle korrigeras till: ${correctedTime.toFixed(1)}h (-${reductionPercent.toFixed(0)}%)`);
+      console.error(`   Standard: ${standard?.jobType} (${minTime.toFixed(1)}-${maxTime.toFixed(1)}h för ${amount} ${unit})`);
+      console.error(`   → Detta verkar FEL! Troligen fel standard. Behåller originaltid.`);
+      
+      // TILLÅT INTE extrema reduktioner - returnera varning men behåll originaltid
+      return {
+        isRealistic: false,
+        warning: `🚨 KRITISKT: "${workItemName}" har ${estimatedHours.toFixed(1)}h men standard "${standard?.jobType}" är ${minTime.toFixed(1)}-${maxTime.toFixed(1)}h. Detta skulle reducera med ${reductionPercent.toFixed(0)}% vilket indikerar fel standard. Behåller ${estimatedHours.toFixed(1)}h - kontrollera manuellt!`,
+        suggestedRange: { min: minTime, max: maxTime },
+        correctedTime: estimatedHours  // BEHÅLL original istället för att korrigera fel
+      };
+    }
+    
     return {
       isRealistic: false,
       warning: `⚠️ VARNING: ${estimatedHours.toFixed(1)}h är för högt för "${workItemName}"! Branschstandard: ${minTime.toFixed(1)}-${maxTime.toFixed(1)}h för ${amount} ${unit}. Justerat till maximum ${maxTime.toFixed(1)}h.`,
       suggestedRange: { min: minTime, max: maxTime },
-      correctedTime: Math.min(estimatedHours, maxTime)  // Aldrig över maxTime
+      correctedTime
     };
   }
   
@@ -186,9 +206,11 @@ export function autoCorrectTimeEstimates(
         quote.workItems[i].hours = after;
         quote.workItems[i].subtotal = after * workItem.hourlyRate;
         
-        // Lägg till notering om auto-korrigering
+        // FAS 1.3: Förbättra reasoning-meddelanden - visa standard och riktning
+        const direction = after > before ? 'ökad' : 'minskad';
+        const changePercent = Math.abs(((after - before) / before) * 100).toFixed(0);
         quote.workItems[i].reasoning = (workItem.reasoning || '') + 
-          ` [AUTO-KORRIGERAD: Ursprunglig tid ${before.toFixed(1)}h överskred branschstandard]`;
+          ` [AUTO-KORRIGERAD: Ursprunglig tid ${before.toFixed(1)}h ${direction} till ${after.toFixed(1)}h (${changePercent}%) baserat på standard "${standard.jobType}" (${standard.timePerUnit.min}-${standard.timePerUnit.max} ${standard.timePerUnit.unit})]`;
       }
       
       corrections.push({

@@ -5386,6 +5386,9 @@ Svara med **1**, **2** eller **3** (eller "granska", "generera", "mer info")`;
       rooms: roomsMatchValidation ? parseInt(roomsMatchValidation[1]) : undefined
     };
     
+    // FAS 1.4: Logga measurements för debugging
+    console.log('📐 Measurements för validering:', JSON.stringify(measurementsForValidation, null, 2));
+    
     const timeValidation = validateQuoteTimeEstimates(quote, measurementsForValidation);
     
     if (!timeValidation.isValid) {
@@ -5411,6 +5414,45 @@ Svara med **1**, **2** eller **3** (eller "granska", "generera", "mer info")`;
       }
     } else {
       console.log('✅ All time estimates are within industry standards');
+    }
+    
+    // ============================================
+    // FAS 2.2: KRITISK MINIMUM-VALIDERING FÖR BADRUM
+    // ============================================
+    
+    if (completeDescription.toLowerCase().includes('badrum')) {
+      const totalHours = quote.workItems?.reduce((sum: number, item: any) => 
+        sum + (parseFloat(item.hours) || 0), 0) || 0;
+      
+      console.log(`🛁 Badrumsoffert totalt: ${totalHours.toFixed(1)}h`);
+      
+      if (totalHours < 50) {
+        console.error(`🚨 KRITISKT FEL: Badrumsoffert har bara ${totalHours.toFixed(1)}h (minimum 50h krävs för komplett badrumsrenovering)!`);
+        console.error('📋 Arbetsmoment:');
+        quote.workItems?.forEach((item: any) => {
+          console.error(`   - ${item.name}: ${item.hours}h`);
+        });
+        
+        return new Response(
+          JSON.stringify({
+            error: 'Validation failed: Bathroom quote below minimum hours',
+            details: `Offerten genererades med endast ${totalHours.toFixed(1)} timmar, men en komplett badrumsrenovering kräver minst 50 timmar enligt branschstandard. Detta indikerar ett fel i tidsberäkningen.`,
+            quote: quote,
+            validationResult: {
+              totalHours: totalHours.toFixed(1),
+              minimumRequired: 50,
+              workItems: quote.workItems?.map((item: any) => ({
+                name: item.name,
+                hours: item.hours,
+                reasoning: item.reasoning
+              }))
+            }
+          }),
+          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      } else {
+        console.log(`✅ Badrumsoffert är över minimum 50h: ${totalHours.toFixed(1)}h`);
+      }
     }
     
     // ============================================
