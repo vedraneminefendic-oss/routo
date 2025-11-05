@@ -68,6 +68,19 @@ export const CustomerDetailSheet = ({
     }
   };
 
+  const getSwedishStatus = (status: string): string => {
+    const statusMap: { [key: string]: string } = {
+      'draft': 'Utkast',
+      'sent': 'Skickad',
+      'viewed': 'Visad',
+      'accepted': 'Accepterad',
+      'rejected': 'Avvisad',
+      'completed': 'Slutförd',
+      'pending': 'Väntande',
+    };
+    return statusMap[status] || status;
+  };
+
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent className="sm:max-w-xl overflow-y-auto">
@@ -244,7 +257,7 @@ export const CustomerDetailSheet = ({
                           )}
                         </div>
                         <Badge variant={getStatusColor(quote.status)} className="ml-2">
-                          {quote.status}
+                          {getSwedishStatus(quote.status)}
                         </Badge>
                       </div>
                     </CardContent>
