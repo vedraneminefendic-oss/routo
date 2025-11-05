@@ -25,7 +25,8 @@ const TEXT_MODEL = 'google/gemini-2.5-flash';
 import { validateQuoteConsistency } from './helpers/validateQuoteConsistency.ts';
 import { isBathroomProject, getBathroomPromptAddition, BATHROOM_REQUIREMENTS } from './helpers/bathroomRequirements.ts';
 import { validateBathroomQuote, generateValidationSummary, autoFixBathroomQuote } from './helpers/validateBathroomQuote.ts';
-import { isKitchenProject, getKitchenPromptAddition } from './helpers/kitchenRequirements.ts';
+import { isKitchenProject, getKitchenPromptAddition, KITCHEN_REQUIREMENTS } from './helpers/kitchenRequirements.ts';
+import { validateKitchenQuote, generateKitchenValidationSummary } from './helpers/validateKitchenQuote.ts';
 import { isPaintingProject, getPaintingPromptAddition } from './helpers/paintingRequirements.ts';
 // FAS 2 & 5: Import project standards and intent detection
 import { detectProjectType, detectProjectTypeAdvanced, getProjectPromptAddition, PROJECT_STANDARDS, normalizeKeyword, detectScope, detectProjectIntent, type ProjectIntent, type DetectionResult } from './helpers/projectStandards.ts';
@@ -5999,6 +6000,47 @@ Svara med **1**, **2** eller **3** (eller "granska", "generera", "mer info")`;
     }
     
     // ============================================
+    // KITCHEN VALIDATION - Kritisk validering av köksofferter
+    // ============================================
+    let kitchenValidationWarnings: string[] = [];
+    
+    if (isKitchenProject(description, quote.projectType)) {
+      const area = measurements?.area || 10; // Default to 10 sqm if not specified
+      console.log('🍳 Validerar köksoffert för area:', area, 'kvm');
+      
+      const kitchenValidation = validateKitchenQuote(quote, area);
+      
+      if (!kitchenValidation.passed) {
+        console.error('❌ KRITISK: Köksofferten uppfyller inte minimikrav!');
+        console.error('Fel:', kitchenValidation.errors);
+        
+        const validationSummary = generateKitchenValidationSummary(kitchenValidation);
+        
+        // Return error immediately - do not allow underpriced kitchen quotes
+        return new Response(
+          JSON.stringify({
+            error: 'Köksofferten kunde inte genereras - uppfyller inte minimikrav',
+            details: kitchenValidation.errors,
+            summary: validationSummary,
+            missingItems: kitchenValidation.missingItems,
+            underHouredItems: kitchenValidation.underHouredItems,
+            totalIssue: kitchenValidation.totalIssue,
+            suggestion: 'Offerten måste inkludera alla obligatoriska arbetsmoment med tillräckliga timmar och uppfylla minimikostnaden.',
+          }),
+          {
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+            status: 400,
+          }
+        );
+      } else if (kitchenValidation.warnings.length > 0) {
+        console.warn('⚠️ Köksvalidering OK men med varningar:', kitchenValidation.warnings);
+        kitchenValidationWarnings = kitchenValidation.warnings;
+      } else {
+        console.log('✅ Köksvalidering: Alla krav uppfyllda');
+      }
+    }
+    
+    // ============================================
     // NEW: CALCULATE RISK MARGIN (Optional - Only for large uncertain projects)
     // ============================================
     const lowConfidenceAssumptions = assumptions.filter(a => a.confidence < 60).length;
@@ -6174,6 +6216,7 @@ Svara med **1**, **2** eller **3** (eller "granska", "generera", "mer info")`;
           warnings: validation.issues
         } : undefined,
         bathroomValidation: validationWarnings.length > 0 ? validationWarnings : undefined,
+        kitchenValidation: kitchenValidationWarnings.length > 0 ? kitchenValidationWarnings : undefined,
         conversationValidation: !conversationValidation.isValid || conversationValidation.warnings.length > 0 ? {
           removedItems: conversationValidation.unmentionedItems,
           removedValue: Math.round(conversationValidation.removedValue),
