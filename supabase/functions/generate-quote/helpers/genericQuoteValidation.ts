@@ -294,11 +294,34 @@ export function needsGenericValidation(projectType: string, description: string)
     type === 'badrum' ||
     desc.includes('badrum') ||
     
-    // Målning (nyligen implementerad)
+    // Målning
     type === 'painting' ||
     type === 'målning' ||
     desc.includes('målning') ||
-    desc.includes('måla');
+    desc.includes('måla') ||
+    
+    // Städning
+    type === 'cleaning' ||
+    type === 'städning' ||
+    type === 'flyttstädning' ||
+    desc.includes('städ') ||
+    
+    // Trädgård/Trädfällning
+    type === 'gardening' ||
+    type === 'trädgård' ||
+    type === 'trädfällning' ||
+    desc.includes('träd') ||
+    desc.includes('fäll') ||
+    desc.includes('trädgård') ||
+    
+    // El
+    type === 'electrical' ||
+    type === 'el' ||
+    type === 'elinstallation' ||
+    desc.includes('el') ||
+    desc.includes('elektr') ||
+    desc.includes('uttag') ||
+    desc.includes('belysning');
   
   if (hasSpecificValidation) {
     console.log(`   ℹ️ Jobbtyp "${projectType}" har dedikerad validering - skippar generisk`);

@@ -30,6 +30,12 @@ import { validateKitchenQuote, generateKitchenValidationSummary } from './helper
 import { isPaintingProject, getPaintingPromptAddition, PAINTING_REQUIREMENTS } from './helpers/paintingRequirements.ts';
 import { validatePaintingQuote, generatePaintingValidationSummary } from './helpers/validatePaintingQuote.ts';
 import { validateGenericQuote, generateGenericValidationSummary, needsGenericValidation } from './helpers/genericQuoteValidation.ts';
+import { isCleaningProject, getCleaningPromptAddition } from './helpers/cleaningRequirements.ts';
+import { validateCleaningQuote, generateCleaningValidationSummary } from './helpers/validateCleaningQuote.ts';
+import { isGardeningProject, getGardeningPromptAddition } from './helpers/gardeningRequirements.ts';
+import { validateGardeningQuote, generateGardeningValidationSummary } from './helpers/validateGardeningQuote.ts';
+import { isElectricalProject, getElectricalPromptAddition } from './helpers/electricalRequirements.ts';
+import { validateElectricalQuote, generateElectricalValidationSummary } from './helpers/validateElectricalQuote.ts';
 // FAS 2 & 5: Import project standards and intent detection
 import { detectProjectType, detectProjectTypeAdvanced, getProjectPromptAddition, PROJECT_STANDARDS, normalizeKeyword, detectScope, detectProjectIntent, type ProjectIntent, type DetectionResult } from './helpers/projectStandards.ts';
 // FAS 1, 2, 4: Import layered prompt and material pricing
@@ -6089,6 +6095,125 @@ Svara med **1**, **2** eller **3** (eller "granska", "generera", "mer info")`;
     }
     
     // ============================================
+    // CLEANING VALIDATION
+    // ============================================
+    let cleaningValidationWarnings: string[] = [];
+    
+    if (isCleaningProject(description, quote.projectType)) {
+      const area = measurementsForValidation?.area || 50; // Default 50 kvm
+      console.log('🧹 Validerar städningsoffert för area:', area, 'kvm');
+      
+      const cleaningValidation = validateCleaningQuote(quote, area);
+      
+      if (!cleaningValidation.passed) {
+        console.error('❌ KRITISK: Städningsofferten uppfyller inte minimikrav!');
+        console.error('Fel:', cleaningValidation.errors);
+        
+        const validationSummary = generateCleaningValidationSummary(cleaningValidation);
+        
+        return new Response(
+          JSON.stringify({
+            error: 'Städningsofferten kunde inte genereras - uppfyller inte minimikrav',
+            details: cleaningValidation.errors,
+            summary: validationSummary,
+            missingItems: cleaningValidation.missingItems,
+            underHouredItems: cleaningValidation.underHouredItems,
+            totalIssue: cleaningValidation.totalIssue,
+            suggestion: 'Städningsofferten måste inkludera grundstädning, sanitetsutrymmen och rimliga timmar.',
+          }),
+          {
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+            status: 400,
+          }
+        );
+      } else if (cleaningValidation.warnings.length > 0) {
+        console.warn('⚠️ Städningsvalidering OK men med varningar:', cleaningValidation.warnings);
+        cleaningValidationWarnings = cleaningValidation.warnings;
+      } else {
+        console.log('✅ Städningsvalidering: Alla krav uppfyllda');
+      }
+    }
+    
+    // ============================================
+    // GARDENING/TREE FELLING VALIDATION
+    // ============================================
+    let gardeningValidationWarnings: string[] = [];
+    
+    if (isGardeningProject(description, quote.projectType)) {
+      const quantity = measurementsForValidation?.quantity || 1; // Default 1 träd
+      console.log('🌲 Validerar trädfällningsoffert för antal:', quantity, 'träd');
+      
+      const gardeningValidation = validateGardeningQuote(quote, quantity);
+      
+      if (!gardeningValidation.passed) {
+        console.error('❌ KRITISK: Trädfällningsofferten uppfyller inte minimikrav!');
+        console.error('Fel:', gardeningValidation.errors);
+        
+        const validationSummary = generateGardeningValidationSummary(gardeningValidation);
+        
+        return new Response(
+          JSON.stringify({
+            error: 'Trädfällningsofferten kunde inte genereras - uppfyller inte minimikrav',
+            details: gardeningValidation.errors,
+            summary: validationSummary,
+            missingItems: gardeningValidation.missingItems,
+            underHouredItems: gardeningValidation.underHouredItems,
+            totalIssue: gardeningValidation.totalIssue,
+            suggestion: 'Trädfällningsofferten måste inkludera fällning, kapning, bortforsling och rimliga timmar.',
+          }),
+          {
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+            status: 400,
+          }
+        );
+      } else if (gardeningValidation.warnings.length > 0) {
+        console.warn('⚠️ Trädfällningsvalidering OK men med varningar:', gardeningValidation.warnings);
+        gardeningValidationWarnings = gardeningValidation.warnings;
+      } else {
+        console.log('✅ Trädfällningsvalidering: Alla krav uppfyllda');
+      }
+    }
+    
+    // ============================================
+    // ELECTRICAL VALIDATION
+    // ============================================
+    let electricalValidationWarnings: string[] = [];
+    
+    if (isElectricalProject(description, quote.projectType)) {
+      console.log('⚡ Validerar el-offert');
+      
+      const electricalValidation = validateElectricalQuote(quote);
+      
+      if (!electricalValidation.passed) {
+        console.error('❌ KRITISK: El-offerten uppfyller inte minimikrav!');
+        console.error('Fel:', electricalValidation.errors);
+        
+        const validationSummary = generateElectricalValidationSummary(electricalValidation);
+        
+        return new Response(
+          JSON.stringify({
+            error: 'El-offerten kunde inte genereras - uppfyller inte minimikrav',
+            details: electricalValidation.errors,
+            summary: validationSummary,
+            missingItems: electricalValidation.missingItems,
+            underHouredItems: electricalValidation.underHouredItems,
+            totalIssue: electricalValidation.totalIssue,
+            suggestion: 'El-offerten måste inkludera planering, installation, inkoppling och rimligt timpris.',
+          }),
+          {
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+            status: 400,
+          }
+        );
+      } else if (electricalValidation.warnings.length > 0) {
+        console.warn('⚠️ El-validering OK men med varningar:', electricalValidation.warnings);
+        electricalValidationWarnings = electricalValidation.warnings;
+      } else {
+        console.log('✅ El-validering: Alla krav uppfyllda');
+      }
+    }
+    
+    // ============================================
     // GENERIC FALLBACK VALIDATION
     // ============================================
     let genericValidationWarnings: string[] = [];
@@ -6345,6 +6470,9 @@ Svara med **1**, **2** eller **3** (eller "granska", "generera", "mer info")`;
         bathroomValidation: validationWarnings.length > 0 ? validationWarnings : undefined,
         kitchenValidation: kitchenValidationWarnings.length > 0 ? kitchenValidationWarnings : undefined,
         paintingValidation: paintingValidationWarnings.length > 0 ? paintingValidationWarnings : undefined,
+        cleaningValidation: cleaningValidationWarnings.length > 0 ? cleaningValidationWarnings : undefined,
+        gardeningValidation: gardeningValidationWarnings.length > 0 ? gardeningValidationWarnings : undefined,
+        electricalValidation: electricalValidationWarnings.length > 0 ? electricalValidationWarnings : undefined,
         genericValidation: genericValidationWarnings.length > 0 ? genericValidationWarnings : undefined,
         conversationValidation: !conversationValidation.isValid || conversationValidation.warnings.length > 0 ? {
           removedItems: conversationValidation.unmentionedItems,
