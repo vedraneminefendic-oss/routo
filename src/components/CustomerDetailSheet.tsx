@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
-import { MapPin, Mail, Phone, FileText, Plus, TrendingUp, CheckCircle } from "lucide-react";
+import { MapPin, Mail, Phone, FileText, Plus, TrendingUp, CheckCircle, IdCard, Building, StickyNote } from "lucide-react";
 import { Customer } from "@/pages/Customers";
 import { useCustomerStats } from "@/hooks/useCustomerStats";
 import { useCustomerQuotes } from "@/hooks/useCustomerQuotes";
@@ -124,6 +124,41 @@ export const CustomerDetailSheet = ({
               </div>
             </CardContent>
           </Card>
+
+          {/* Additional Information */}
+          {(customer.notes || customer.personnummer || customer.property_designation) && (
+            <Card>
+              <CardContent className="pt-6 space-y-3">
+                {customer.personnummer && (
+                  <div className="flex items-center gap-3">
+                    <IdCard className="h-5 w-5 text-muted-foreground" />
+                    <div>
+                      <p className="text-sm font-medium">Personnummer</p>
+                      <p className="text-sm text-muted-foreground font-mono">{customer.personnummer}</p>
+                    </div>
+                  </div>
+                )}
+                {customer.property_designation && (
+                  <div className="flex items-center gap-3">
+                    <Building className="h-5 w-5 text-muted-foreground" />
+                    <div>
+                      <p className="text-sm font-medium">Fastighetsbeteckning</p>
+                      <p className="text-sm text-muted-foreground">{customer.property_designation}</p>
+                    </div>
+                  </div>
+                )}
+                {customer.notes && (
+                  <div className="flex items-start gap-3">
+                    <StickyNote className="h-5 w-5 text-muted-foreground mt-0.5" />
+                    <div className="flex-1">
+                      <p className="text-sm font-medium">Anteckningar</p>
+                      <p className="text-sm text-muted-foreground whitespace-pre-wrap">{customer.notes}</p>
+                    </div>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          )}
 
           {/* Stats */}
           {statsLoading ? (
