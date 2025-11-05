@@ -27,7 +27,8 @@ import { isBathroomProject, getBathroomPromptAddition, BATHROOM_REQUIREMENTS } f
 import { validateBathroomQuote, generateValidationSummary, autoFixBathroomQuote } from './helpers/validateBathroomQuote.ts';
 import { isKitchenProject, getKitchenPromptAddition, KITCHEN_REQUIREMENTS } from './helpers/kitchenRequirements.ts';
 import { validateKitchenQuote, generateKitchenValidationSummary } from './helpers/validateKitchenQuote.ts';
-import { isPaintingProject, getPaintingPromptAddition } from './helpers/paintingRequirements.ts';
+import { isPaintingProject, getPaintingPromptAddition, PAINTING_REQUIREMENTS } from './helpers/paintingRequirements.ts';
+import { validatePaintingQuote, generatePaintingValidationSummary } from './helpers/validatePaintingQuote.ts';
 // FAS 2 & 5: Import project standards and intent detection
 import { detectProjectType, detectProjectTypeAdvanced, getProjectPromptAddition, PROJECT_STANDARDS, normalizeKeyword, detectScope, detectProjectIntent, type ProjectIntent, type DetectionResult } from './helpers/projectStandards.ts';
 // FAS 1, 2, 4: Import layered prompt and material pricing
@@ -6005,7 +6006,7 @@ Svara med **1**, **2** eller **3** (eller "granska", "generera", "mer info")`;
     let kitchenValidationWarnings: string[] = [];
     
     if (isKitchenProject(description, quote.projectType)) {
-      const area = measurements?.area || 10; // Default to 10 sqm if not specified
+      const area = measurementsForValidation?.area || 10; // Default to 10 sqm if not specified
       console.log('🍳 Validerar köksoffert för area:', area, 'kvm');
       
       const kitchenValidation = validateKitchenQuote(quote, area);
@@ -6037,6 +6038,46 @@ Svara med **1**, **2** eller **3** (eller "granska", "generera", "mer info")`;
         kitchenValidationWarnings = kitchenValidation.warnings;
       } else {
         console.log('✅ Köksvalidering: Alla krav uppfyllda');
+      }
+    }
+    
+    // ============================================
+    // PAINTING VALIDATION
+    // ============================================
+    let paintingValidationWarnings: string[] = [];
+
+    if (isPaintingProject(description, quote.projectType)) {
+      const area = measurementsForValidation?.area || 50; // Default 50 kvm väggyta
+      console.log('🎨 Validerar målningsoffert för area:', area, 'kvm väggyta');
+      
+      const paintingValidation = validatePaintingQuote(quote, area);
+      
+      if (!paintingValidation.passed) {
+        console.error('❌ KRITISK: Målningsofferten uppfyller inte minimikrav!');
+        console.error('Fel:', paintingValidation.errors);
+        
+        const validationSummary = generatePaintingValidationSummary(paintingValidation);
+        
+        return new Response(
+          JSON.stringify({
+            error: 'Målningsofferten kunde inte genereras - uppfyller inte minimikrav',
+            details: paintingValidation.errors,
+            summary: validationSummary,
+            missingItems: paintingValidation.missingItems,
+            underHouredItems: paintingValidation.underHouredItems,
+            totalIssue: paintingValidation.totalIssue,
+            suggestion: 'Målningsofferten måste inkludera förberedelser, spackling, grund- och slutstrykningar.',
+          }),
+          {
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+            status: 400,
+          }
+        );
+      } else if (paintingValidation.warnings.length > 0) {
+        console.warn('⚠️ Målningsvalidering OK men med varningar:', paintingValidation.warnings);
+        paintingValidationWarnings = paintingValidation.warnings;
+      } else {
+        console.log('✅ Målningsvalidering: Alla krav uppfyllda');
       }
     }
     

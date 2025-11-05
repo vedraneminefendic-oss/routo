@@ -2,6 +2,8 @@
 // LAYERED PROMPT - FAS 0: HYBRIDMODELL (WEB → BRANSCH → USER)
 // ============================================================================
 
+import { PAINTING_REQUIREMENTS } from './paintingRequirements.ts';
+
 interface LayeredContext {
   layer1_market: string;      // Webben (alltid 100% för nya)
   layer2_industry: string;    // Branschdata (80% vikt)
@@ -151,6 +153,59 @@ För badrum ska du ALLTID dela upp arbetet i SEPARATA moment med MOMENT-SPECIFIK
 
 **⚠️ ANVÄND ALDRIG 'badrumstotalrenovering' (50h/kvm) för ENSKILDA moment!**
 Den standarden är ENDAST för att validera total-tid, inte för att beräkna delmoment.
+
+` : ''}
+
+${jobCategory === 'målning' ? `
+
+**🎨 KRITISKT FÖR MÅLNING:**
+
+⚠️ **ABSOLUTA MINIMIKRAV** som ALLTID MÅSTE ingå:
+
+1. **Förberedelser och skydd** (OBLIGATORISKT - minst 2h)
+   - Täcka golv och möbler med plast
+   - Maskera fönster, dörrar, lister med tape
+   - Standard: 0.04h per kvm väggyta
+   - Timpris: 650-850 kr/h (standard: 750 kr/h)
+
+2. **Spackling och slipning** (OBLIGATORISKT - minst 2h)
+   - Reparera hål, sprickor i väggar
+   - Slipa ojämna ytor
+   - Standard: 0.04h per kvm väggyta
+   - Timpris: 650-850 kr/h (standard: 750 kr/h)
+
+3. **Grundmålning** (OBLIGATORISKT - minst 3h)
+   - Första strykning med grundfärg
+   - Täcker underlaget
+   - Standard: 0.06h per kvm väggyta
+   - Timpris: 700-900 kr/h (standard: 800 kr/h)
+
+4. **Slutstrykningar** (OBLIGATORISKT - minst 4h)
+   - 1-2 slutstrykningar beroende på färg
+   - Mörka färger kräver extra strykningar
+   - Standard: 0.08h per kvm väggyta
+   - Timpris: 700-900 kr/h (standard: 800 kr/h)
+
+5. **Städning och efterarbete** (OBLIGATORISKT - minst 2h)
+   - Ta bort maskering och skydd
+   - Städa färgrester
+   - Slutbesiktning
+   - Standard: 0.04h per kvm väggyta
+   - Timpris: 500-650 kr/h (standard: 550 kr/h)
+
+**MINIMUM KOSTNAD:**
+- Minst ${measurements?.area ? (measurements.area * PAINTING_REQUIREMENTS.minimumCostPerSqm).toLocaleString('sv-SE') : '7 500'} kr (${measurements?.area || 50} kvm × ${PAINTING_REQUIREMENTS.minimumCostPerSqm} kr/kvm)
+- Rekommenderat: ${measurements?.area ? (measurements.area * PAINTING_REQUIREMENTS.recommendedCostPerSqm).toLocaleString('sv-SE') : '15 000'} kr (${measurements?.area || 50} kvm × ${PAINTING_REQUIREMENTS.recommendedCostPerSqm} kr/kvm)
+
+**VIKTIGA FAKTORER:**
+- 🎨 Mörka färger (svart, mörk blå, etc.) → +1 slutstrykning
+- 🔝 Takmålning → +20% timpris (svårare arbete)
+- 🏠 Många rum → mer maskering och förberedelser
+
+**⚠️ VALIDATION BLOCKERAR OM:**
+- ❌ Saknas något av de 5 arbetsmomenten
+- ❌ Total under ${measurements?.area ? (measurements.area * PAINTING_REQUIREMENTS.minimumCostPerSqm).toLocaleString('sv-SE') : '7 500'} kr
+- ❌ För få timmar per arbetsmoment
 
 ` : ''}
 
