@@ -3,9 +3,10 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Search, AlertCircle, Plus, MessageSquare } from "lucide-react";
+import { Search, AlertCircle, Plus, MessageSquare, X } from "lucide-react";
 import { toast } from "sonner";
 import QuoteDisplay from "@/components/QuoteDisplay";
 import QuoteEditor from "@/components/QuoteEditor";
@@ -22,6 +23,7 @@ const Quotes = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   const filterParam = searchParams.get('filter');
   const quoteIdParam = searchParams.get('id');
+  const customerIdParam = searchParams.get('customer');
   
   const [user, setUser] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -36,6 +38,8 @@ const Quotes = () => {
   const [pendingQuotesCount, setPendingQuotesCount] = useState(0);
   const [isGeneratingQuote, setIsGeneratingQuote] = useState(false);
   const [showQuoteList, setShowQuoteList] = useState(false);
+  const [customerFilter, setCustomerFilter] = useState<string | null>(customerIdParam);
+  const [customerName, setCustomerName] = useState<string>("");
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -57,10 +61,18 @@ const Quotes = () => {
   }, [navigate]);
 
   useEffect(() => {
+    const customerId = searchParams.get("customer");
+    if (customerId) {
+      setCustomerFilter(customerId);
+      loadCustomerName(customerId);
+    }
+  }, [searchParams]);
+
+  useEffect(() => {
     if (user) {
       loadQuotes();
     }
-  }, [user]);
+  }, [user, customerFilter]);
 
   useEffect(() => {
     if (quotes.length > 0) {
@@ -89,9 +101,21 @@ const Quotes = () => {
     }
   }, [quotes, quoteIdParam]);
 
+  const loadCustomerName = async (customerId: string) => {
+    const { data } = await supabase
+      .from("customers")
+      .select("name")
+      .eq("id", customerId)
+      .single();
+
+    if (data) {
+      setCustomerName(data.name);
+    }
+  };
+
   const loadQuotes = async () => {
     try {
-      const { data, error } = await supabase
+      let query = supabase
         .from('quotes')
         .select(`
           *,
@@ -102,11 +126,23 @@ const Quotes = () => {
         `)
         .order('created_at', { ascending: false });
 
+      if (customerFilter) {
+        query = query.eq('customer_id', customerFilter);
+      }
+
+      const { data, error } = await query;
+
       if (error) throw error;
       setQuotes(data || []);
     } catch (error: any) {
       console.error('Error loading quotes:', error);
     }
+  };
+
+  const clearCustomerFilter = () => {
+    setCustomerFilter(null);
+    setCustomerName("");
+    setSearchParams({});
   };
 
   const handleQuoteClick = (quote: any) => {
@@ -222,7 +258,7 @@ const Quotes = () => {
       quote.description?.toLowerCase().includes(searchLower) ||
       quote.customers?.name?.toLowerCase().includes(searchLower) ||
       quote.customers?.address?.toLowerCase().includes(searchLower) ||
-      (quote as any).work_address?.toLowerCase().includes(searchLower);
+      quote.work_address?.toLowerCase().includes(searchLower);
     
     let matchesStatus = true;
     
@@ -402,8 +438,8 @@ const Quotes = () => {
                   </div>
                 )}
                 
-                <div className="flex gap-2 mt-4">
-                  <div className="relative flex-1">
+                <div className="flex gap-2 mt-4 flex-wrap">
+                  <div className="relative flex-1 min-w-[200px]">
                     <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                     <Input
                       placeholder="Sök offerter..."
@@ -412,6 +448,17 @@ const Quotes = () => {
                       className="pl-10"
                     />
                   </div>
+                  {customerFilter && (
+                    <Badge variant="secondary" className="gap-1 px-3 py-2 h-10 flex items-center">
+                      Kund: {customerName}
+                      <button
+                        onClick={clearCustomerFilter}
+                        className="ml-1 hover:bg-muted rounded-full p-0.5"
+                      >
+                        <X className="h-3 w-3" />
+                      </button>
+                    </Badge>
+                  )}
                   <Select value={statusFilter} onValueChange={setStatusFilter}>
                     <SelectTrigger className="w-[160px]">
                       <SelectValue placeholder="Filtrera..." />

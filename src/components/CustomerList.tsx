@@ -1,11 +1,12 @@
 import { useState } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Skeleton } from "@/components/ui/skeleton";
-import { Edit, Trash2, Search, ChevronDown, Mail, Phone, TrendingUp, UserPlus } from "lucide-react";
+import { Search, Users } from "lucide-react";
 import { Customer } from "@/pages/Customers";
+import { EmptyState } from "./EmptyState";
+import { CustomerTableView } from "./CustomerTableView";
+import { CustomerCardView } from "./CustomerCardView";
+import { CustomerDetailSheet } from "./CustomerDetailSheet";
+import { useIsMobile } from "@/hooks/use-mobile";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -16,12 +17,6 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { Badge } from "@/components/ui/badge";
-import { useCustomerStats } from "@/hooks/useCustomerStats";
-import { format } from "date-fns";
-import { sv } from "date-fns/locale";
-import { EmptyState } from "@/components/EmptyState";
 
 interface CustomerListProps {
   customers: Customer[];
@@ -30,221 +25,89 @@ interface CustomerListProps {
   onDelete: (customerId: string) => void;
 }
 
-const CustomerRow = ({ customer, onEdit, onDelete }: { 
-  customer: Customer; 
-  onEdit: (customer: Customer) => void;
-  onDelete: (id: string) => void;
-}) => {
-  const [isOpen, setIsOpen] = useState(false);
-  const { stats, loading } = useCustomerStats(customer.id);
-
-  return (
-    <Collapsible asChild open={isOpen} onOpenChange={setIsOpen}>
-      <>
-        <TableRow className="hover:bg-muted/50 transition-colors">
-          <TableCell>
-            <CollapsibleTrigger asChild>
-              <Button variant="ghost" size="sm" className="p-0 h-auto hover:bg-transparent">
-                <ChevronDown className={`h-4 w-4 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} />
-              </Button>
-            </CollapsibleTrigger>
-          </TableCell>
-          <TableCell className="font-medium">{customer.name}</TableCell>
-          <TableCell>
-            {customer.email ? (
-              <a href={`mailto:${customer.email}`} className="flex items-center gap-1 text-primary hover:underline">
-                <Mail className="h-3 w-3" />
-                {customer.email}
-              </a>
-            ) : (
-              "-"
-            )}
-          </TableCell>
-          <TableCell>
-            {customer.phone ? (
-              <a href={`tel:${customer.phone}`} className="flex items-center gap-1 text-primary hover:underline">
-                <Phone className="h-3 w-3" />
-                {customer.phone}
-              </a>
-            ) : (
-              "-"
-            )}
-          </TableCell>
-          <TableCell>
-            {!loading && stats.totalQuotes > 0 && (
-              <Badge variant="secondary" className="gap-1">
-                <TrendingUp className="h-3 w-3" />
-                {stats.totalQuotes} offerter
-              </Badge>
-            )}
-          </TableCell>
-          <TableCell className="text-right">
-            <div className="flex justify-end gap-2">
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => onEdit(customer)}
-              >
-                <Edit className="h-4 w-4" />
-              </Button>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => onDelete(customer.id)}
-              >
-                <Trash2 className="h-4 w-4" />
-              </Button>
-            </div>
-          </TableCell>
-        </TableRow>
-        <TableRow>
-          <TableCell colSpan={6} className="p-0 border-0">
-            <CollapsibleContent>
-              <div className="bg-muted/30 p-4 space-y-3 border-t">
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                  <div>
-                    <p className="text-xs text-muted-foreground mb-1">Totalt värde</p>
-                    <p className="text-sm font-semibold">{loading ? "..." : `${stats.totalValue.toLocaleString("sv-SE")} kr`}</p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-muted-foreground mb-1">Acceptansgrad</p>
-                    <p className="text-sm font-semibold">{loading ? "..." : `${stats.acceptanceRate.toFixed(0)}%`}</p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-muted-foreground mb-1">Accepterade offerter</p>
-                    <p className="text-sm font-semibold">{loading ? "..." : `${stats.acceptedQuotes} / ${stats.totalQuotes}`}</p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-muted-foreground mb-1">Senaste offert</p>
-                    <p className="text-sm font-semibold">
-                      {loading ? "..." : stats.lastQuoteDate ? format(new Date(stats.lastQuoteDate), "d MMM yyyy", { locale: sv }) : "-"}
-                    </p>
-                  </div>
-                </div>
-                {customer.address && (
-                  <div>
-                    <p className="text-xs text-muted-foreground mb-1">Adress</p>
-                    <p className="text-sm">{customer.address}</p>
-                  </div>
-                )}
-                {customer.notes && (
-                  <div>
-                    <p className="text-xs text-muted-foreground mb-1">Anteckningar</p>
-                    <p className="text-sm italic text-muted-foreground">{customer.notes}</p>
-                  </div>
-                )}
-              </div>
-            </CollapsibleContent>
-          </TableCell>
-        </TableRow>
-      </>
-    </Collapsible>
-  );
-};
-
 const CustomerList = ({ customers, loading, onEdit, onDelete }: CustomerListProps) => {
   const [searchTerm, setSearchTerm] = useState("");
-  const [deleteCustomerId, setDeleteCustomerId] = useState<string | null>(null);
+  const [customerToDelete, setCustomerToDelete] = useState<string | null>(null);
+  const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
+  const isMobile = useIsMobile();
 
-  const filteredCustomers = customers.filter((customer) => {
-    const search = searchTerm.toLowerCase();
-    return (
-      customer.name.toLowerCase().includes(search) ||
-      customer.email?.toLowerCase().includes(search) ||
-      customer.phone?.toLowerCase().includes(search) ||
-      customer.address?.toLowerCase().includes(search)
-    );
-  });
+  const filteredCustomers = customers.filter((customer) =>
+    customer.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    customer.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    customer.phone?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    customer.address?.toLowerCase().includes(searchTerm.toLowerCase())
+  );
 
-  if (loading) {
+  if (customers.length === 0 && !loading) {
     return (
-      <Card>
-        <CardHeader>
-          <CardTitle>Kunder</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-2">
-            <Skeleton className="h-10 w-full" />
-            <Skeleton className="h-10 w-full" />
-            <Skeleton className="h-10 w-full" />
-          </div>
-        </CardContent>
-      </Card>
+      <EmptyState
+        icon={Users}
+        title="Inga kunder ännu"
+        description="Skapa din första kund för att komma igång med offerter"
+      />
     );
   }
 
   return (
-    <>
-      <Card>
-        <CardHeader>
-          <CardTitle>Kunder ({customers.length})</CardTitle>
-          <div className="relative mt-4">
-            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              placeholder="Sök kunder..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="pl-10"
-            />
-          </div>
-        </CardHeader>
-        <CardContent>
-          {filteredCustomers.length === 0 ? (
-            searchTerm ? (
-              <EmptyState
-                icon={Search}
-                title="Inga matchande kunder"
-                description={`Inga kunder matchade sökningen "${searchTerm}". Prova att ändra sökorden.`}
-              />
-            ) : (
-              <EmptyState
-                icon={UserPlus}
-                title="Inga kunder ännu"
-                description="Lägg till din första kund för att börja hantera kundregister och koppla dem till offerter."
-              />
-            )
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="w-12"></TableHead>
-                  <TableHead>Namn</TableHead>
-                  <TableHead>E-post</TableHead>
-                  <TableHead>Telefon</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead className="text-right">Åtgärder</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filteredCustomers.map((customer) => (
-                  <CustomerRow 
-                    key={customer.id} 
-                    customer={customer} 
-                    onEdit={onEdit}
-                    onDelete={setDeleteCustomerId}
-                  />
-                ))}
-              </TableBody>
-            </Table>
-          )}
-        </CardContent>
-      </Card>
+    <div className="space-y-4">
+      <div className="flex items-center gap-2">
+        <Search className="h-5 w-5 text-muted-foreground" />
+        <Input
+          placeholder="Sök kunder..."
+          value={searchTerm}
+          onChange={(e) => setSearchTerm(e.target.value)}
+        />
+      </div>
 
-      <AlertDialog open={!!deleteCustomerId} onOpenChange={() => setDeleteCustomerId(null)}>
+      {filteredCustomers.length === 0 && !loading ? (
+        <EmptyState
+          icon={Search}
+          title="Inga matchande kunder"
+          description="Försök med ett annat sökord"
+        />
+      ) : isMobile ? (
+        <CustomerCardView
+          customers={filteredCustomers}
+          loading={loading}
+          onEdit={onEdit}
+          onDelete={(id) => setCustomerToDelete(id)}
+          onViewDetails={setSelectedCustomer}
+        />
+      ) : (
+        <CustomerTableView
+          customers={filteredCustomers}
+          loading={loading}
+          onEdit={onEdit}
+          onDelete={(id) => setCustomerToDelete(id)}
+          onViewDetails={setSelectedCustomer}
+        />
+      )}
+
+      <CustomerDetailSheet
+        customer={selectedCustomer}
+        open={!!selectedCustomer}
+        onOpenChange={(open) => !open && setSelectedCustomer(null)}
+        onEdit={(customer) => {
+          setSelectedCustomer(null);
+          onEdit(customer);
+        }}
+      />
+
+      <AlertDialog open={!!customerToDelete} onOpenChange={() => setCustomerToDelete(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Radera kund?</AlertDialogTitle>
+            <AlertDialogTitle>Bekräfta radering</AlertDialogTitle>
             <AlertDialogDescription>
-              Är du säker på att du vill radera denna kund? Denna åtgärd kan inte ångras.
+              Är du säker på att du vill radera denna kund? Detta går inte att ångra.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Avbryt</AlertDialogCancel>
             <AlertDialogAction
               onClick={() => {
-                if (deleteCustomerId) {
-                  onDelete(deleteCustomerId);
-                  setDeleteCustomerId(null);
+                if (customerToDelete) {
+                  onDelete(customerToDelete);
+                  setCustomerToDelete(null);
                 }
               }}
             >
@@ -253,7 +116,7 @@ const CustomerList = ({ customers, loading, onEdit, onDelete }: CustomerListProp
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </>
+    </div>
   );
 };
 
