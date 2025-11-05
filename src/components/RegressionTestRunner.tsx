@@ -54,10 +54,15 @@ export function RegressionTestRunner() {
         description: limit ? 'Kör begränsat antal tester...' : 'Detta kan ta flera minuter...',
       });
 
-      const url = limit ? `run-regression-tests?limit=${limit}` : 'run-regression-tests';
-      const { data, error } = await supabase.functions.invoke(url, {
-        body: {}
-      });
+      const primary = limit ? `regression?limit=${limit}` : 'regression';
+      const fallback = limit ? `run-regression-tests?limit=${limit}` : 'run-regression-tests';
+      let data: any, error: any;
+      try {
+        ({ data, error } = await supabase.functions.invoke(primary, { body: {} }));
+        if (error?.message?.includes('NOT_FOUND')) throw error;
+      } catch (e: any) {
+        ({ data, error } = await supabase.functions.invoke(fallback, { body: {} }));
+      }
 
       if (error) throw error;
 

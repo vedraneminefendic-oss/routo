@@ -60,3 +60,6 @@ verify_jwt = false
 
 [functions.run-regression-tests]
 verify_jwt = false
+
+[functions.regression]
+verify_jwt = false
