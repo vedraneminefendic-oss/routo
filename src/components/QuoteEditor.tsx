@@ -8,6 +8,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Edit, Save, X, Plus, Trash2, Hammer, Sparkles, ChevronDown } from "lucide-react";
+import { formatCurrency, formatWorkItemCompact } from "@/lib/formatters";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
 import {
@@ -70,14 +71,6 @@ interface QuoteEditorProps {
 
 const QuoteEditor = ({ quote, onSave, onCancel, isSaving, quoteId }: QuoteEditorProps) => {
   const [editedQuote, setEditedQuote] = useState<Quote>(JSON.parse(JSON.stringify(quote)));
-
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('sv-SE', {
-      style: 'currency',
-      currency: 'SEK',
-      minimumFractionDigits: 0,
-    }).format(amount);
-  };
 
   const recalculate = (updated: Quote) => {
     const workItems = updated.workItems.map(item => ({
@@ -295,7 +288,7 @@ const QuoteEditor = ({ quote, onSave, onCancel, isSaving, quoteId }: QuoteEditor
                           </span>
                           {item.hours > 0 && (
                             <span className="text-sm text-muted-foreground ml-auto mr-2">
-                              {item.hours}h × {formatCurrency(item.hourlyRate)}/h = {formatCurrency(item.subtotal)}
+                              {formatWorkItemCompact(item.hours, item.hourlyRate)} = {formatCurrency(item.subtotal)}
                             </span>
                           )}
                         </CollapsibleTrigger>

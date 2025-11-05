@@ -1,6 +1,7 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
+import { formatCurrency, formatWorkItem } from "@/lib/formatters";
 import { Package, Wrench, Hammer, Sparkles } from "lucide-react";
 
 interface WorkItem {
@@ -44,14 +45,6 @@ interface QuoteDisplayMobileProps {
 }
 
 export const QuoteDisplayMobile = ({ quote }: QuoteDisplayMobileProps) => {
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('sv-SE', {
-      style: 'currency',
-      currency: 'SEK',
-      minimumFractionDigits: 0,
-    }).format(amount);
-  };
-
   const deductionType = quote.deductionType || quote.summary.deductionType || 'none';
   const deductionAmount = quote.summary.deductionAmount || 0;
 
@@ -75,7 +68,7 @@ export const QuoteDisplayMobile = ({ quote }: QuoteDisplayMobileProps) => {
                 )}
                 <div className="flex justify-between items-center text-sm">
                   <span className="text-muted-foreground">Timmar:</span>
-                  <span className="font-medium">{item.hours}h × {formatCurrency(item.hourlyRate)}/h</span>
+                  <span className="font-medium">{formatWorkItem(item.hours, item.hourlyRate)}</span>
                 </div>
                 <Separator />
                 <div className="flex justify-between items-center font-semibold">

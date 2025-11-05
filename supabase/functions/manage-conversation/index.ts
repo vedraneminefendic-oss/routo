@@ -517,14 +517,29 @@ function detectNegationOrCorrection(
 ): NegationResult {
   const lower = userMessage.toLowerCase();
   
-  // Pattern 1: Direct negation ("Nej", "Glöm det")
+  // ✅ Pattern 0: Negative answers to YES/NO questions (CHECK FIRST before broader patterns)
+  const negativeAnswerPatterns = [
+    /^nej,?\s+(inget|ingenting|inga)\s+(som|särskilt)/i,  // "nej, inget som..."
+    /^nej,?\s+(det\s+)?(finns|är)\s+(inget|inga)/i,        // "nej, det finns inget..."
+    /^nej,?\s+inte\s+särskilt/i,                            // "nej, inte särskilt"
+    /^nej,?\s+inte\s+något/i,                               // "nej, inte något"
+  ];
+  
+  for (const pattern of negativeAnswerPatterns) {
+    if (pattern.test(lower)) {
+      console.log('✅ FAS 12: Negative answer to YES/NO question detected (NOT a negation)');
+      return { isNegation: false }; // This is NOT a negation/correction!
+    }
+  }
+  
+  // Pattern 1: Direct negation ("Nej" + specific target, "Glöm det")
+  // ✅ IMPROVED: Require "nej" to be followed by a concrete target
   const directNegations = [
-    /^nej[,.]?\s/i,
+    /^nej,?\s+(jag\s+menade|glöm|ta\s+bort|skippa|inte\s+(det|så))/i,  // ✅ More specific
     /glöm\s+(det|tidigare|att jag sa)/i,
     /inte\s+längre/i,
     /ångrar\s+mig/i,
-    /fel[,.]?\s/i,
-    /inte\s+(det|så)/i,
+    /fel[,.]?\s+(jag\s+menade)/i,  // ✅ Require follow-up
   ];
   
   for (const pattern of directNegations) {

@@ -265,6 +265,12 @@ const NewQuote = () => {
   ) => {
     if (!currentQuote || !user) return;
 
+    // ✅ GUARD: Prevent duplicate saves
+    if (isSaving) {
+      console.log('⚠️ Save already in progress, ignoring duplicate click');
+      return;
+    }
+
     setIsSaving(true);
     try {
       // Determine project type from description if not provided
