@@ -5372,24 +5372,52 @@ Svara med **1**, **2** eller **3** (eller "granska", "generera", "mer info")`;
     
     console.log('⏱️ Validating time estimates against industry standards...');
     
-    // Extrahera mått från beskrivning för validering
+    // Enhanced measurement extraction (supporting multiple formats including m², m^2, kvadrat m)
     const allTextForValidation = (completeDescription + ' ' + actualConversationHistory.map((m: any) => m.content).join(' ')).toLowerCase();
-    const areaMatchValidation = allTextForValidation.match(/(\d+(?:[.,]\d+)?)\s*(?:kvm|kvadratmeter|m2)/i);
-    const lengthMatchValidation = allTextForValidation.match(/(\d+(?:[.,]\d+)?)\s*(?:meter|löpmeter|m)/i);
+    
+    console.log('🔍 Parsing measurements from context');
+    
+    // Area extraction with multiple patterns (including m², m^2, kvadrat m, kvm2)
+    const areaPattern = /(\d+(?:[.,]\d+)?)\s*(?:kvm|kvadratmeter|kvadrat\s*m?|m2|m²|m\^2|kvm2)\b/i;
+    const areaMatch = allTextForValidation.match(areaPattern);
+    const area = areaMatch ? parseFloat(areaMatch[1].replace(',', '.')) : undefined;
+    if (areaMatch) {
+      console.log('✅ Area extracted:', area, 'kvm (matched:', areaMatch[0], ')');
+    }
+    
+    // Length extraction (including lm, lpm, löpm)
+    const lengthPattern = /(\d+(?:[.,]\d+)?)\s*(?:meter|lm|lpm|löpm|m)\b/i;
+    const lengthMatch = allTextForValidation.match(lengthPattern);
+    const length = (lengthMatch && !areaMatch) ? parseFloat(lengthMatch[1].replace(',', '.')) : undefined;
+    if (lengthMatch && !areaMatch) {
+      console.log('✅ Length extracted:', length, 'meter (matched:', lengthMatch[0], ')');
+    }
+    
     const quantityMatchValidation = allTextForValidation.match(/(\d+)\s*(?:st|styck|stycken|träd)/i);
     const roomsMatchValidation = allTextForValidation.match(/(\d+)\s*(?:rum|sovrum)/i);
     
     const measurementsForValidation = {
-      area: areaMatchValidation ? parseFloat(areaMatchValidation[1].replace(',', '.')) : undefined,
-      length: lengthMatchValidation ? parseFloat(lengthMatchValidation[1].replace(',', '.')) : undefined,
+      area,
+      length,
       quantity: quantityMatchValidation ? parseInt(quantityMatchValidation[1]) : undefined,
       rooms: roomsMatchValidation ? parseInt(roomsMatchValidation[1]) : undefined
     };
     
-    // FAS 1.4: Logga measurements för debugging
-    console.log('📐 Measurements för validering:', JSON.stringify(measurementsForValidation, null, 2));
+    console.log('📐 Final measurements for validation:', measurementsForValidation);
     
-    const timeValidation = validateQuoteTimeEstimates(quote, measurementsForValidation);
+    // Detect project type for context-aware validation
+    let detectedProjectType = 'övrigt';
+    const descriptionLower = completeDescription.toLowerCase();
+    if (descriptionLower.includes('badrum')) detectedProjectType = 'badrum';
+    else if (descriptionLower.includes('kök')) detectedProjectType = 'kök';
+    else if (descriptionLower.includes('målning') || descriptionLower.includes('måla')) detectedProjectType = 'målning';
+    else if (descriptionLower.includes('städ')) detectedProjectType = 'städning';
+    else if (descriptionLower.includes('trädgård')) detectedProjectType = 'trädgård';
+    else if (descriptionLower.includes('el') || descriptionLower.includes('elektr')) detectedProjectType = 'el';
+    
+    console.log('🎯 Detected project type:', detectedProjectType);
+    
+    const timeValidation = validateQuoteTimeEstimates(quote, measurementsForValidation, detectedProjectType);
     
     if (!timeValidation.isValid) {
       console.warn('⚠️ Time estimate validation warnings:');
@@ -5399,7 +5427,7 @@ Svara med **1**, **2** eller **3** (eller "granska", "generera", "mer info")`;
       if (timeValidation.corrections.length > 0) {
         console.log('🔧 Auto-correcting time estimates...');
         
-        const correctionResult = autoCorrectTimeEstimates(quote, measurementsForValidation, true);
+        const correctionResult = autoCorrectTimeEstimates(quote, measurementsForValidation, true, detectedProjectType);
         
         if (correctionResult.corrected) {
           console.log(`✅ Corrected ${correctionResult.corrections.length} work items:`);
@@ -5417,10 +5445,12 @@ Svara med **1**, **2** eller **3** (eller "granska", "generera", "mer info")`;
     }
     
     // ============================================
-    // FAS 2.2: KRITISK MINIMUM-VALIDERING FÖR BADRUM
+    // FAS 2.2: KRITISK MINIMUM-VALIDERING FÖR BADRUM (context-aware)
     // ============================================
     
-    if (completeDescription.toLowerCase().includes('badrum')) {
+    const isBathroom = detectedProjectType === 'badrum' || completeDescription.toLowerCase().includes('badrum');
+    
+    if (isBathroom) {
       const totalHours = quote.workItems?.reduce((sum: number, item: any) => 
         sum + (parseFloat(item.hours) || 0), 0) || 0;
       
@@ -5433,20 +5463,16 @@ Svara med **1**, **2** eller **3** (eller "granska", "generera", "mer info")`;
           console.error(`   - ${item.name}: ${item.hours}h`);
         });
         
+        // Build detailed breakdown
+        const breakdown = quote.workItems?.map((item: any) => 
+          `  - ${item.name}: ${item.hours}h`
+        ).join('\n') || '';
+        
         return new Response(
           JSON.stringify({
-            error: 'Validation failed: Bathroom quote below minimum hours',
-            details: `Offerten genererades med endast ${totalHours.toFixed(1)} timmar, men en komplett badrumsrenovering kräver minst 50 timmar enligt branschstandard. Detta indikerar ett fel i tidsberäkningen.`,
-            quote: quote,
-            validationResult: {
-              totalHours: totalHours.toFixed(1),
-              minimumRequired: 50,
-              workItems: quote.workItems?.map((item: any) => ({
-                name: item.name,
-                hours: item.hours,
-                reasoning: item.reasoning
-              }))
-            }
+            error: 'bathroom_too_short',
+            message: `🚫 En badrumsrenovering (${area || '?'} kvm) kan inte vara under 50 timmar.\n\nAktuell total: ${totalHours.toFixed(1)}h\n${breakdown}\n\n💡 Lägg till fler moment eller öka timmarna per moment.`,
+            details: { totalHours: totalHours.toFixed(1), requiredMinimum: 50, area, workItems: quote.workItems }
           }),
           { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );

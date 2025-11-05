@@ -1291,10 +1291,24 @@ export const INDUSTRY_STANDARDS: JobStandard[] = [
  * Exempel: badrum, kök, målning, fasad har separata standarder för varje delmoment.
  * Generella jobbtyper (städning, gräsklippning etc) fungerar automatiskt med STEG 2/3.
  */
+/**
+ * Find industry standard for a job description.
+ * 
+ * THREE-STEP PROCESS:
+ * STEG 1: Context-specific matching (only needed for job types with many sub-components like bathroom/kitchen)
+ * STEG 2: Exact matching by keywords
+ * STEG 3: Alias matching for variations
+ * 
+ * When is STEG 1 needed?
+ * - Job types with many sub-components (e.g., bathroom: kakel_vagg, kakel_golv, el_badrum)
+ * - When work items need context to select the right sub-standard
+ * - New job types work automatically with STEG 2/3 unless they have sub-components
+ */
 export function findStandard(
   jobDescription: string,
   context?: { jobType?: string; category?: string }
 ): JobStandard | null {
+  console.log('🔍 findStandard searching for:', jobDescription, 'with context:', context);
   const lower = jobDescription.toLowerCase();
   
   // FAS 1.2: Logga inkommande sökning för debugging
@@ -1411,16 +1425,15 @@ export function findStandard(
     }
   }
   
-  // STEG 2: Exakt matchning mot jobbtyper
+  // STEG 2: Try exact match
   for (const standard of INDUSTRY_STANDARDS) {
-    if (lower.includes(standard.jobType)) {
-      // FAS 1.2: Logga när standard hittas via exakt matchning
-      console.log(`✅ Hittade standard via exakt matchning: ${standard.jobType}`);
+    if (lower.includes(standard.jobType.toLowerCase())) {
+      console.log('✅ Found exact match:', standard.jobType);
       return standard;
     }
   }
   
-  // STEG 3: Försök matcha med alias (TA BORT badrum-alias!)
+  // STEG 3: Try alias matching
   const aliases: Record<string, string> = {
     'städa': 'hemstadning',
     'flytta': 'flyttstadning',
@@ -1428,7 +1441,6 @@ export function findStandard(
     'klippagräs': 'grasklippning',
     'klippahäck': 'hakkklippning',
     'fällaträd': 'tradfall',
-    // ❌ TA BORT: 'badrum': 'badrumstotalrenovering',  // Denna orsakade 342h för rivning!
     'kök': 'kokrenovering',
     'måla': 'malning_inomhus',
     'fasad': 'malning_fasad',

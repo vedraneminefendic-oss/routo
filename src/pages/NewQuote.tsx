@@ -86,13 +86,18 @@ const NewQuote = () => {
     setValidationErrors([]);
     
     try {
+      // Build full description with measurements
+      const fullDescription = `${data.projectType}: ${data.description}. Yta: ${data.measurements}`;
+      
       const { data: result, error } = await supabase.functions.invoke('generate-quote', {
         body: { 
-          description: data.description,
+          description: fullDescription,
           user_id: user?.id,
           detailLevel: 'standard',
           deductionType: data.deductionType,
-          intent: 'generate' // Force generation without questions
+          intent: 'generate', // Force generation without questions
+          projectType: data.projectType, // Pass project type explicitly
+          measurements: data.measurements // Pass measurements separately
         }
       });
 

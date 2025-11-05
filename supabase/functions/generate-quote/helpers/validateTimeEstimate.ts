@@ -7,8 +7,10 @@ import { JobStandard, findStandard } from './industryStandards.ts';
 export interface TimeValidationResult {
   isRealistic: boolean;
   warning?: string;
-  suggestedRange: { min: number; max: number };
-  correctedTime?: number;
+  warnings?: string[];
+  suggestedRange: { min: number; max: number } | null;
+  correctedHours?: number;
+  standard?: JobStandard | null;
 }
 
 /**
@@ -22,60 +24,103 @@ export function validateTimeEstimate(
   context?: { jobType?: string }  // NY PARAMETER för kontext-medveten validering
 ): TimeValidationResult {
   
-  // Om ingen standard finns, försök hitta en baserat på kontext
-  if (!standard && context?.jobType) {
+  // If no standard provided, try to find one based on context
+  if (!standard) {
     standard = findStandard(workItemName, context) || undefined;
   }
   
-  // Om fortfarande ingen standard finns, antag att det är OK
+  // If still no standard found, return pass (but with warning if area is missing for kvm-based jobs)
   if (!standard) {
-    return { 
-      isRealistic: true, 
-      suggestedRange: { min: 0, max: 999 } 
+    const warnings: string[] = [];
+    
+    // Check if this looks like a kvm-based job but area is missing
+    const kvmKeywords = ['kakel', 'målning', 'golv', 'tak', 'vägg'];
+    if (kvmKeywords.some(kw => workItemName.toLowerCase().includes(kw)) && !measurements.area) {
+      warnings.push(`⚠️ Yta saknas för "${workItemName}" - kan inte validera tidestimatet`);
+    }
+    
+    return {
+      isRealistic: true,
+      warnings,
+      suggestedRange: null,
+      correctedHours: estimatedHours,
+      standard: null
     };
   }
   
-  // Beräkna förväntad tid baserat på mått
-  const unit = standard.timePerUnit.unit;
+  // Calculate amount based on standard unit with fallback assumptions
   let amount = 1;
+  const warnings: string[] = [];
   
-  if (unit === 'kvm' && measurements.area) {
-    amount = measurements.area;
-  } else if (unit === 'rum' && measurements.rooms) {
+  if (standard.timePerUnit.unit === 'kvm') {
+    if (measurements.area) {
+      amount = measurements.area;
+    } else {
+      // FALLBACK: Assume typical areas to avoid 2.6h problem
+      const fallbackAreas: Record<string, number> = {
+        'badrum': 4,
+        'målning': 10,
+        'golv': 8,
+        'kök': 8
+      };
+      
+      // Detect job type from work item name
+      const itemLower = workItemName.toLowerCase();
+      let fallbackArea = 1; // default
+      
+      if (itemLower.includes('badrum') || itemLower.includes('våtrum')) {
+        fallbackArea = fallbackAreas['badrum'];
+      } else if (itemLower.includes('målning') || itemLower.includes('måla')) {
+        fallbackArea = fallbackAreas['målning'];
+      } else if (itemLower.includes('golv')) {
+        fallbackArea = fallbackAreas['golv'];
+      } else if (itemLower.includes('kök')) {
+        fallbackArea = fallbackAreas['kök'];
+      }
+      
+      amount = fallbackArea;
+      warnings.push(`⚠️ [ANTAGANDE] Yta saknas för "${workItemName}" - använde ${fallbackArea} kvm. Justera i efterhand.`);
+      console.log(`⚠️ Missing area for kvm-based job "${workItemName}" - using fallback: ${fallbackArea} kvm`);
+    }
+  } else if (standard.timePerUnit.unit === 'rum' && measurements.rooms) {
     amount = measurements.rooms;
-  } else if (unit === 'styck' && measurements.quantity) {
+  } else if (standard.timePerUnit.unit === 'styck' && measurements.quantity) {
     amount = measurements.quantity;
-  } else if (unit === 'meter' && measurements.length) {
+  } else if (standard.timePerUnit.unit === 'meter' && measurements.length) {
     amount = measurements.length;
   }
   
-  const minTime = amount * standard.timePerUnit.min;
-  const maxTime = amount * standard.timePerUnit.max * 1.3; // 30% marginal
-  const typicalTime = amount * standard.timePerUnit.typical;
+  const typicalHours = standard.timePerUnit.typical * amount;
+  const minHours = standard.timePerUnit.min * amount;
+  const maxHours = standard.timePerUnit.max * amount;
   
   // KRITISKT SANITY CHECK: Flagga om något moment är >50h för badrum
   if (estimatedHours > 50 && workItemName.toLowerCase().includes('badrum')) {
+    warnings.push(`🚨 KRITISK: ${estimatedHours.toFixed(1)}h är orimligt högt för ett badrumsmoment "${workItemName}"! Detta är troligen ett fel i beräkningen.`);
     return {
       isRealistic: false,
-      warning: `🚨 KRITISK: ${estimatedHours.toFixed(1)}h är orimligt högt för ett badrumsmoment "${workItemName}"! Detta är troligen ett fel i beräkningen.`,
-      suggestedRange: { min: minTime, max: maxTime },
-      correctedTime: typicalTime
+      warnings,
+      suggestedRange: { min: minHours, max: maxHours },
+      correctedHours: typicalHours,
+      standard
     };
   }
   
   // Om estimerad tid är för låg - KORRIGERA TILL MINTIME (inte typical)
-  if (estimatedHours < minTime * 0.7) {
+  if (estimatedHours < minHours * 0.7) {
+    warnings.push(`⚠️ VARNING: ${estimatedHours.toFixed(1)}h är för lågt för "${workItemName}"! Branschstandard: ${minHours.toFixed(1)}-${maxHours.toFixed(1)}h för ${amount} ${standard.timePerUnit.unit}. Justerat till minimum ${minHours.toFixed(1)}h.`);
     return {
       isRealistic: false,
-      warning: `⚠️ VARNING: ${estimatedHours.toFixed(1)}h är för lågt för "${workItemName}"! Branschstandard: ${minTime.toFixed(1)}-${maxTime.toFixed(1)}h för ${amount} ${unit}. Justerat till minimum ${minTime.toFixed(1)}h.`,
-      suggestedRange: { min: minTime, max: maxTime },
-      correctedTime: Math.max(estimatedHours, minTime)  // Aldrig under minTime
+      warnings,
+      suggestedRange: { min: minHours, max: maxHours },
+      correctedHours: Math.max(estimatedHours, minHours),  // Aldrig under minTime
+      standard
     };
   }
   
   // Om estimerad tid är för hög - KORRIGERA TILL MAXTIME (inte typical)
-  if (estimatedHours > maxTime) {
-    const correctedTime = Math.min(estimatedHours, maxTime);
+  if (estimatedHours > maxHours * 1.3) {
+    const correctedTime = Math.min(estimatedHours, maxHours);
     const reductionPercent = ((estimatedHours - correctedTime) / estimatedHours) * 100;
     
     // ⚠️ FAS 1.1: SAFETY CHECK - Förhindra extrema reduktioner (>70%) som ofta indikerar fel standard
@@ -83,29 +128,36 @@ export function validateTimeEstimate(
       console.error(`🚨 KRITISK VARNING: ${workItemName}`);
       console.error(`   Original: ${estimatedHours.toFixed(1)}h`);
       console.error(`   Skulle korrigeras till: ${correctedTime.toFixed(1)}h (-${reductionPercent.toFixed(0)}%)`);
-      console.error(`   Standard: ${standard?.jobType} (${minTime.toFixed(1)}-${maxTime.toFixed(1)}h för ${amount} ${unit})`);
+      console.error(`   Standard: ${standard?.jobType} (${minHours.toFixed(1)}-${maxHours.toFixed(1)}h för ${amount} ${standard.timePerUnit.unit})`);
       console.error(`   → Detta verkar FEL! Troligen fel standard. Behåller originaltid.`);
       
       // TILLÅT INTE extrema reduktioner - returnera varning men behåll originaltid
+      warnings.push(`🚨 KRITISKT: "${workItemName}" har ${estimatedHours.toFixed(1)}h men standard "${standard?.jobType}" är ${minHours.toFixed(1)}-${maxHours.toFixed(1)}h. Detta skulle reducera med ${reductionPercent.toFixed(0)}% vilket indikerar fel standard. Behåller ${estimatedHours.toFixed(1)}h - kontrollera manuellt!`);
       return {
         isRealistic: false,
-        warning: `🚨 KRITISKT: "${workItemName}" har ${estimatedHours.toFixed(1)}h men standard "${standard?.jobType}" är ${minTime.toFixed(1)}-${maxTime.toFixed(1)}h. Detta skulle reducera med ${reductionPercent.toFixed(0)}% vilket indikerar fel standard. Behåller ${estimatedHours.toFixed(1)}h - kontrollera manuellt!`,
-        suggestedRange: { min: minTime, max: maxTime },
-        correctedTime: estimatedHours  // BEHÅLL original istället för att korrigera fel
+        warnings,
+        suggestedRange: { min: minHours, max: maxHours },
+        correctedHours: estimatedHours,  // BEHÅLL original istället för att korrigera fel
+        standard
       };
     }
     
+    warnings.push(`⚠️ VARNING: ${estimatedHours.toFixed(1)}h är för högt för "${workItemName}"! Branschstandard: ${minHours.toFixed(1)}-${maxHours.toFixed(1)}h för ${amount} ${standard.timePerUnit.unit}. Justerat till maximum ${maxHours.toFixed(1)}h.`);
     return {
       isRealistic: false,
-      warning: `⚠️ VARNING: ${estimatedHours.toFixed(1)}h är för högt för "${workItemName}"! Branschstandard: ${minTime.toFixed(1)}-${maxTime.toFixed(1)}h för ${amount} ${unit}. Justerat till maximum ${maxTime.toFixed(1)}h.`,
-      suggestedRange: { min: minTime, max: maxTime },
-      correctedTime
+      warnings,
+      suggestedRange: { min: minHours, max: maxHours },
+      correctedHours: correctedTime,
+      standard
     };
   }
   
   return { 
-    isRealistic: true, 
-    suggestedRange: { min: minTime, max: maxTime } 
+    isRealistic: true,
+    warnings,
+    suggestedRange: { min: minHours, max: maxHours },
+    correctedHours: estimatedHours,
+    standard
   };
 }
 
@@ -114,7 +166,8 @@ export function validateTimeEstimate(
  */
 export function validateQuoteTimeEstimates(
   quote: any,
-  measurements: { area?: number; rooms?: number; quantity?: number; length?: number }
+  measurements: { area?: number; rooms?: number; quantity?: number; length?: number },
+  projectType?: string
 ): {
   isValid: boolean;
   warnings: string[];
@@ -127,34 +180,25 @@ export function validateQuoteTimeEstimates(
     return { isValid: true, warnings: [], corrections: [] };
   }
   
-  for (const workItem of quote.workItems) {
-    // Försök extrahera kontext från quote description
-    const context = quote.description ? { jobType: quote.description } : undefined;
-    const standard = findStandard(workItem.name, context);
-    
-    if (!standard) {
-      console.log(`ℹ️ No standard found for work item: ${workItem.name}`);
-      continue;
-    }
-    
+  for (const item of quote.workItems || []) {
     const validation = validateTimeEstimate(
-      workItem.name,
-      workItem.hours,
+      item.workItemName,
+      item.estimatedHours,
       measurements,
-      standard,
-      context
+      undefined, // standard will be found automatically
+      { jobType: projectType } // pass context
     );
     
-    if (!validation.isRealistic) {
-      warnings.push(validation.warning!);
-      
-      if (validation.correctedTime) {
-        corrections.push({
-          workItem: workItem.name,
-          originalHours: workItem.hours,
-          suggestedHours: validation.correctedTime
-        });
-      }
+    if (validation.warnings && validation.warnings.length > 0) {
+      warnings.push(...validation.warnings);
+    }
+    
+    if (!validation.isRealistic && validation.correctedHours && validation.correctedHours !== item.estimatedHours) {
+      corrections.push({
+        workItem: item.workItemName,
+        originalHours: item.estimatedHours,
+        suggestedHours: validation.correctedHours
+      });
     }
   }
   
@@ -171,7 +215,8 @@ export function validateQuoteTimeEstimates(
 export function autoCorrectTimeEstimates(
   quote: any,
   measurements: { area?: number; rooms?: number; quantity?: number; length?: number },
-  applyCorrections: boolean = true
+  applyCorrections: boolean = true,
+  projectType?: string
 ): {
   corrected: boolean;
   corrections: Array<{ workItem: string; before: number; after: number }>;
@@ -182,39 +227,33 @@ export function autoCorrectTimeEstimates(
     return { corrected: false, corrections: [] };
   }
   
-  for (let i = 0; i < quote.workItems.length; i++) {
-    const workItem = quote.workItems[i];
-    const context = quote.description ? { jobType: quote.description } : undefined;
-    const standard = findStandard(workItem.name, context);
-    
-    if (!standard) continue;
-    
+  for (const item of quote.workItems || []) {
     const validation = validateTimeEstimate(
-      workItem.name,
-      workItem.hours,
+      item.workItemName,
+      item.estimatedHours,
       measurements,
-      standard,
-      context
+      undefined,
+      { jobType: projectType }
     );
     
-    if (!validation.isRealistic && validation.correctedTime) {
-      const before = workItem.hours;
-      const after = validation.correctedTime;
+    if (!validation.isRealistic && validation.correctedHours && validation.correctedHours !== item.estimatedHours) {
+      const before = item.estimatedHours;
+      const after = validation.correctedHours;
       
       if (applyCorrections) {
-        // Uppdatera offerten
-        quote.workItems[i].hours = after;
-        quote.workItems[i].subtotal = after * workItem.hourlyRate;
+        // Update the item
+        item.estimatedHours = after;
         
-        // FAS 1.3: Förbättra reasoning-meddelanden - visa standard och riktning
+        // Update reasoning to explain the correction with details
         const direction = after > before ? 'ökad' : 'minskad';
-        const changePercent = Math.abs(((after - before) / before) * 100).toFixed(0);
-        quote.workItems[i].reasoning = (workItem.reasoning || '') + 
-          ` [AUTO-KORRIGERAD: Ursprunglig tid ${before.toFixed(1)}h ${direction} till ${after.toFixed(1)}h (${changePercent}%) baserat på standard "${standard.jobType}" (${standard.timePerUnit.min}-${standard.timePerUnit.max} ${standard.timePerUnit.unit})]`;
+        const changePercent = Math.round(Math.abs((after - before) / before * 100));
+        const standardName = validation.standard?.jobType || 'generell standard';
+        
+        item.reasoning = `[AUTO-KORRIGERING] Original: ${before}h → Korrigerad: ${after}h (${direction} ${changePercent}%) baserat på branschstandard "${standardName}". ${item.reasoning || ''}`;
       }
       
       corrections.push({
-        workItem: workItem.name,
+        workItem: item.workItemName,
         before,
         after
       });
