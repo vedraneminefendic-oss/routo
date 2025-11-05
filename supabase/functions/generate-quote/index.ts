@@ -29,6 +29,7 @@ import { isKitchenProject, getKitchenPromptAddition, KITCHEN_REQUIREMENTS } from
 import { validateKitchenQuote, generateKitchenValidationSummary } from './helpers/validateKitchenQuote.ts';
 import { isPaintingProject, getPaintingPromptAddition, PAINTING_REQUIREMENTS } from './helpers/paintingRequirements.ts';
 import { validatePaintingQuote, generatePaintingValidationSummary } from './helpers/validatePaintingQuote.ts';
+import { validateGenericQuote, generateGenericValidationSummary, needsGenericValidation } from './helpers/genericQuoteValidation.ts';
 // FAS 2 & 5: Import project standards and intent detection
 import { detectProjectType, detectProjectTypeAdvanced, getProjectPromptAddition, PROJECT_STANDARDS, normalizeKeyword, detectScope, detectProjectIntent, type ProjectIntent, type DetectionResult } from './helpers/projectStandards.ts';
 // FAS 1, 2, 4: Import layered prompt and material pricing
@@ -6088,6 +6089,46 @@ Svara med **1**, **2** eller **3** (eller "granska", "generera", "mer info")`;
     }
     
     // ============================================
+    // GENERIC FALLBACK VALIDATION
+    // ============================================
+    let genericValidationWarnings: string[] = [];
+    
+    // Applicera generisk validering för jobbtyper utan dedikerad validering
+    if (needsGenericValidation(quote.projectType || 'övrigt', description)) {
+      console.log('🔍 Applicerar GENERISK validering...');
+      
+      const genericValidation = validateGenericQuote(quote, quote.projectType || 'övrigt', description);
+      
+      if (!genericValidation.passed) {
+        console.error('❌ KRITISK: Offerten uppfyller inte grundläggande rimlighetskrav!');
+        console.error('Fel:', genericValidation.errors);
+        
+        const validationSummary = generateGenericValidationSummary(genericValidation);
+        
+        return new Response(
+          JSON.stringify({
+            error: 'Offerten kunde inte genereras - uppfyller inte grundläggande rimlighetskrav',
+            details: genericValidation.errors,
+            summary: validationSummary,
+            validation: genericValidation.details,
+            suggestion: 'Kontrollera timpris, total kostnad och arbetsmoment.',
+          }),
+          {
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+            status: 400,
+          }
+        );
+      } else if (genericValidation.warnings.length > 0) {
+        console.warn('⚠️ Generisk validering OK men med varningar:', genericValidation.warnings);
+        genericValidationWarnings = genericValidation.warnings;
+      } else {
+        console.log('✅ Generisk validering: Alla krav uppfyllda');
+      }
+    } else {
+      console.log('ℹ️ Dedikerad validering används - skippar generisk validering');
+    }
+    
+    // ============================================
     // NEW: CALCULATE RISK MARGIN (Optional - Only for large uncertain projects)
     // ============================================
     const lowConfidenceAssumptions = assumptions.filter(a => a.confidence < 60).length;
@@ -6303,6 +6344,8 @@ Svara med **1**, **2** eller **3** (eller "granska", "generera", "mer info")`;
         } : undefined,
         bathroomValidation: validationWarnings.length > 0 ? validationWarnings : undefined,
         kitchenValidation: kitchenValidationWarnings.length > 0 ? kitchenValidationWarnings : undefined,
+        paintingValidation: paintingValidationWarnings.length > 0 ? paintingValidationWarnings : undefined,
+        genericValidation: genericValidationWarnings.length > 0 ? genericValidationWarnings : undefined,
         conversationValidation: !conversationValidation.isValid || conversationValidation.warnings.length > 0 ? {
           removedItems: conversationValidation.unmentionedItems,
           removedValue: Math.round(conversationValidation.removedValue),
