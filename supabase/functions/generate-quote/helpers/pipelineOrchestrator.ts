@@ -21,6 +21,7 @@ import { enforceWorkItemMath, logQuoteReport } from './mathGuard.ts';
 import { detectFlags, filterCustomerProvidedMaterials } from './flagDetector.ts';
 import { findJobDefinition, type JobDefinition } from './jobRegistry.ts';
 import { mergeWorkItems, logMergeReport, type MergeResult } from './mergeEngine.ts';
+import { validateQuoteDomain, attachValidationWarnings, type DomainValidationResult } from './domainValidator.ts';
 
 interface ParsedInput {
   description: string;
@@ -54,6 +55,7 @@ interface PipelineResult {
     totalsCorrected: boolean;
   };
   mergeResult: MergeResult;
+  domainValidation: DomainValidationResult;
   jobDefinition: JobDefinition;
   appliedFallbacks: string[];
 }
@@ -209,7 +211,41 @@ export async function runQuotePipeline(
   console.log('⚠️ STEG 5-8: Formula Engine - Will be integrated in next phase');
   
   // ============================================
-  // STEG 9: Filtrera kund-material
+  // STEG 6: DOMAIN VALIDATION
+  // ============================================
+  
+  // Bygg temporär quote för validering (innan final totals)
+  const tempQuote: any = {
+    ...params,
+    workItems,
+    materials: params.materials || [],
+    equipment: params.equipment || [],
+    summary: params.summary || {
+      workCost: 0,
+      materialCost: 0,
+      equipmentCost: 0,
+      totalBeforeVAT: 0,
+      vatAmount: 0,
+      totalWithVAT: 0,
+      customerPays: 0
+    }
+  };
+  
+  // Kör domain-specifik validering
+  const domainValidation = await validateQuoteDomain(
+    tempQuote,
+    jobDef!,
+    { autoFix: true, strictMode: false }
+  );
+  
+  // Om auto-fix kördes, uppdatera workItems
+  if (domainValidation.autoFixAttempted && domainValidation.autoFixSuccess) {
+    console.log('✅ Auto-fix applied, updating work items');
+    workItems = tempQuote.workItems;
+  }
+  
+  // ============================================
+  // STEG 7: Filtrera kund-material
   // ============================================
   
   let materials = params.materials || [];
@@ -222,7 +258,7 @@ export async function runQuotePipeline(
   }
   
   // ============================================
-  // STEG 10: Bygg quote (temporärt, ska flyttas till Formula Engine)
+  // STEG 8: Bygg quote (temporärt, ska flyttas till Formula Engine)
   // ============================================
   
   const quote: any = {
@@ -261,7 +297,13 @@ export async function runQuotePipeline(
   }
   
   // ============================================
-  // STEG 11: Validera proportioner
+  // STEG 9: Attach domain validation warnings
+  // ============================================
+  
+  attachValidationWarnings(quote, domainValidation);
+  
+  // ============================================
+  // STEG 10: Validera proportioner
   // ============================================
   
   if (jobDef?.proportionRules) {
@@ -279,13 +321,13 @@ export async function runQuotePipeline(
   }
   
   // ============================================
-  // STEG 12: FINAL MATH GUARD (OBLIGATORISKT)
+  // STEG 11: FINAL MATH GUARD (OBLIGATORISKT)
   // ============================================
   
   const mathGuardResult = enforceWorkItemMath(quote);
   
   // ============================================
-  // STEG 13: Log report
+  // STEG 12: Log report
   // ============================================
   
   logQuoteReport(mathGuardResult.correctedQuote);
@@ -303,6 +345,7 @@ export async function runQuotePipeline(
       ...mathGuardResult.summary
     },
     mergeResult,
+    domainValidation,
     jobDefinition: jobDef!,
     appliedFallbacks
   };
