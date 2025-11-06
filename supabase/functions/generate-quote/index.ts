@@ -55,6 +55,9 @@ import { deriveLocation, getRegionalMultiplier, getSeasonalMultiplier } from './
 import { validateTotalPrice } from './helpers/totalGuard.ts';
 // PUNKT 3: Import category detector
 import { detectJobCategory } from './helpers/categoryDetector.ts';
+// FAS 1: Import Math Guard and Flag Detector
+import { enforceWorkItemMath, logQuoteReport } from './helpers/mathGuard.ts';
+import { detectFlags, filterCustomerProvidedMaterials } from './helpers/flagDetector.ts';
 
 // Brand dictionary and synonyms for better language understanding
 const KEYWORD_SYNONYMS: Record<string, string[]> = {
@@ -4266,6 +4269,21 @@ Deno.serve(async (req) => {
     console.log('📝 Using conversation summary:', !!conversationSummary);
 
     // ============================================
+    // FAS 1: DETECT FLAGS (Customer-provided materials, No complexity)
+    // ============================================
+    
+    console.log('🏷️ FAS 1: Detecting conversation flags...');
+    const detectedFlags = detectFlags(actualConversationHistory, completeDescription);
+    
+    if (detectedFlags.customerProvidesMaterial) {
+      console.log(`✅ Flag: Customer provides material (${detectedFlags.customerProvidesDetails?.materials.join(', ')})`);
+    }
+    
+    if (detectedFlags.noComplexity) {
+      console.log('✅ Flag: No special complexity confirmed');
+    }
+
+    // ============================================
     // STEP 1: FETCH USER DATA
     // ============================================
 
@@ -6658,43 +6676,77 @@ Svara med **1**, **2** eller **3** (eller "granska", "generera", "mer info")`;
     }
 
     // ============================================
-    // STEP 8.5: MATEMATIK SANITY CHECK
+    // FAS 1: FILTER CUSTOMER-PROVIDED MATERIALS
     // ============================================
     
-    console.log('🔍 SANITY CHECK: Verifierar att summary stämmer med workItems...');
-    
-    const calculatedWorkCost = quote.workItems?.reduce((sum: number, w: any) => sum + (w.subtotal || 0), 0) || 0;
-    const declaredWorkCost = quote.summary?.workCost || 0;
-    const difference = Math.abs(calculatedWorkCost - declaredWorkCost);
-    const differencePercent = declaredWorkCost > 0 ? ((difference / declaredWorkCost) * 100) : 0;
-    
-    if (difference > 100) {
-      console.error(`❌ MATEMATIKFEL UPPTÄCKT!`);
-      console.error(`   Deklarerad workCost: ${declaredWorkCost.toFixed(2)} kr`);
-      console.error(`   Beräknad från workItems: ${calculatedWorkCost.toFixed(2)} kr`);
-      console.error(`   Differens: ${difference.toFixed(2)} kr (${differencePercent.toFixed(1)}%)`);
-      console.error(`   🔧 AUTO-KORRIGERAR nu...`);
+    if (detectedFlags.customerProvidesMaterial && detectedFlags.customerProvidesDetails) {
+      console.log('🧹 FAS 1: Filtering customer-provided materials...');
       
-      // Auto-fix: Räkna om alla summor från workItems
-      quote.summary.workCost = calculatedWorkCost;
-      quote.summary.totalBeforeVAT = calculatedWorkCost + (quote.summary.materialCost || 0) + (quote.summary.equipmentCost || 0);
-      quote.summary.vatAmount = Math.round(quote.summary.totalBeforeVAT * 0.25);
-      quote.summary.totalWithVAT = quote.summary.totalBeforeVAT + quote.summary.vatAmount;
+      const originalMaterialsCount = quote.materials?.length || 0;
       
-      // ROT/RUT correction if applicable
-      if (quote.summary.rotRutDeduction) {
-        quote.summary.customerPays = quote.summary.totalWithVAT - quote.summary.rotRutDeduction;
-      } else {
-        quote.summary.customerPays = quote.summary.totalWithVAT;
+      quote.materials = filterCustomerProvidedMaterials(
+        quote.materials || [],
+        detectedFlags.customerProvidesDetails.materials
+      );
+      
+      const filteredCount = originalMaterialsCount - (quote.materials?.length || 0);
+      
+      if (filteredCount > 0) {
+        console.log(`✅ Filtered ${filteredCount} customer-provided materials`);
+        
+        // Lägg till kundansvar i quote
+        quote.customerResponsibilities = quote.customerResponsibilities || [];
+        quote.customerResponsibilities.push(
+          `Kund tillhandahåller ${detectedFlags.customerProvidesDetails.materials.join(' och ')}`
+        );
+        
+        // Lägg till assumption
+        quote.assumptions = quote.assumptions || [];
+        quote.assumptions.push({
+          text: `Material som kunden tillhandahåller är inte inkluderade i priset: ${detectedFlags.customerProvidesDetails.materials.join(', ')}`,
+          confidence: 95,
+          source: 'conversation'
+        });
       }
-      
-      console.log(`   ✅ KORRIGERAT: Ny workCost = ${quote.summary.workCost.toFixed(2)} kr`);
-      console.log(`   ✅ Ny totalBeforeVAT = ${quote.summary.totalBeforeVAT.toFixed(2)} kr`);
-      console.log(`   ✅ Ny totalWithVAT = ${quote.summary.totalWithVAT.toFixed(2)} kr`);
-      console.log(`   ✅ Ny customerPays = ${quote.summary.customerPays.toFixed(2)} kr`);
-    } else {
-      console.log(`✅ MATEMATIK OK: workCost stämmer med workItems (differens: ${difference.toFixed(2)} kr)`);
     }
+    
+    // ============================================
+    // FAS 1: ADD NO-COMPLEXITY ASSUMPTION
+    // ============================================
+    
+    if (detectedFlags.noComplexity) {
+      console.log('✅ FAS 1: Adding no-complexity assumption...');
+      
+      quote.assumptions = quote.assumptions || [];
+      quote.assumptions.push({
+        text: 'Inga särskilda hinder eller komplexitet bekräftat av kund',
+        confidence: 90,
+        source: 'conversation'
+      });
+      
+      // Sätt specialRequirements till tom array om den finns
+      if (quote.conversationSummary) {
+        quote.conversationSummary.specialRequirements = [];
+      }
+    }
+
+    // ============================================
+    // FAS 1: MATH GUARD - Final validation & auto-correction
+    // ============================================
+    
+    console.log('🛡️ Running Math Guard - final validation...');
+    
+    const mathGuardResult = enforceWorkItemMath(quote);
+    quote = mathGuardResult.correctedQuote;
+    
+    if (mathGuardResult.totalCorrections > 0) {
+      console.log(`✅ Math Guard applied ${mathGuardResult.totalCorrections} corrections`);
+    } else {
+      console.log('✅ Math Guard: No corrections needed - all math is correct');
+    }
+    
+    // Log detailed quote report
+    logQuoteReport(quote);
 
     // ============================================
     // STEP 9: RETURN QUOTE
