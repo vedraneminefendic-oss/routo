@@ -3,6 +3,7 @@
 // ==========================================
 
 import { BATHROOM_REQUIREMENTS } from './bathroomRequirements.ts';
+import { findStandard, calculateTimeFromStandard } from './industryStandards.ts';
 
 export interface ValidationIssue {
   severity: 'CRITICAL' | 'ERROR' | 'WARNING' | 'INFO';
@@ -208,27 +209,42 @@ export function generateValidationSummary(validation: ValidationResult): string 
 export async function autoFixBathroomQuote(
   quote: any,
   missing: string[],
-  area: number
+  area: number,
+  projectType?: string
 ): Promise<any> {
+  
+  // Helper to check if work item already exists
+  const hasExistingItem = (standardJobType: string): boolean => {
+    if (!quote.workItems || !Array.isArray(quote.workItems)) return false;
+    
+    return quote.workItems.some((item: any) => {
+      const itemName = (item.workItemName || item.name || '').toLowerCase();
+      const standard = findStandard(itemName, { jobType: projectType || 'badrum' });
+      return standard?.jobType === standardJobType;
+    });
+  };
   
   const fixes: Record<string, any> = {
     'VVS-installation': {
       name: 'VVS-installation',
       description: 'Byte av rör, kopplingar, ventiler, golvbrunn, installera dusch/toalett/tvättställ',
-      hours: 14,  // Ökat från 12
+      standardJobType: 'vvs_badrum',
+      hours: 14,  // Fallback if standard not found
       hourlyRate: 950,
       subtotal: 13300
     },
     'El-installation': {
       name: 'El-installation våtrum',
       description: 'Jordfelsbrytare, IP44-armaturer, golvvärmekabel, fläktinstallation',
-      hours: 12,  // Ökat från 10
+      standardJobType: 'el_badrum',
+      hours: 12,  // Fallback
       hourlyRate: 950,
       subtotal: 11400
     },
-    'El-installation våtrum': {  // Duplicate key for exact matching
+    'El-installation våtrum': {
       name: 'El-installation våtrum',
       description: 'Jordfelsbrytare, IP44-armaturer, golvvärmekabel, fläktinstallation',
+      standardJobType: 'el_badrum',
       hours: 12,
       hourlyRate: 950,
       subtotal: 11400
@@ -236,6 +252,7 @@ export async function autoFixBathroomQuote(
     'Golvvärmemontage': {
       name: 'Golvvärmemontage',
       description: 'Läggning av golvvärmematta och installation av termostat',
+      standardJobType: 'golvvarme',
       hours: 6,
       hourlyRate: 850,
       subtotal: 5100
@@ -243,6 +260,7 @@ export async function autoFixBathroomQuote(
     'Ventilationsinstallation': {
       name: 'Ventilationsinstallation',
       description: 'Montering av badrumsfläkt med timer och fuktavkännare',
+      standardJobType: 'ventilation',
       hours: 3,
       hourlyRate: 850,
       subtotal: 2550
@@ -250,6 +268,7 @@ export async function autoFixBathroomQuote(
     'Tätskiktsarbete': {
       name: 'Tätskiktsarbete',
       description: 'Applicering av tätskikt på golv och väggar enligt branschregler',
+      standardJobType: 'tatskikt',
       hours: 8,
       hourlyRate: 850,
       subtotal: 6800
@@ -285,13 +304,46 @@ export async function autoFixBathroomQuote(
   
   const fixedQuote = { ...quote };
   
-  // Add missing workItems with better keyword matching
+  // Add missing workItems with better keyword matching and dynamic hour calculation
   missing.forEach(missingItem => {
     // Try exact match first
     if (fixes[missingItem]) {
+      const fix = fixes[missingItem];
+      
+      // Check if item already exists
+      if (hasExistingItem(fix.standardJobType)) {
+        console.log(`  ⏭️ Skipping ${missingItem} - already exists (matched by standard ${fix.standardJobType})`);
+        return;
+      }
+      
+      // Calculate hours dynamically from standard
+      const standard = findStandard(fix.name, { jobType: projectType || 'badrum' });
+      let calculatedHours = fix.hours; // Fallback
+      
+      if (standard) {
+        calculatedHours = calculateTimeFromStandard(standard, { area });
+        console.log(`  📊 Calculated hours from standard ${standard.jobType}: ${calculatedHours.toFixed(1)}h (area: ${area} kvm)`);
+      }
+      
+      // Use existing hourly rate if one exists in quote, otherwise use standard or fallback
+      const existingRate = fixedQuote.workItems?.find((w: any) => 
+        w.name?.toLowerCase().includes(fix.name.split(' ')[0].toLowerCase())
+      )?.hourlyRate;
+      
+      const hourlyRate = existingRate || (standard?.hourlyRate?.standard) || fix.hourlyRate;
+      const subtotal = Math.round(calculatedHours * hourlyRate);
+      
+      const itemToAdd = {
+        ...fix,
+        hours: calculatedHours,
+        estimatedHours: calculatedHours,
+        hourlyRate,
+        subtotal
+      };
+      
       fixedQuote.workItems = fixedQuote.workItems || [];
-      fixedQuote.workItems.push(fixes[missingItem]);
-      console.log(`  ✅ Auto-added work item: ${missingItem} (${fixes[missingItem].hours}h × ${fixes[missingItem].hourlyRate} kr = ${fixes[missingItem].subtotal} kr)`);
+      fixedQuote.workItems.push(itemToAdd);
+      console.log(`  ✅ Auto-added (dynamic): ${fix.name} (${calculatedHours.toFixed(1)}h × ${hourlyRate} kr = ${subtotal} kr)`);
     } else {
       // Try keyword matching
       const itemLower = missingItem.toLowerCase();
@@ -302,9 +354,39 @@ export async function autoFixBathroomQuote(
       
       if (matchedFix) {
         const [_, fix] = matchedFix;
+        
+        // Check if item already exists
+        if (hasExistingItem(fix.standardJobType)) {
+          console.log(`  ⏭️ Skipping ${missingItem} (keyword match) - already exists`);
+          return;
+        }
+        
+        // Calculate hours dynamically
+        const standard = findStandard(fix.name, { jobType: projectType || 'badrum' });
+        let calculatedHours = fix.hours;
+        
+        if (standard) {
+          calculatedHours = calculateTimeFromStandard(standard, { area });
+        }
+        
+        const existingRate = fixedQuote.workItems?.find((w: any) => 
+          w.name?.toLowerCase().includes(fix.name.split(' ')[0].toLowerCase())
+        )?.hourlyRate;
+        
+        const hourlyRate = existingRate || (standard?.hourlyRate?.standard) || fix.hourlyRate;
+        const subtotal = Math.round(calculatedHours * hourlyRate);
+        
+        const itemToAdd = {
+          ...fix,
+          hours: calculatedHours,
+          estimatedHours: calculatedHours,
+          hourlyRate,
+          subtotal
+        };
+        
         fixedQuote.workItems = fixedQuote.workItems || [];
-        fixedQuote.workItems.push(fix);
-        console.log(`  ✅ Auto-added work item (keyword match): ${fix.name} (${fix.hours}h × ${fix.hourlyRate} kr = ${fix.subtotal} kr)`);
+        fixedQuote.workItems.push(itemToAdd);
+        console.log(`  ✅ Auto-added (keyword + dynamic): ${fix.name} (${calculatedHours.toFixed(1)}h × ${hourlyRate} kr = ${subtotal} kr)`);
       }
     }
     

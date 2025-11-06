@@ -5453,31 +5453,20 @@ Svara med **1**, **2** eller **3** (eller "granska", "generera", "mer info")`;
     
     console.log('📐 Final measurements for validation:', measurementsForValidation);
     
-    // Detect project type for context-aware validation (FLYTTA DETTA FÖRE normalizeAndMergeDuplicates)
-    let detectedProjectType = 'övrigt';
-    const descriptionLower = completeDescription.toLowerCase();
-    if (descriptionLower.includes('badrum')) detectedProjectType = 'badrum';
-    else if (descriptionLower.includes('kök')) detectedProjectType = 'kök';
-    else if (descriptionLower.includes('målning') || descriptionLower.includes('måla')) detectedProjectType = 'målning';
-    else if (descriptionLower.includes('städ')) detectedProjectType = 'städning';
-    else if (descriptionLower.includes('trädgård')) detectedProjectType = 'trädgård';
-    else if (descriptionLower.includes('el') || descriptionLower.includes('elektr')) detectedProjectType = 'el';
-    
-    console.log('🎯 Detected project type:', detectedProjectType);
-    
     // ============================================
-    // FAS 2: NORMALIZE AND MERGE DUPLICATE WORK ITEMS (tillfälligt inaktiverad pga scope)
+    // FAS 2: NORMALIZE AND MERGE DUPLICATE WORK ITEMS
     // ============================================
     
     console.log('🔍 Normalizing and merging duplicate work items...');
+    console.log('🎯 Using project type from advanced detection:', detectionResult.projectType);
     const { normalizeAndMergeDuplicates } = await import('./helpers/duplicateManager.ts');
-    quote = normalizeAndMergeDuplicates(quote, measurementsForValidation, detectedProjectType);
+    quote = normalizeAndMergeDuplicates(quote, measurementsForValidation, detectionResult.projectType);
     
     // Apply deterministic pricing (FAS 22: skip if draft mode)
     console.log('💰 Computing deterministic totals...');
     quote = computeQuoteTotals(quote, hourlyRates || [], equipmentRates || [], isDraft);
     
-    const timeValidation = validateQuoteTimeEstimates(quote, measurementsForValidation, detectedProjectType);
+    const timeValidation = validateQuoteTimeEstimates(quote, measurementsForValidation, detectionResult.projectType);
     
     if (!timeValidation.isValid) {
       console.warn('⚠️ Time estimate validation warnings:');
@@ -5487,7 +5476,7 @@ Svara med **1**, **2** eller **3** (eller "granska", "generera", "mer info")`;
       if (timeValidation.corrections.length > 0) {
         console.log('🔧 Auto-correcting time estimates...');
         
-        const correctionResult = autoCorrectTimeEstimates(quote, measurementsForValidation, true, detectedProjectType);
+        const correctionResult = autoCorrectTimeEstimates(quote, measurementsForValidation, true, detectionResult.projectType);
         
         if (correctionResult.corrected) {
           console.log(`✅ Corrected ${correctionResult.corrections.length} work items:`);
@@ -5508,7 +5497,7 @@ Svara med **1**, **2** eller **3** (eller "granska", "generera", "mer info")`;
     // FAS 2.2: KRITISK MINIMUM-VALIDERING FÖR BADRUM (context-aware)
     // ============================================
     
-    const isBathroom = detectedProjectType === 'badrum' || completeDescription.toLowerCase().includes('badrum');
+    const isBathroom = detectionResult.projectType === 'badrum' || completeDescription.toLowerCase().includes('badrum');
     
     if (isBathroom) {
       const totalHours = quote.workItems?.reduce((sum: number, item: any) => 
@@ -5897,11 +5886,29 @@ Svara med **1**, **2** eller **3** (eller "granska", "generera", "mer info")`;
         // AUTO-FIX: Lägg till saknade komponenter
         if (bathroomValidation.missing.length > 0) {
           console.log('🔧 Auto-fixing quote with missing components:', bathroomValidation.missing);
-          quote = await autoFixBathroomQuote(quote, bathroomValidation.missing, area);
+          quote = await autoFixBathroomQuote(quote, bathroomValidation.missing, area, detectionResult.projectType);
           console.log('✅ Quote auto-fixed successfully');
           
           // Re-calculate totals after auto-fix (FAS 22: respect draft mode)
           quote = computeQuoteTotals(quote, hourlyRates || [], equipmentRates || [], isDraft);
+          
+          // POST-FIX PIPELINE: Merge duplicates and re-validate after auto-fix
+          console.log('🔁 Post-fix: merge duplicates introduced by auto-fix');
+          const { normalizeAndMergeDuplicates } = await import('./helpers/duplicateManager.ts');
+          quote = normalizeAndMergeDuplicates(quote, measurementsForValidation, detectionResult.projectType);
+          
+          console.log('🔁 Post-fix: auto-correct time estimates');
+          autoCorrectTimeEstimates(quote, measurementsForValidation, true, detectionResult.projectType);
+          
+          console.log('🔁 Post-fix: recompute totals');
+          quote = computeQuoteTotals(quote, hourlyRates || [], equipmentRates || [], isDraft);
+          
+          // Re-validate to log any remaining warnings
+          const postFixValidation = validateQuoteTimeEstimates(quote, measurementsForValidation, detectionResult.projectType);
+          if (!postFixValidation.isValid) {
+            console.warn('⚠️ Post-fix validation warnings:');
+            postFixValidation.warnings.forEach(w => console.warn(`   - ${w}`));
+          }
         }
         
         // Logga validationssammanfattning
