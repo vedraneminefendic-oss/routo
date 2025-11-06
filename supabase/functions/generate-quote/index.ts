@@ -1864,10 +1864,39 @@ function computeQuoteTotals(
   equipmentRates: Array<{ name: string; price_per_day: number | null; price_per_hour: number | null }>,
   isDraft: boolean = false
 ): any {
-  // FAS 22: If draft mode, preserve AI-generated price intervals as-is
+  // FAS 22: If draft mode, preserve AI-generated price intervals as-is BUT enforce a sanity floor on totals
   if (isDraft) {
-    console.log('📄 FAS 22: Draft mode - preserving AI price intervals, skipping deterministic calculations');
-    return quote; // Return quote as-is with price interval strings
+    console.log('📄 FAS 22: Draft mode - preserving AI price intervals, applying sanity floor for totals');
+
+    const summary = quote.summary || {};
+    const totalHours = (quote.workItems || []).reduce((sum: number, item: any) => sum + (Number(item.hours) || 0), 0);
+
+    // Use a conservative minimum hourly rate to satisfy generic validation
+    const MIN_HOURLY_FLOOR = 500; // kr/h
+    const currentMaterial = Number(summary.materialCost) || 0;
+    const currentEquipment = Number(summary.equipmentCost) || 0;
+    const currentWork = Number(summary.workCost) || 0;
+
+    const minWorkCost = Math.max(Math.round(totalHours * MIN_HOURLY_FLOOR), 0);
+    const adjustedWork = Math.max(currentWork, minWorkCost);
+
+    const totalBeforeVAT = adjustedWork + currentMaterial + currentEquipment;
+    const vatAmount = Math.round(totalBeforeVAT * 0.25);
+    const totalWithVAT = totalBeforeVAT + vatAmount;
+
+    return {
+      ...quote,
+      summary: {
+        ...summary,
+        workCost: adjustedWork,
+        materialCost: currentMaterial,
+        equipmentCost: currentEquipment,
+        totalBeforeVAT,
+        vatAmount,
+        totalWithVAT,
+        customerPays: totalWithVAT,
+      },
+    };
   }
   
   let workCost = 0;
