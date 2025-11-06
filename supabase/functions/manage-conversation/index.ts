@@ -182,6 +182,13 @@ TIDIGARE STÄLLDA FRÅGOR: ${askedQuestions.join(', ') || 'Inga frågor ställda
 SAMMANFATTNING AV SAMTALET:
 ${JSON.stringify(conversationSummary, null, 2)}
 
+${conversationSummary.clarifications && conversationSummary.clarifications.length > 0 ? `
+**BEKRÄFTADE DIMENSIONER (ej negationer):**
+${conversationSummary.clarifications.map((c: any) => 
+  `- ${c.dimension.toUpperCase()}: ${c.note}`
+).join('\n')}
+` : ''}
+
 **UPPDRAG:**
 Generera EXAKT ${maxQuestionsToGenerate} relevanta frågor (inte mer, inte mindre).
 
@@ -216,6 +223,17 @@ Generera EXAKT ${maxQuestionsToGenerate} relevanta frågor (inte mer, inte mindr
 - SIZE: "Hur många träd och hur höga är de ungefär?"
 - MATERIALS: "Behövs bortforsling och stubbfräsning?"
 - COMPLEXITY: "Är träden nära hus eller ledningar som gör jobbet svårare?"
+
+**KRITISK REGEL - Tolka "NEJ" rätt:**
+När användaren svarar "nej" eller "inget särskilt" på en YES/NO-fråga (t.ex. om komplexitet):
+- Detta är INTE en negation eller borttagning
+- Detta är en BEKRÄFTELSE att dimensionen är klar utan speciella krav
+- Fråga INTE uppföljningsfrågor om vad som ska exkluderas
+- Gå vidare till nästa saknade dimension
+
+EXEMPEL:
+❌ FEL: Fråga: "Finns speciella krav?" → Svar: "Nej" → "Ska något exkluderas?" (DÅLIGT!)
+✅ RÄTT: Fråga: "Finns speciella krav?" → Svar: "Nej" → Gå vidare till nästa dimension
 
 **VIKTIGT - FAS 3 REGEL:**
 Använd ALLTID samma 4 dimensioner (scope/size/materials/complexity) oavsett jobbtyp.
@@ -277,7 +295,25 @@ Om alla checklist-kategorier är täckta, returnera: []`;
              !lower.includes('färdig');
     });
     
-    console.log(`✅ FAS 23: Generated ${validQuestions.length} ${isRefinement ? 'refinement' : 'initial'} questions (timeline questions filtered out)`);
+    // P0: Filter out exclusion questions if complexity was just confirmed as "no special requirements"
+    if (checklist.specialRequirements && conversationSummary.clarifications) {
+      const recentComplexityConfirmation = conversationSummary.clarifications.find(
+        (c: any) => c.dimension === 'complexity' && c.userResponse === 'no_special_requirements'
+      );
+      
+      if (recentComplexityConfirmation) {
+        validQuestions = validQuestions.filter(q => {
+          const lower = q.toLowerCase();
+          return !lower.includes('exkludera') && 
+                 !lower.includes('ta bort') &&
+                 !lower.includes('skippa') &&
+                 !lower.includes('utesluta');
+        });
+        console.log('  ✅ Filtered out exclusion questions (complexity confirmed as simple)');
+      }
+    }
+    
+    console.log(`✅ FAS 23: Generated ${validQuestions.length} ${isRefinement ? 'refinement' : 'initial'} questions (timeline + exclusion questions filtered out)`);
     return validQuestions;
   } catch (error) {
     console.error('❌ Error generating smart questions:', error);
@@ -319,6 +355,12 @@ interface ConversationSummary {
   exclusions?: string[];
   customerAnswers?: Record<string, any>;
   checklist?: InformationChecklist; // FAS 19: Track main categories
+  clarifications?: Array<{
+    dimension: string;
+    userResponse: string;
+    timestamp: string;
+    note: string;
+  }>; // FAS 23: Track confirmed dimensions to prevent follow-up questions
 }
 
 async function generateConversationSummary(
@@ -947,7 +989,18 @@ serve(async (req) => {
               content: confirmationMessage.content
             });
           
-          console.log('✅ FAS 12: Saved no_complexity confirmation and updated checklist');
+          // FAS 23: Add explicit context about confirmed complexity dimension
+          if (!conversationSummary.clarifications) {
+            conversationSummary.clarifications = [];
+          }
+          conversationSummary.clarifications.push({
+            dimension: 'complexity',
+            userResponse: 'no_special_requirements',
+            timestamp: new Date().toISOString(),
+            note: 'Användaren bekräftade inga särskilda komplikationer eller speciella krav'
+          });
+          
+          console.log('✅ FAS 12: Saved no_complexity confirmation and updated checklist with clarifications');
           
           // Continue with normal flow (don't ask follow-up about removing things)
         } else if (negationResult.isNegation) {
