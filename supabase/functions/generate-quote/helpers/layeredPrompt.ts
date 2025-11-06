@@ -120,39 +120,42 @@ ${categoryQuotes > 0 ? `Användarens genomsnittliga timpris i ${jobCategory}: ${
 
 ${jobCategory === 'badrum' ? `
 
-**🚨 KRITISKT FÖR BADRUMSRENOVERING:**
+**🚨 KRITISKT FÖR BADRUMSRENOVERING${measurements?.area ? ` (${measurements.area} kvm)` : ''}:**
 
 För badrum ska du ALLTID dela upp arbetet i SEPARATA moment med MOMENT-SPECIFIKA standarder:
 
 1. **Rivning och demontering** (jobType: 'rivning_badrum')
    - Standard: 1.5-3.5h per kvm (typical: 2.5h/kvm)
    - Timpris: 650-900 kr/h (standard: 750 kr/h)
-   - För 5 kvm badrum: ~12.5h
+   ${measurements?.area ? `- För ${measurements.area} kvm: ${(measurements.area * 2.5).toFixed(1)}h` : '- Yta saknas - använd 4 kvm som antagande (= 10h)'}
 
 2. **VVS-installation** (jobType: 'vvs_badrum')
    - Standard: 2.0-4.0h per kvm (typical: 2.8h/kvm)
    - Timpris: 800-1100 kr/h (standard: 950 kr/h)
-   - För 5 kvm badrum: ~14h
+   ${measurements?.area ? `- För ${measurements.area} kvm: ${(measurements.area * 2.8).toFixed(1)}h` : '- Yta saknas - använd 4 kvm som antagande (= 11.2h)'}
 
 3. **El-installation** (jobType: 'el_badrum')
    - Standard: 1.8-3.2h per kvm (typical: 2.5h/kvm)
    - Timpris: 850-1100 kr/h (standard: 950 kr/h)
-   - För 5 kvm badrum: ~12.5h
+   ${measurements?.area ? `- För ${measurements.area} kvm: ${(measurements.area * 2.5).toFixed(1)}h` : '- Yta saknas - använd 4 kvm som antagande (= 10h)'}
 
 4. **Kakelsättning väggar** (jobType: 'kakel_vagg')
    - Standard: 1.5-3.0h per kvm (typical: 2.2h/kvm)
    - Timpris: 700-950 kr/h (standard: 800 kr/h)
-   - För 5 kvm badrum: ~11h
+   ${measurements?.area ? `- För ${measurements.area} kvm: ${(measurements.area * 2.2).toFixed(1)}h` : '- Yta saknas - använd 4 kvm som antagande (= 8.8h)'}
 
 5. **Klinkersättning golv** (jobType: 'klinker_golv')
    - Standard: 2.0-3.5h per kvm (typical: 2.8h/kvm)
    - Timpris: 700-1000 kr/h (standard: 850 kr/h)
-   - För 5 kvm badrum: ~14h
+   ${measurements?.area ? `- För ${measurements.area} kvm: ${(measurements.area * 2.8).toFixed(1)}h` : '- Yta saknas - använd 4 kvm som antagande (= 11.2h)'}
 
-**TOTALT för 5 kvm badrum: 64-70 timmar (inte 300+!)**
+**TOTALT för ${measurements?.area || 4} kvm badrum: ${measurements?.area ? (measurements.area * (2.5 + 2.8 + 2.5 + 2.2 + 2.8)).toFixed(0) : '51'} timmar**
 
 **⚠️ ANVÄND ALDRIG 'badrumstotalrenovering' (50h/kvm) för ENSKILDA moment!**
 Den standarden är ENDAST för att validera total-tid, inte för att beräkna delmoment.
+
+**🚨 BERÄKNINGSREGEL: Multiplicera ALLTID standard (h/kvm) med faktisk area i kvm!**
+Exempel: El-installation = 2.5h/kvm × ${measurements?.area || 4} kvm = ${measurements?.area ? (measurements.area * 2.5).toFixed(1) : '10'}h
 
 ` : ''}
 

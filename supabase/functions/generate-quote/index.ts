@@ -2811,16 +2811,76 @@ Returnera JSON:
     
     console.log('🏗️ FAS 1: Building layered prompt structure...');
     
-    // FAS 1: Bygg tredelad prompt
+    // ============================================
+    // FAS 1: EXTRAHERA MEASUREMENTS FÖRE PROMPT BYGGS
+    // ============================================
+    console.log('📐 Extracting measurements before prompt building...');
+    const allTextForMeasurements = (description + ' ' + conversationHistory.map((m: any) => m.content).join(' ')).toLowerCase();
+    
+    // Area extraction with multiple patterns (including m², m^2, kvadrat m, kvm2)
+    const areaPattern = /(\d+(?:[.,]\d+)?)\s*(?:kvm|kvadratmeter|kvadrat\s*m?|m2|m²|m\^2|kvm2)\b/i;
+    const areaMatch = allTextForMeasurements.match(areaPattern);
+    const extractedArea = areaMatch ? parseFloat(areaMatch[1].replace(',', '.')) : undefined;
+    if (areaMatch) {
+      console.log('✅ Area extracted for prompt:', extractedArea, 'kvm (matched:', areaMatch[0], ')');
+    }
+    
+    // Length extraction (including lm, lpm, löpm)
+    const lengthPattern = /(\d+(?:[.,]\d+)?)\s*(?:meter|lm|lpm|löpm|m)\b/i;
+    const lengthMatch = allTextForMeasurements.match(lengthPattern);
+    const extractedLength = (lengthMatch && !areaMatch) ? parseFloat(lengthMatch[1].replace(',', '.')) : undefined;
+    if (lengthMatch && !areaMatch) {
+      console.log('✅ Length extracted for prompt:', extractedLength, 'meter (matched:', lengthMatch[0], ')');
+    }
+    
+    const quantityMatchEarly = allTextForMeasurements.match(/(\d+)\s*(?:st|styck|stycken|träd)/i);
+    const roomsMatchEarly = allTextForMeasurements.match(/(\d+)\s*(?:rum|sovrum)/i);
+    
+    const measurementsForPrompt = {
+      area: extractedArea,
+      length: extractedLength,
+      quantity: quantityMatchEarly ? parseInt(quantityMatchEarly[1]) : undefined,
+      rooms: roomsMatchEarly ? parseInt(roomsMatchEarly[1]) : undefined
+    };
+    
+    console.log('📐 Measurements extracted for prompt:', measurementsForPrompt);
+    
+    // FAS 1: Bygg tredelad prompt MED KORREKT MEASUREMENTS
     const supabaseClient = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
     const layeredContext = await buildLayeredPrompt(
       userId,
       description,
       'ai_driven', // jobType - detekteras i layeredPrompt
       conversationHistory,
-      { area: undefined }, // measurements från beskrivning extraheras i layeredPrompt
+      measurementsForPrompt, // NU HAR VI KORREKT DATA!
       supabaseClient
     );
+    
+    // ============================================
+    // FAS 3: EXPLICIT BERÄKNINGSINSTRUKTION
+    // ============================================
+    const measurementInstructions = measurementsForPrompt?.area ? `
+
+**📐 KRITISKA BERÄKNINGSINSTRUKTIONER FÖR ${measurementsForPrompt.area} KVM:**
+
+Du har fått information om att projektet är **${measurementsForPrompt.area} kvm**. 
+Du MÅSTE använda detta mått för ALLA kvm-baserade beräkningar.
+
+**EXEMPEL - EL-INSTALLATION:**
+- Standard: 2.5h per kvm
+- Beräkning: ${measurementsForPrompt.area} kvm × 2.5h/kvm = ${(measurementsForPrompt.area * 2.5).toFixed(1)} timmar
+- **ANVÄND: ${(measurementsForPrompt.area * 2.5).toFixed(1)} timmar** (INTE 2.6h eller någon annan gissning!)
+
+**EXEMPEL - KAKEL OCH KLINKER:**
+- Kakel väggar: 2.2h/kvm × ${measurementsForPrompt.area} kvm = ${(measurementsForPrompt.area * 2.2).toFixed(1)}h
+- Klinker golv: 2.8h/kvm × ${measurementsForPrompt.area} kvm = ${(measurementsForPrompt.area * 2.8).toFixed(1)}h
+
+**EXEMPEL - RIVNING:**
+- Rivning: 2.5h/kvm × ${measurementsForPrompt.area} kvm = ${(measurementsForPrompt.area * 2.5).toFixed(1)}h
+
+🚨 **GISSA ALDRIG timmar - BERÄKNA alltid från kvm-standarder × ${measurementsForPrompt.area} kvm!**
+
+` : '';
     
     const historyText = conversationHistory
       .map(m => `${m.role === 'user' ? 'Användare' : 'AI'}: ${m.content}`)
@@ -2877,21 +2937,11 @@ ${workItems.map((w: any) => `- ${w.name}: ${w.hours}h × ${w.hourlyRate} kr/h = 
   // DEL 1: LIVE WEBSÖKNING - Dynamisk branschdata
   // ============================================
   
-  // Detektera projekttyp och mått från beskrivning
-  const allText = (description + ' ' + conversationHistory.map(m => m.content).join(' ')).toLowerCase();
-  const areaMatch = allText.match(/(\d+(?:[.,]\d+)?)\s*(?:kvm|kvadratmeter|m2)/i);
-  const lengthMatch = allText.match(/(\d+(?:[.,]\d+)?)\s*(?:meter|löpmeter|m)/i);
-  const quantityMatch = allText.match(/(\d+)\s*(?:st|styck|stycken|träd)/i);
-  const roomsMatch = allText.match(/(\d+)\s*(?:rum|sovrum)/i);
-  
-  const measurements = {
-    area: areaMatch ? parseFloat(areaMatch[1].replace(',', '.')) : undefined,
-    length: lengthMatch ? parseFloat(lengthMatch[1].replace(',', '.')) : undefined,
-    quantity: quantityMatch ? parseInt(quantityMatch[1]) : undefined,
-    rooms: roomsMatch ? parseInt(roomsMatch[1]) : undefined
-  };
+  // Measurements already extracted above (measurementsForPrompt), reuse them
+  const measurements = measurementsForPrompt;
   
   // Detektera arbetstyp från beskrivning
+  const allText = (description + ' ' + conversationHistory.map(m => m.content).join(' ')).toLowerCase();
   let detectedWorkType = '';
   if (allText.includes('gräs') || allText.includes('klipp')) detectedWorkType = 'gräsklippning';
   else if (allText.includes('häck')) detectedWorkType = 'häckklippning';
@@ -3194,6 +3244,8 @@ ${description}
 ${historyText || 'Ingen tidigare konversation'}
 
 **AVDRAGSTYP:** ${deductionType.toUpperCase()} ${deductionType !== 'none' ? '(inkludera i offerten)' : ''}
+
+${measurementInstructions}
 
 ${deductionType !== 'none' ? `
 **💰 ROT/RUT-AVDRAG (KRITISKT VIKTIGT - ÅTGÄRD #2):**
@@ -5458,21 +5510,40 @@ Svara med **1**, **2** eller **3** (eller "granska", "generera", "mer info")`;
       
       if (totalHours < 50) {
         console.error(`🚨 KRITISKT FEL: Badrumsoffert har bara ${totalHours.toFixed(1)}h (minimum 50h krävs för komplett badrumsrenovering)!`);
-        console.error('📋 Arbetsmoment:');
+        console.error('📋 Arbetsmoment i offerten:');
         quote.workItems?.forEach((item: any) => {
-          console.error(`   - ${item.name}: ${item.hours}h`);
+          console.error(`   - ${item.name}: ${item.hours}h (${item.hourlyRate} kr/h = ${item.subtotal} kr)`);
         });
         
-        // Build detailed breakdown
-        const breakdown = quote.workItems?.map((item: any) => 
-          `  - ${item.name}: ${item.hours}h`
-        ).join('\n') || '';
+        // Build detailed breakdown with expected values
+        const breakdown = quote.workItems?.map((item: any) => {
+          const itemName = item.name.toLowerCase();
+          let expected = '';
+          
+          if (itemName.includes('el') || itemName.includes('elinstall')) {
+            expected = ` (förväntat: ~${((area || 4) * 2.5).toFixed(1)}h för ${area || 4} kvm)`;
+          } else if (itemName.includes('kakel') || itemName.includes('klinker')) {
+            expected = ` (förväntat: ~${((area || 4) * 2.2).toFixed(1)}h för ${area || 4} kvm)`;
+          } else if (itemName.includes('vvs') || itemName.includes('rör')) {
+            expected = ` (förväntat: ~${((area || 4) * 2.8).toFixed(1)}h för ${area || 4} kvm)`;
+          } else if (itemName.includes('rivning') || itemName.includes('demonter')) {
+            expected = ` (förväntat: ~${((area || 4) * 2.5).toFixed(1)}h för ${area || 4} kvm)`;
+          }
+          
+          return `  - ${item.name}: ${item.hours}h${expected}`;
+        }).join('\n') || '';
         
         return new Response(
           JSON.stringify({
             error: 'bathroom_too_short',
-            message: `🚫 En badrumsrenovering (${area || '?'} kvm) kan inte vara under 50 timmar.\n\nAktuell total: ${totalHours.toFixed(1)}h\n${breakdown}\n\n💡 Lägg till fler moment eller öka timmarna per moment.`,
-            details: { totalHours: totalHours.toFixed(1), requiredMinimum: 50, area, workItems: quote.workItems }
+            message: `🚫 En badrumsrenovering (${area || '?'} kvm) kan inte vara under 50 timmar.\n\nAktuell total: ${totalHours.toFixed(1)}h\n\n📋 Arbetsmoment:\n${breakdown}\n\n💡 PROBLEM: AI:n beräknade inte korrekt från kvm-standarder.\nFörväntat totalt för ${area || 4} kvm: ~${((area || 4) * (2.5 + 2.8 + 2.5 + 2.2 + 2.8)).toFixed(0)}h\n\nVänligen försök igen - systemet kommer instruera AI:n att beräkna korrekt.`,
+            details: { 
+              totalHours: totalHours.toFixed(1), 
+              requiredMinimum: 50, 
+              area: area || 4,
+              expectedTotal: ((area || 4) * (2.5 + 2.8 + 2.5 + 2.2 + 2.8)).toFixed(0),
+              workItems: quote.workItems 
+            }
           }),
           { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
