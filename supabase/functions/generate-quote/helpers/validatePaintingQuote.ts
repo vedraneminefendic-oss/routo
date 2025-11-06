@@ -42,17 +42,19 @@ export function validatePaintingQuote(quote: any, area: number): PaintingValidat
       return itemName.includes(requiredName.substring(0, 5));
     });
 
+    const minHoursForArea = requiredItem.hoursPerSqm * area;
+
     if (!foundItem) {
       missingItems.push(`${requiredItem.name} (${requiredItem.description})`);
       errors.push(`Saknar obligatoriskt arbetsmoment: ${requiredItem.name}`);
-    } else if (foundItem.hours < requiredItem.minHours) {
+    } else if (foundItem.hours < minHoursForArea * 0.7) { // 30% tolerans
       underHouredItems.push({
         name: requiredItem.name,
         actual: foundItem.hours,
-        minimum: requiredItem.minHours,
+        minimum: minHoursForArea,
       });
       errors.push(
-        `${requiredItem.name}: ${foundItem.hours}h är för lågt (minimum ${requiredItem.minHours}h)`
+        `${requiredItem.name}: ${foundItem.hours}h är för lågt (minimum ${Math.round(minHoursForArea * 10) / 10}h för ${area}kvm)`
       );
     }
   }

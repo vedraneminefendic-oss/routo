@@ -136,6 +136,15 @@ function identifyDuplicates(
   similarityThreshold: number = 0.7
 ): Array<number[]> {
   
+  // KRITISK FIX: Aldrig slå ihop dessa specifika kombinationer
+  const neverMerge = [
+    ['förberedelse', 'städning'],
+    ['förberedelse', 'efterarbete'],
+    ['skydd', 'städning'],
+    ['preparation', 'cleanup'],
+    ['rivning', 'städning']
+  ];
+  
   const groups: Array<number[]> = [];
   const processed = new Set<number>();
   
@@ -152,8 +161,21 @@ function identifyDuplicates(
       const similarity = calculateSimilarity(item.name, other.name);
       
       if (similarity >= similarityThreshold) {
-        group.push(j);
-        processed.add(j);
+        // Kontrollera om detta är en förbjuden kombination
+        const name1Lower = item.name.toLowerCase();
+        const name2Lower = other.name.toLowerCase();
+        
+        const isForbidden = neverMerge.some(([keyword1, keyword2]) => 
+          (name1Lower.includes(keyword1) && name2Lower.includes(keyword2)) ||
+          (name1Lower.includes(keyword2) && name2Lower.includes(keyword1))
+        );
+        
+        if (!isForbidden) {
+          group.push(j);
+          processed.add(j);
+        } else {
+          console.log(`   ⚠️ BLOCKED MERGE: "${item.name}" + "${other.name}" (forbidden combination)`);
+        }
       }
     });
     

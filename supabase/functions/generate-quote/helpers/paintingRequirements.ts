@@ -2,27 +2,27 @@ export const PAINTING_REQUIREMENTS = {
   minimumWorkItems: [
     {
       name: 'Förberedelser och skydd',
-      minHours: 2,
+      hoursPerSqm: 0.04,
       description: 'Skydda golv, möbler och maskera'
     },
     {
       name: 'Spackling och slipning',
-      minHours: 2,
+      hoursPerSqm: 0.04,
       description: 'Reparera hål och ojämnheter'
     },
     {
       name: 'Grundmålning',
-      minHours: 3,
+      hoursPerSqm: 0.06,
       description: 'Första strykning med grundfärg'
     },
     {
       name: 'Slutstrykningar',
-      minHours: 4,
+      hoursPerSqm: 0.08,
       description: '1-2 slutstrykningar'
     },
     {
       name: 'Städning och efterarbete',
-      minHours: 2,
+      hoursPerSqm: 0.04,
       description: 'Ta bort skydd och städa'
     }
   ],
@@ -59,10 +59,13 @@ export function getPaintingPromptAddition(area: number): string {
 
 🎨 KRITISKT: Detta är ett MÅLNINGSJOBB. Du MÅSTE inkludera:
 
-OBLIGATORISKA ARBETSMOMENT:
+OBLIGATORISKA ARBETSMOMENT (timmar per kvm × ${area} kvm):
 ${PAINTING_REQUIREMENTS.minimumWorkItems.map(item => 
-  `- ${item.name}: ${item.description} (minst ${item.minHours}h)`
+  `- ${item.name}: ${item.description} (${item.hoursPerSqm}h/kvm × ${area}kvm = ${Math.round(item.hoursPerSqm * area * 10) / 10}h)`
 ).join('\n')}
+
+⚠️ VIKTIG REGEL: timePerUnit (0.3-0.6h/kvm) är TOTALT för ALLA arbetsmoment, inte per arbetsmoment!
+   Dela upp totaltiden mellan arbetsmomenten enligt hoursPerSqm ovan.
 
 MATERIAL SOM ALLTID MÅSTE FINNAS MED:
 ${PAINTING_REQUIREMENTS.minimumMaterials.map(m => `- ${m.name}`).join('\n')}
