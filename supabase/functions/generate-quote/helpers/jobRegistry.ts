@@ -166,10 +166,11 @@ export const JOB_REGISTRY: JobDefinition[] = [
       totalMax: 350000
     },
     standardWorkItems: [
-      { name: 'Rivning och demontering', mandatory: true, typicalHours: 12 },
-      { name: 'Golvarbete och vattenisolering', mandatory: true, typicalHours: 16 },
-      { name: 'Kakelsättning', mandatory: true, typicalHours: 24 },
-      { name: 'Installation av inredning', mandatory: true, typicalHours: 8 }
+      { name: 'Rivning och demontering', mandatory: true, typicalHours: 2.5 },
+      { name: 'VVS-installation', mandatory: true, typicalHours: 2.8 },
+      { name: 'El-installation', mandatory: true, typicalHours: 2.5 },
+      { name: 'Kakelsättning väggar', mandatory: true, typicalHours: 2.2 },
+      { name: 'Klinkersättning golv', mandatory: true, typicalHours: 2.8 }
     ],
     applicableDeduction: 'rot',
     deductionPercentage: 30,
@@ -177,6 +178,15 @@ export const JOB_REGISTRY: JobDefinition[] = [
       threshold: 4,
       autoInclude: true,
       unit: 'dag'
+    },
+    fallbackBehavior: {
+      defaultUnitQty: 4,
+      assumptionText: 'Yta saknas - använd 4 kvm som antagande'
+    },
+    proportionRules: {
+      maxSingleItemShare: 0.50,
+      demolitionMaxShare: 0.30,
+      minWorkItems: 5
     },
     questionTemplates: {
       unitQty: 'Hur många kvm är badrummet?',
@@ -192,7 +202,7 @@ export const JOB_REGISTRY: JobDefinition[] = [
   {
     jobType: 'kök',
     category: 'rot',
-    unitType: 'st',
+    unitType: 'kvm',
     timePerUnit: { simple: 80, normal: 120, complex: 180 },
     multipliers: {
       accessibility: { easy: 1.0, normal: 1.1, hard: 1.25 },
@@ -207,18 +217,17 @@ export const JOB_REGISTRY: JobDefinition[] = [
       premium: { priceMultiplier: 1.8, examples: ['Specialsnickeri', 'Naturstenbänkskiva'] }
     },
     priceBounds: {
-      minPerUnit: 80000,
-      maxPerUnit: 400000,
+      minPerUnit: 8000,
+      maxPerUnit: 40000,
       totalMin: 80000,
       totalMax: 400000
     },
     standardWorkItems: [
-      { name: 'Rivning och demontering', mandatory: true, typicalHours: 16 },
-      { name: 'VVS-installation', mandatory: true, typicalHours: 10 },
-      { name: 'El-installation', mandatory: true, typicalHours: 12 },
-      { name: 'Kakel backsplash', mandatory: false, typicalHours: 8 },
-      { name: 'Montering köksinredning', mandatory: true, typicalHours: 36 },
-      { name: 'Installation vitvaror', mandatory: false, typicalHours: 8 }
+      { name: 'Rivning och demontering', mandatory: true, typicalHours: 2.0 },
+      { name: 'VVS-installation', mandatory: true, typicalHours: 1.8 },
+      { name: 'El-installation', mandatory: true, typicalHours: 2.0 },
+      { name: 'Montering skåp och bänkskiva', mandatory: true, typicalHours: 5.0 },
+      { name: 'Kakel backsplash', mandatory: false, typicalHours: 1.5 }
     ],
     applicableDeduction: 'rot',
     deductionPercentage: 30,
@@ -227,8 +236,18 @@ export const JOB_REGISTRY: JobDefinition[] = [
       autoInclude: true,
       unit: 'dag'
     },
+    fallbackBehavior: {
+      defaultUnitQty: 10,
+      assumptionText: 'Yta saknas - använd 10 kvm som antagande'
+    },
+    proportionRules: {
+      maxSingleItemShare: 0.60,
+      minWorkItems: 4
+    },
+    customerMaterialPatterns: ['kund.*kök', 'eget.*kök', 'köpt.*kök', 'ikea.*kök', 'kund.*vitvaror', 'eget.*vitvaror'],
+    customerProvidedLabel: 'kök och vitvaror',
     questionTemplates: {
-      unitQty: 'Hur stort är köket (ange antal skåp alternativt kvm)?',
+      unitQty: 'Hur stort är köket (ange kvm)?',
       complexity: 'Totalrenovering eller bara byte av inredning?',
       accessibility: 'Vilken våning? Finns hiss?',
       qualityLevel: 'IKEA-kök, mellanklass eller specialsnickeri?'
@@ -264,12 +283,11 @@ export const JOB_REGISTRY: JobDefinition[] = [
       totalMax: 80000
     },
     standardWorkItems: [
-      { name: 'Förberedelse och skydd', mandatory: true, typicalHours: 0.05 },
-      { name: 'Spackling och slipning', mandatory: true, typicalHours: 0.12 },
-      { name: 'Grundning', mandatory: false, typicalHours: 0.10 },
-      { name: 'Målning 1:a lagret', mandatory: true, typicalHours: 0.14 },
-      { name: 'Målning 2:a lagret', mandatory: true, typicalHours: 0.10 },
-      { name: 'Städning och efterarbete', mandatory: true, typicalHours: 0.03 }
+      { name: 'Förberedelse och skydd', mandatory: true, typicalHours: 0.04 },
+      { name: 'Spackling och slipning', mandatory: true, typicalHours: 0.04 },
+      { name: 'Grundmålning', mandatory: true, typicalHours: 0.06 },
+      { name: 'Slutstrykningar', mandatory: true, typicalHours: 0.08 },
+      { name: 'Städning och efterarbete', mandatory: true, typicalHours: 0.04 }
     ],
     applicableDeduction: 'rut',
     deductionPercentage: 50,
@@ -277,6 +295,14 @@ export const JOB_REGISTRY: JobDefinition[] = [
       threshold: 4,
       autoInclude: true,
       unit: 'halv'
+    },
+    fallbackBehavior: {
+      defaultUnitQty: 50,
+      assumptionText: 'Yta saknas - använd 50 kvm som antagande'
+    },
+    proportionRules: {
+      maxSingleItemShare: 0.40,
+      minWorkItems: 5
     },
     questionTemplates: {
       unitQty: 'Hur många kvm ska målas (väggar + tak)?',
@@ -433,11 +459,19 @@ export const JOB_REGISTRY: JobDefinition[] = [
       { name: 'Rengöring fasad', mandatory: true, typicalHours: 0.12 },
       { name: 'Förberedelse och spackling', mandatory: true, typicalHours: 0.08 },
       { name: 'Målning fasad', mandatory: true, typicalHours: 0.35 },
-      { name: 'Ställning', mandatory: false, typicalHours: 0 }
+      { name: 'Ställning', mandatory: false, typicalHours: 1.0 }
     ],
     applicableDeduction: 'rot',
     deductionPercentage: 30,
     serviceVehicle: { threshold: 4, autoInclude: true, unit: 'dag' },
+    fallbackBehavior: {
+      defaultUnitQty: 80,
+      assumptionText: 'Yta saknas - använd 80 kvm som antagande'
+    },
+    proportionRules: {
+      maxSingleItemShare: 0.70,
+      minWorkItems: 3
+    },
     questionTemplates: {
       unitQty: 'Hur många kvm fasad ska målas?',
       complexity: 'Slät yta eller med detaljer?',
@@ -1457,4 +1491,26 @@ export function calculateUserWeighting(totalQuotes: number): number {
   // 10 offerter = 50% user weight
   // 20+ offerter = 100% user weight
   return Math.min(100, (totalQuotes / 20) * 100);
+}
+
+/**
+ * Hämta JobDefinition för en given jobbkategori
+ * Används av promptGenerator för att skapa dynamiska instruktioner
+ */
+export function getJobDefinition(jobCategory: string): JobDefinition {
+  const normalized = jobCategory.toLowerCase().trim();
+  
+  // Exakt match först
+  let found = JOB_REGISTRY.find(j => j.jobType.toLowerCase() === normalized);
+  if (found) return found;
+  
+  // Partiell match
+  found = JOB_REGISTRY.find(j => 
+    normalized.includes(j.jobType.toLowerCase()) || 
+    j.jobType.toLowerCase().includes(normalized)
+  );
+  if (found) return found;
+  
+  // Fallback till generisk 'ai_driven'
+  return JOB_REGISTRY.find(j => j.jobType === 'ai_driven') || JOB_REGISTRY[0];
 }

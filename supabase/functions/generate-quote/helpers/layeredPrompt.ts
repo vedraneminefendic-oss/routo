@@ -1,8 +1,10 @@
 // ============================================================================
-// LAYERED PROMPT - FAS 0: HYBRIDMODELL (WEB → BRANSCH → USER)
+// LAYERED PROMPT - FAS 2: HYBRIDMODELL (WEB → BRANSCH → USER)
 // ============================================================================
 
 import { PAINTING_REQUIREMENTS } from './paintingRequirements.ts';
+import { getJobDefinition } from './jobRegistry.ts';
+import { generateJobInstructions } from './promptGenerator.ts';
 
 interface LayeredContext {
   layer1_market: string;      // Webben (alltid 100% för nya)
@@ -118,299 +120,37 @@ ${liveSearchResult ? `
 För denna ${jobCategory}-offert: Använd ${100 - categoryWeighting}% marknadspriser + ${categoryWeighting.toFixed(0)}% användarens ${jobCategory}-priser.
 ${categoryQuotes > 0 ? `Användarens genomsnittliga timpris i ${jobCategory}: ${categoryAvgRate} kr/h (baserat på ${categoryQuotes} offerter)` : `Ny kategori för användaren - använd 100% marknadspriser`}
 
-${jobCategory === 'badrum' ? `
-
-**🚨 KRITISKT FÖR BADRUMSRENOVERING${measurements?.area ? ` (${measurements.area} kvm)` : ''}:**
-
-För badrum ska du ALLTID dela upp arbetet i SEPARATA moment med MOMENT-SPECIFIKA standarder:
-
-1. **Rivning och demontering** (jobType: 'rivning_badrum')
-   - Standard: 1.5-3.5h per kvm (typical: 2.5h/kvm)
-   - Timpris: 650-900 kr/h (standard: 750 kr/h)
-   ${measurements?.area ? `- För ${measurements.area} kvm: ${(measurements.area * 2.5).toFixed(1)}h` : '- Yta saknas - använd 4 kvm som antagande (= 10h)'}
-
-2. **VVS-installation** (jobType: 'vvs_badrum')
-   - Standard: 2.0-4.0h per kvm (typical: 2.8h/kvm)
-   - Timpris: 800-1100 kr/h (standard: 950 kr/h)
-   ${measurements?.area ? `- För ${measurements.area} kvm: ${(measurements.area * 2.8).toFixed(1)}h` : '- Yta saknas - använd 4 kvm som antagande (= 11.2h)'}
-
-3. **El-installation** (jobType: 'el_badrum')
-   - Standard: 1.8-3.2h per kvm (typical: 2.5h/kvm)
-   - Timpris: 850-1100 kr/h (standard: 950 kr/h)
-   ${measurements?.area ? `- För ${measurements.area} kvm: ${(measurements.area * 2.5).toFixed(1)}h` : '- Yta saknas - använd 4 kvm som antagande (= 10h)'}
-
-4. **Kakelsättning väggar** (jobType: 'kakel_vagg')
-   - Standard: 1.5-3.0h per kvm (typical: 2.2h/kvm)
-   - Timpris: 700-950 kr/h (standard: 800 kr/h)
-   ${measurements?.area ? `- För ${measurements.area} kvm: ${(measurements.area * 2.2).toFixed(1)}h` : '- Yta saknas - använd 4 kvm som antagande (= 8.8h)'}
-
-5. **Klinkersättning golv** (jobType: 'klinker_golv')
-   - Standard: 2.0-3.5h per kvm (typical: 2.8h/kvm)
-   - Timpris: 700-1000 kr/h (standard: 850 kr/h)
-   ${measurements?.area ? `- För ${measurements.area} kvm: ${(measurements.area * 2.8).toFixed(1)}h` : '- Yta saknas - använd 4 kvm som antagande (= 11.2h)'}
-
-**TOTALT för ${measurements?.area || 4} kvm badrum: ${measurements?.area ? (measurements.area * (2.5 + 2.8 + 2.5 + 2.2 + 2.8)).toFixed(0) : '51'} timmar**
-
-**⚠️ ANVÄND ALDRIG 'badrumstotalrenovering' (50h/kvm) för ENSKILDA moment!**
-Den standarden är ENDAST för att validera total-tid, inte för att beräkna delmoment.
-
-**🚨 BERÄKNINGSREGEL: Multiplicera ALLTID standard (h/kvm) med faktisk area i kvm!**
-Exempel: El-installation = 2.5h/kvm × ${measurements?.area || 4} kvm = ${measurements?.area ? (measurements.area * 2.5).toFixed(1) : '10'}h
-
-` : ''}
-
-${jobCategory === 'målning' ? `
-
-**🎨 KRITISKT FÖR MÅLNING:**
-
-⚠️ **ABSOLUTA MINIMIKRAV** som ALLTID MÅSTE ingå:
-
-1. **Förberedelser och skydd** (OBLIGATORISKT - minst 2h)
-   - Täcka golv och möbler med plast
-   - Maskera fönster, dörrar, lister med tape
-   - Standard: 0.04h per kvm väggyta
-   - Timpris: 650-850 kr/h (standard: 750 kr/h)
-
-2. **Spackling och slipning** (OBLIGATORISKT - minst 2h)
-   - Reparera hål, sprickor i väggar
-   - Slipa ojämna ytor
-   - Standard: 0.04h per kvm väggyta
-   - Timpris: 650-850 kr/h (standard: 750 kr/h)
-
-3. **Grundmålning** (OBLIGATORISKT - minst 3h)
-   - Första strykning med grundfärg
-   - Täcker underlaget
-   - Standard: 0.06h per kvm väggyta
-   - Timpris: 700-900 kr/h (standard: 800 kr/h)
-
-4. **Slutstrykningar** (OBLIGATORISKT - minst 4h)
-   - 1-2 slutstrykningar beroende på färg
-   - Mörka färger kräver extra strykningar
-   - Standard: 0.08h per kvm väggyta
-   - Timpris: 700-900 kr/h (standard: 800 kr/h)
-
-5. **Städning och efterarbete** (OBLIGATORISKT - minst 2h)
-   - Ta bort maskering och skydd
-   - Städa färgrester
-   - Slutbesiktning
-   - Standard: 0.04h per kvm väggyta
-   - Timpris: 500-650 kr/h (standard: 550 kr/h)
-
-**MINIMUM KOSTNAD:**
-- Minst ${measurements?.area ? (measurements.area * PAINTING_REQUIREMENTS.minimumCostPerSqm).toLocaleString('sv-SE') : '7 500'} kr (${measurements?.area || 50} kvm × ${PAINTING_REQUIREMENTS.minimumCostPerSqm} kr/kvm)
-- Rekommenderat: ${measurements?.area ? (measurements.area * PAINTING_REQUIREMENTS.recommendedCostPerSqm).toLocaleString('sv-SE') : '15 000'} kr (${measurements?.area || 50} kvm × ${PAINTING_REQUIREMENTS.recommendedCostPerSqm} kr/kvm)
-
-**VIKTIGA FAKTORER:**
-- 🎨 Mörka färger (svart, mörk blå, etc.) → +1 slutstrykning
-- 🔝 Takmålning → +20% timpris (svårare arbete)
-- 🏠 Många rum → mer maskering och förberedelser
-
-**⚠️ VALIDATION BLOCKERAR OM:**
-- ❌ Saknas något av de 5 arbetsmomenten
-- ❌ Total under ${measurements?.area ? (measurements.area * PAINTING_REQUIREMENTS.minimumCostPerSqm).toLocaleString('sv-SE') : '7 500'} kr
-- ❌ För få timmar per arbetsmoment
-
-` : ''}
-
-${jobCategory === 'kök' ? `
-
-**🍳 KRITISKT FÖR KÖKSRENOVERING${measurements?.area ? ` (${measurements.area} kvm)` : ''}:**
-
-För kök ska du ALLTID dela upp arbetet i SEPARATA moment med MOMENT-SPECIFIKA standarder:
-
-1. **Rivning och demontering** (jobType: 'rivning_kok')
-   - Standard: 1.2-3.0h per kvm (typical: 2.0h/kvm)
-   - Timpris: 650-850 kr/h (standard: 750 kr/h)
-   ${measurements?.area ? `- För ${measurements.area} kvm: ${(measurements.area * 2.0).toFixed(1)}h` : '- Yta saknas - använd 10 kvm som antagande (= 20h)'}
-
-2. **VVS-installation** (jobType: 'vvs_kok')
-   - Standard: 1.2-2.5h per kvm (typical: 1.8h/kvm)
-   - Timpris: 800-1100 kr/h (standard: 950 kr/h)
-   ${measurements?.area ? `- För ${measurements.area} kvm: ${(measurements.area * 1.8).toFixed(1)}h` : '- Yta saknas - använd 10 kvm som antagande (= 18h)'}
-
-3. **El-installation** (jobType: 'el_kok')
-   - Standard: 1.5-2.5h per kvm (typical: 2.0h/kvm)
-   - Timpris: 850-1100 kr/h (standard: 950 kr/h)
-   ${measurements?.area ? `- För ${measurements.area} kvm: ${(measurements.area * 2.0).toFixed(1)}h` : '- Yta saknas - använd 10 kvm som antagande (= 20h)'}
-
-4. **Montering skåp och bänkskiva** (jobType: 'montering_kok')
-   - Standard: 4.0-6.0h per kvm (typical: 5.0h/kvm)
-   - Timpris: 700-900 kr/h (standard: 800 kr/h)
-   ${measurements?.area ? `- För ${measurements.area} kvm: ${(measurements.area * 5.0).toFixed(1)}h` : '- Yta saknas - använd 10 kvm som antagande (= 50h)'}
-
-5. **Kakel backsplash** (jobType: 'kakel_backsplash', VALFRITT)
-   - Standard: 1.0-2.0h per kvm (typical: 1.5h/kvm)
-   - Timpris: 700-950 kr/h (standard: 800 kr/h)
-   - Inkludera ENDAST om kunden nämner "kakel" eller "backsplash"
-
-**TOTALT för ${measurements?.area || 10} kvm kök (utan kakel): ${measurements?.area ? (measurements.area * (2.0 + 1.8 + 2.0 + 5.0)).toFixed(0) : '108'} timmar**
-
-**⚠️ ANVÄND ALDRIG 'kok_totalrenovering' för ENSKILDA moment!**
-
-**🚨 BERÄKNINGSREGEL: Multiplicera ALLTID standard (h/kvm) med faktisk area i kvm!**
-Exempel: VVS = 1.8h/kvm × ${measurements?.area || 10} kvm = ${measurements?.area ? (measurements.area * 1.8).toFixed(1) : '18'}h
-
-` : ''}
-
-${(jobCategory === 'målning' || description.toLowerCase().includes('måla')) ? `
-
-**🚨 KRITISKT FÖR MÅLNING:**
-
-För målning ska du ALLTID dela upp arbetet i SEPARATA moment med MOMENT-SPECIFIKA standarder:
-
-1. **Spackling och slipning** (jobType: 'spackling_sliping')
-   - Standard: 0.08-0.20h per kvm (typical: 0.12h/kvm)
-   - Timpris: 550-800 kr/h (standard: 650 kr/h)
-   - För 50 kvm: ~6h
-
-2. **Grundning** (jobType: 'grundning')
-   - Standard: 0.06-0.15h per kvm (typical: 0.10h/kvm)
-   - Timpris: 550-800 kr/h (standard: 650 kr/h)
-   - För 50 kvm: ~5h
-
-3. **Målning första lagret** (jobType: 'malning_1_lager')
-   - Standard: 0.10-0.20h per kvm (typical: 0.14h/kvm)
-   - Timpris: 550-800 kr/h (standard: 650 kr/h)
-   - För 50 kvm: ~7h
-
-4. **Målning andra lagret** (jobType: 'malning_2_lager')
-   - Standard: 0.06-0.14h per kvm (typical: 0.10h/kvm)
-   - Timpris: 550-800 kr/h (standard: 650 kr/h)
-   - För 50 kvm: ~5h
-
-**TOTALT för 50 kvm målning: 23-27 timmar**
-
-**⚠️ ANVÄND ALDRIG 'malning_inomhus' (0.4h/kvm) för ENSKILDA moment!**
-Den standarden är ENDAST för att validera total-tid, inte för att beräkna delmoment.
-
-` : ''}
-
-${jobCategory === 'fasad' || description.toLowerCase().includes('fasad') ? `
-
-**🚨 KRITISKT FÖR FASADMÅLNING:**
-
-För fasadmålning ska du ALLTID dela upp arbetet i SEPARATA moment med MOMENT-SPECIFIKA standarder:
-
-1. **Rengöring fasad** (jobType: 'fasad_rengoring')
-   - Standard: 0.08-0.18h per kvm (typical: 0.12h/kvm)
-   - Timpris: 550-900 kr/h (standard: 700 kr/h)
-   - För 80 kvm fasad: ~10h
-
-2. **Förberedelse och spackling** (jobType: 'fasad_forberedelse')
-   - Standard: 0.04-0.15h per kvm (typical: 0.08h/kvm)
-   - Timpris: 550-900 kr/h (standard: 700 kr/h)
-   - För 80 kvm fasad: ~6.5h
-
-3. **Målning fasad** (jobType: 'fasad_malning')
-   - Standard: 0.25-0.50h per kvm (typical: 0.35h/kvm)
-   - Timpris: 550-900 kr/h (standard: 700 kr/h)
-   - För 80 kvm fasad: ~28h
-
-4. **Ställning** (jobType: 'stallning') - VID BEHOV om fasad >4m höjd
-   - Standard: 0.5-1.8h per kvm (typical: 1.0h/kvm)
-   - MATERIALKOSTNAD (hyra): 100-250 kr/kvm (standard: 150 kr/kvm)
-   - För 80 kvm fasad: ~12,000 kr i ställningskostnad
-
-**TOTALT för 80 kvm fasad: 44-50 timmar + ställning vid behov**
-
-**⚠️ ANVÄND ALDRIG 'malning_fasad' (0.3h/kvm) för ENSKILDA moment!**
-Den standarden är ENDAST för att validera total-tid, inte för att beräkna delmoment.
-
-` : ''}
-
-${jobCategory === 'trädgård' ? `
-
-**🚨 KRITISKT FÖR TRÄDGÅRDSARBETE:**
-
-För trädgård ska du dela upp arbetet i SEPARATA moment med MOMENT-SPECIFIKA standarder:
-
-1. **Markberedning** (jobType: 'markberedning') - VID BEHOV
-   - Standard: 0.2-0.7h per kvm (typical: 0.4h/kvm)
-   - Timpris: 450-650 kr/h (standard: 550 kr/h)
-   - För 100 kvm: ~40h
-
-2. **Plantering** (jobType: 'plantering')
-   - Standard: 0.3-1.0h per växt (typical: 0.5h/växt)
-   - Timpris: 450-650 kr/h (standard: 550 kr/h)
-   - För 20 växter: ~10h
-
-3. **Gräsklippning** (jobType: 'grasklippning') - OM RELEVANT
-   - Standard: 0.002-0.005h per kvm (typical: 0.003h/kvm)
-   - Timpris: 450-650 kr/h (standard: 550 kr/h)
-   - För 500 kvm: ~1.5h
-
-4. **Häckklippning** (jobType: 'hakkklippning') - OM RELEVANT
-   - Standard: 0.08-0.15h per meter (typical: 0.10h/meter)
-   - Timpris: 450-650 kr/h (standard: 550 kr/h)
-   - För 50 meter: ~5h
-
-**⚠️ VIKTIGT: Trädfällning är EJ RUT-berättigat!**
-
-` : ''}
-
-${jobCategory === 'golv' || description.toLowerCase().includes('parkett') ? `
-
-**🚨 KRITISKT FÖR PARKETTLÄGGNING:**
-
-För parkettläggning ska du ALLTID dela upp arbetet i SEPARATA moment med MOMENT-SPECIFIKA standarder:
-
-1. **Underlagsarbete** (jobType: 'underlagsarbete')
-   - Standard: 0.15-0.40h per kvm (typical: 0.25h/kvm)
-   - Timpris: 600-900 kr/h (standard: 750 kr/h)
-   - För 50 kvm: ~12.5h
-
-2. **Läggning parkett** (jobType: 'parkett_laggning')
-   - Standard: 0.5-1.3h per kvm (typical: 0.8h/kvm)
-   - Timpris: 600-900 kr/h (standard: 750 kr/h)
-   - För 50 kvm: ~40h
-
-3. **Slipning** (jobType: 'slipning') - VID BEHOV
-   - Standard: 0.15-0.40h per kvm (typical: 0.25h/kvm)
-   - Timpris: 600-900 kr/h (standard: 750 kr/h)
-   - För 50 kvm: ~12.5h
-
-4. **Lackering** (jobType: 'lackering') - VID BEHOV
-   - Standard: 0.15-0.35h per kvm (typical: 0.25h/kvm)
-   - Timpris: 600-900 kr/h (standard: 750 kr/h)
-   - För 50 kvm: ~12.5h
-
-**TOTALT för 50 kvm parkett: 77-90 timmar (med slipning och lackering)**
-
-**⚠️ ANVÄND ALDRIG 'parkettläggning' (1.5h/kvm) för ENSKILDA moment!**
-Den standarden är ENDAST för att validera total-tid, inte för att beräkna delmoment.
-
-` : ''}
-
-${!['badrum', 'kök', 'målning'].includes(jobCategory) ? `
-
-**⚙️ GENERISK GUIDE FÖR ${jobCategory.toUpperCase()}:**
-
-För att undvika orealistiska timuppskattningar:
-
-1. **Använd branschstandarder från INDUSTRY_STANDARDS**
-   - Sök efter relevanta standarder i vårt system (findStandard)
-   - Följ angivna timmar per enhet (h/kvm, h/rum, h/styck)
-
-2. **Dela upp i logiska moment**
-   - Rivning/förberedelser (om relevant)
-   - Huvudarbete (specifikt för jobbet)
-   - Efterarbete/städning
-
-3. **Typical timpriser per yrkeskategori:**
-   - Elektriker: 850-1100 kr/h
-   - VVS: 900-1100 kr/h
-   - Snickare: 700-850 kr/h
-   - Målare: 650-850 kr/h
-   - Murare: 750-900 kr/h
-   - Städare: 500-650 kr/h
-   - Trädgårdsskötare: 550-700 kr/h
-
-4. **Sanity checks:**
-   - Rivning: Max 3h/kvm för inomhus
-   - Installation: 1-4h/kvm beroende på komplexitet
-   - Efterarbete: Max 10% av total tid
-
-` : ''}
+${(() => {
+  // Hämta JobDefinition från registry
+  const jobDef = getJobDefinition(jobCategory);
+  
+  // Generera dynamiska instruktioner baserat på JobDefinition
+  return generateJobInstructions(jobDef, measurements);
+})()}
+
+**⚙️ GENERISK GUIDE:**
+
+För alla jobbtyper gäller:
+1. Använd data från Job Registry (hämtat automatiskt)
+2. Dela upp i logiska moment från standardWorkItems
+3. Följ timePerUnit och hourlyRateRange från definitionen
+4. Respektera proportionRules (max shares, min items)
+5. Formula Engine beräknar ALL matematik automatiskt
+
+**DU FÅR ALDRIG:**
+- Räkna subtotals själv (Formula Engine gör det)
+- Räkna totals, moms, ROT/RUT själv
+- Använda "totalrenovering"-standarder för enskilda moment
+- Skapa arbetsmoment som inte finns i Job Registry (utan bra skäl)
+
+**🤖 VIKTIGT FÖR AI:**
+Du får ENDAST generera strukturerad data med:
+- workItems: { name, description, estimatedHours, hourlyRate }
+- materials: { name, quantity, unit, estimatedCost }
+- equipment: { name, quantity, unit, estimatedCost }
+
+RÄKNA ALDRIG subtotals eller totals själv - Formula Engine gör det automatiskt.
+Din uppgift är att TOLKA användarens behov och skapa strukturerad data.
 `;
   
   // ============ HÄMTA ANVÄNDARDATA ============
