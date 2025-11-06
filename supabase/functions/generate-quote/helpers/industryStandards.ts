@@ -1433,7 +1433,9 @@ export function findStandard(
     }
   }
   
-  // STEG 3: Try alias matching
+  // STEG 3: Try alias matching (FAS 3: Kontextmedvetna alias för el/kakel/klinker)
+  // Note: Removed problematic 'el' → 'elinstallation' (doesn't exist in standards)
+  // These aliases are now context-aware when used with STEG 1
   const aliases: Record<string, string> = {
     'städa': 'hemstadning',
     'flytta': 'flyttstadning',
@@ -1444,7 +1446,6 @@ export function findStandard(
     'kök': 'kokrenovering',
     'måla': 'malning_inomhus',
     'fasad': 'malning_fasad',
-    'el': 'elinstallation',
     'vvs': 'vvs_installation',
     'golv': 'golvlaggning',
     'tak': 'taklagger'

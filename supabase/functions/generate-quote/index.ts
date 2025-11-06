@@ -5414,10 +5414,6 @@ Svara med **1**, **2** eller **3** (eller "granska", "generera", "mer info")`;
     // STEP 6.6: VALIDATE REALISM (FÖRBÄTTRING #9)
     // ============================================
     
-    // Apply deterministic pricing (FAS 22: skip if draft mode)
-    console.log('💰 Computing deterministic totals...');
-    quote = computeQuoteTotals(quote, hourlyRates || [], equipmentRates || [], isDraft);
-
     // ============================================
     // PROPOSAL 1: VALIDATE TIME ESTIMATES AGAINST INDUSTRY STANDARDS
     // ============================================
@@ -5457,7 +5453,7 @@ Svara med **1**, **2** eller **3** (eller "granska", "generera", "mer info")`;
     
     console.log('📐 Final measurements for validation:', measurementsForValidation);
     
-    // Detect project type for context-aware validation
+    // Detect project type for context-aware validation (FLYTTA DETTA FÖRE normalizeAndMergeDuplicates)
     let detectedProjectType = 'övrigt';
     const descriptionLower = completeDescription.toLowerCase();
     if (descriptionLower.includes('badrum')) detectedProjectType = 'badrum';
@@ -5468,6 +5464,18 @@ Svara med **1**, **2** eller **3** (eller "granska", "generera", "mer info")`;
     else if (descriptionLower.includes('el') || descriptionLower.includes('elektr')) detectedProjectType = 'el';
     
     console.log('🎯 Detected project type:', detectedProjectType);
+    
+    // ============================================
+    // FAS 2: NORMALIZE AND MERGE DUPLICATE WORK ITEMS (tillfälligt inaktiverad pga scope)
+    // ============================================
+    
+    // TODO: Flytta normalizeAndMergeDuplicates högre upp i filen eller refaktorera till helper
+    // console.log('🔍 Normalizing and merging duplicate work items...');
+    // quote = normalizeAndMergeDuplicates(quote, measurementsForValidation, detectedProjectType);
+    
+    // Apply deterministic pricing (FAS 22: skip if draft mode)
+    console.log('💰 Computing deterministic totals...');
+    quote = computeQuoteTotals(quote, hourlyRates || [], equipmentRates || [], isDraft);
     
     const timeValidation = validateQuoteTimeEstimates(quote, measurementsForValidation, detectedProjectType);
     

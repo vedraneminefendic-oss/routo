@@ -38,6 +38,88 @@ Deno.serve(async (req) => {
     if (jobType) {
       query = query.eq('job_type', jobType);
     }
+    
+    // FAS 6: Add test scenarios if seed_tests parameter is set
+    const shouldSeedTests = url.searchParams.get('seed_tests') === 'true';
+    
+    if (shouldSeedTests) {
+      console.log('🌱 Seeding test scenarios...');
+      
+      const testScenarios = [
+        {
+          test_name: 'Badrum 4 kvm - El & Kakel timing',
+          job_type: 'badrumsrenovering',
+          description: 'Badrumsrenovering 4 kvm',
+          input_data: {
+            description: 'Badrumsrenovering 4 kvm',
+            conversation_history: [
+              { role: 'user', content: 'Jag vill renovera badrummet, det är 4 kvm' },
+              { role: 'assistant', content: 'Okej, vad ska ingå?' },
+              { role: 'user', content: 'Allt - el, vvs, kakel, klinker, rivning' }
+            ]
+          },
+          expected_price_min: 80000,
+          expected_price_max: 120000,
+          scenario_description: 'Validerar att el får 10h (4×2.5), kakel får 8.8h (4×2.2), totalt >50h, inga dubbletter'
+        },
+        {
+          test_name: 'Målning 30 kvm - Area calculation',
+          job_type: 'målning',
+          description: 'Målning inomhus 30 kvm',
+          input_data: {
+            description: 'Målning inomhus 30 kvm',
+            conversation_history: [
+              { role: 'user', content: 'Måla lägenhet 30 kvm' }
+            ]
+          },
+          expected_price_min: 15000,
+          expected_price_max: 25000,
+          scenario_description: 'Validerar att målning får 12h (30×0.4), inga dubbletter'
+        },
+        {
+          test_name: 'Kök 10 kvm - El & VVS standards',
+          job_type: 'köksrenovering',
+          description: 'Köksrenovering 10 kvm',
+          input_data: {
+            description: 'Köksrenovering 10 kvm',
+            conversation_history: [
+              { role: 'user', content: 'Renovera kök 10 kvm med nya skåp, el och vvs' }
+            ]
+          },
+          expected_price_min: 120000,
+          expected_price_max: 180000,
+          scenario_description: 'Validerar el_kok och vvs_kok finns, totalt >60h, inga dubbletter'
+        },
+        {
+          test_name: 'Badrum utan area - Fallback 4 kvm',
+          job_type: 'badrumsrenovering',
+          description: 'Badrumsrenovering total',
+          input_data: {
+            description: 'Badrumsrenovering total',
+            conversation_history: [
+              { role: 'user', content: 'Renovera badrummet, totalt med allt' }
+            ]
+          },
+          expected_price_min: 80000,
+          expected_price_max: 120000,
+          scenario_description: 'Validerar fallback till 4 kvm, totalt >50h, area-varning finns'
+        }
+      ];
+      
+      for (const scenario of testScenarios) {
+        const { error } = await supabase
+          .from('golden_tests')
+          .upsert(scenario, { onConflict: 'test_name' });
+        
+        if (error) {
+          console.error(`❌ Failed to seed "${scenario.test_name}":`, error);
+        } else {
+          console.log(`✅ Seeded: ${scenario.test_name}`);
+        }
+      }
+      
+      console.log('🌱 Test seeding complete');
+    }
 
     const { data: goldenTests, error: fetchError } = await query;
 

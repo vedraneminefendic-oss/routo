@@ -181,9 +181,13 @@ export function validateQuoteTimeEstimates(
   }
   
   for (const item of quote.workItems || []) {
+    // FAS 1: Normalisera fält - läs från både name/workItemName och hours/estimatedHours
+    const workItemName = item.workItemName || item.name || '';
+    const estimatedHours = Number(item.estimatedHours ?? item.hours ?? 0);
+    
     const validation = validateTimeEstimate(
-      item.workItemName,
-      item.estimatedHours,
+      workItemName,
+      estimatedHours,
       measurements,
       undefined, // standard will be found automatically
       { jobType: projectType } // pass context
@@ -193,10 +197,10 @@ export function validateQuoteTimeEstimates(
       warnings.push(...validation.warnings);
     }
     
-    if (!validation.isRealistic && validation.correctedHours && validation.correctedHours !== item.estimatedHours) {
+    if (!validation.isRealistic && validation.correctedHours && validation.correctedHours !== estimatedHours) {
       corrections.push({
-        workItem: item.workItemName,
-        originalHours: item.estimatedHours,
+        workItem: workItemName,
+        originalHours: estimatedHours,
         suggestedHours: validation.correctedHours
       });
     }
@@ -228,20 +232,25 @@ export function autoCorrectTimeEstimates(
   }
   
   for (const item of quote.workItems || []) {
+    // FAS 1: Normalisera fält - läs från både name/workItemName och hours/estimatedHours
+    const workItemName = item.workItemName || item.name || '';
+    const estimatedHours = Number(item.estimatedHours ?? item.hours ?? 0);
+    
     const validation = validateTimeEstimate(
-      item.workItemName,
-      item.estimatedHours,
+      workItemName,
+      estimatedHours,
       measurements,
       undefined,
       { jobType: projectType }
     );
     
-    if (!validation.isRealistic && validation.correctedHours && validation.correctedHours !== item.estimatedHours) {
-      const before = item.estimatedHours;
+    if (!validation.isRealistic && validation.correctedHours && validation.correctedHours !== estimatedHours) {
+      const before = estimatedHours;
       const after = validation.correctedHours;
       
       if (applyCorrections) {
-        // Update the item
+        // FAS 1: Skriv tillbaka till BÅDA fälten för att säkerställa att UI och totals använder rätt värde
+        item.hours = after;
         item.estimatedHours = after;
         
         // Update reasoning to explain the correction with details
@@ -253,7 +262,7 @@ export function autoCorrectTimeEstimates(
       }
       
       corrections.push({
-        workItem: item.workItemName,
+        workItem: workItemName,
         before,
         after
       });
