@@ -25,8 +25,25 @@ export function normalizeAndMergeDuplicates(
   for (const original of items) {
     const name = original.workItemName || original.name || '';
     const hours = Number(original.hours ?? original.estimatedHours ?? 0) || 0;
-    const standard = findStandard(name, { jobType: projectType });
-    const key = (standard?.jobType || normalizeName(name)) + '';
+    let standard = findStandard(name, { jobType: projectType });
+    
+    // FORCE STANDARD KEY för badrum-kontext när standard saknas
+    let key = standard?.jobType || normalizeName(name);
+    if (!standard && projectType?.toLowerCase().includes('badrum')) {
+      const nameLower = name.toLowerCase();
+      let forcedKey = '';
+      if (nameLower.includes('el')) {
+        forcedKey = 'el_badrum';
+      } else if (nameLower.includes('kakel')) {
+        forcedKey = 'kakel_vagg';
+      } else if (nameLower.includes('klinker') && !nameLower.includes('kakel')) {
+        forcedKey = 'klinker_golv';
+      }
+      if (forcedKey) {
+        key = forcedKey;
+        console.log(`🔑 Forcing standard key via context: ${forcedKey} for "${name}"`);
+      }
+    }
 
     const entry = { original, name, hours, standard };
     if (!groups.has(key)) groups.set(key, [entry]);

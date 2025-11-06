@@ -56,31 +56,36 @@ export function validateTimeEstimate(
     if (measurements.area) {
       amount = measurements.area;
     } else {
-      // FALLBACK: Assume typical areas to avoid 2.6h problem
-      const fallbackAreas: Record<string, number> = {
-        'badrum': 4,
-        'målning': 10,
-        'golv': 8,
-        'kök': 8
-      };
-      
-      // Detect job type from work item name
-      const itemLower = workItemName.toLowerCase();
+      // CONTEXT-BASERAD FALLBACK: Använd projektkontext först, sedan workItemName
+      const job = (context?.jobType || '').toLowerCase();
       let fallbackArea = 1; // default
       
-      if (itemLower.includes('badrum') || itemLower.includes('våtrum')) {
-        fallbackArea = fallbackAreas['badrum'];
-      } else if (itemLower.includes('målning') || itemLower.includes('måla')) {
-        fallbackArea = fallbackAreas['målning'];
-      } else if (itemLower.includes('golv')) {
-        fallbackArea = fallbackAreas['golv'];
-      } else if (itemLower.includes('kök')) {
-        fallbackArea = fallbackAreas['kök'];
+      // Prioritera projektkontext
+      if (job.includes('badrum')) {
+        fallbackArea = 4;
+      } else if (job.includes('kök')) {
+        fallbackArea = 8;
+      } else if (job.includes('målning')) {
+        fallbackArea = 50;
+      } else if (job.includes('fasad')) {
+        fallbackArea = 100;
+      } else {
+        // Fallback till workItemName om kontext inte hjälper
+        const itemLower = workItemName.toLowerCase();
+        if (itemLower.includes('badrum') || itemLower.includes('våtrum')) {
+          fallbackArea = 4;
+        } else if (itemLower.includes('målning') || itemLower.includes('måla')) {
+          fallbackArea = 50;
+        } else if (itemLower.includes('kök')) {
+          fallbackArea = 8;
+        } else if (itemLower.includes('fasad')) {
+          fallbackArea = 100;
+        }
       }
       
       amount = fallbackArea;
-      warnings.push(`⚠️ [ANTAGANDE] Yta saknas för "${workItemName}" - använde ${fallbackArea} kvm. Justera i efterhand.`);
-      console.log(`⚠️ Missing area for kvm-based job "${workItemName}" - using fallback: ${fallbackArea} kvm`);
+      warnings.push(`⚠️ [ANTAGANDE] Område saknas – använde ${amount} kvm baserat på projektkontext '${job || 'okänd'}'. Justera i efterhand.`);
+      console.log(`🧭 Context fallback area=${amount} for "${workItemName}" (context=${job})`);
     }
   } else if (standard.timePerUnit.unit === 'rum' && measurements.rooms) {
     amount = measurements.rooms;
@@ -107,7 +112,12 @@ export function validateTimeEstimate(
   }
   
   // Om estimerad tid är för låg - KORRIGERA TILL MINTIME (inte typical)
-  if (estimatedHours < minHours * 0.7) {
+  // För badrum: strängare gräns (< minHours istället för < minHours * 0.7)
+  const job = (context?.jobType || '').toLowerCase();
+  const isBathroom = job.includes('badrum');
+  const threshold = isBathroom ? minHours : minHours * 0.7;
+  
+  if (estimatedHours < threshold) {
     warnings.push(`⚠️ VARNING: ${estimatedHours.toFixed(1)}h är för lågt för "${workItemName}"! Branschstandard: ${minHours.toFixed(1)}-${maxHours.toFixed(1)}h för ${amount} ${standard.timePerUnit.unit}. Justerat till minimum ${minHours.toFixed(1)}h.`);
     return {
       isRealistic: false,
