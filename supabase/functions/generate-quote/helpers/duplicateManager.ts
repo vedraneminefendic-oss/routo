@@ -1,5 +1,6 @@
 import { findStandard } from './industryStandards.ts';
 import { validateTimeEstimate } from './validateTimeEstimate.ts';
+import { classifyWorkItem, buildCanonicalKey, hasWord, type WorkItemClassification } from './classifier.ts';
 
 function normalizeName(raw: string): string {
   return (raw || '')
@@ -12,22 +13,22 @@ function normalizeName(raw: string): string {
     .trim();
 }
 
-// FIX-HOURS-V4: Detektera item-typ för att förhindra fel-gruppering
+// FIX-HOURS-V5: Token-baserad item-typ detektion
 function detectItemType(name: string): string {
   const n = name.toLowerCase();
   
-  // El - ENDAST om "el" nämns utan kakel/klinker
-  if (n.includes('el') && !n.includes('kakel') && !n.includes('klinker')) {
+  // El - ENDAST om "el" som ord nämns utan kakel/klinker
+  if (hasWord(n, 'el') && !hasWord(n, 'kakel') && !hasWord(n, 'klinker')) {
     return 'el';
   }
   
-  // Kakel - om "kakel" nämns (oavsett om klinker också nämns - splitCombinedItems ska hantera detta)
-  if (n.includes('kakel')) {
+  // Kakel - om "kakel" som ord nämns
+  if (hasWord(n, 'kakel')) {
     return 'kakel';
   }
   
-  // Klinker - ENDAST om "klinker" nämns utan kakel
-  if (n.includes('klinker') && !n.includes('kakel')) {
+  // Klinker - ENDAST om "klinker" som ord nämns utan kakel
+  if (hasWord(n, 'klinker') && !hasWord(n, 'kakel')) {
     return 'klinker';
   }
   
@@ -44,36 +45,78 @@ export function normalizeAndMergeDuplicates(
 
   const groups = new Map<string, Array<any>>();
 
+  const classificationMap = new Map<any, WorkItemClassification>();
+  
   for (const original of items) {
     const name = original.workItemName || original.name || '';
+    const description = original.description || '';
     const hours = Number(original.hours ?? original.estimatedHours ?? 0) || 0;
     let standard = findStandard(name, { jobType: projectType });
     
+    // FIX-HOURS-V5: Klassificera item
+    const cls = classifyWorkItem(name, description, projectType);
+    classificationMap.set(original, cls);
+    
+    // FIX-HOURS-V5: Bygg canonical key från classifier
+    let key = buildCanonicalKey(cls, standard?.jobType);
+    
     // FORCE STANDARD KEY för badrum-kontext när standard saknas
-    let key = standard?.jobType || normalizeName(name);
     if (!standard && projectType?.toLowerCase().includes('badrum')) {
       const nameLower = name.toLowerCase();
       let forcedKey = '';
-      if (nameLower.includes('el') && !nameLower.includes('kakel') && !nameLower.includes('klinker')) {
+      if (hasWord(nameLower, 'el') && !hasWord(nameLower, 'kakel') && !hasWord(nameLower, 'klinker')) {
         forcedKey = 'el_badrum';
-      } else if (nameLower.includes('kakel')) {
+      } else if (hasWord(nameLower, 'kakel')) {
         forcedKey = 'kakel_vagg';
-      } else if (nameLower.includes('klinker') && !nameLower.includes('kakel')) {
+      } else if (hasWord(nameLower, 'klinker') && !hasWord(nameLower, 'kakel')) {
         forcedKey = 'klinker_golv';
       }
       if (forcedKey) {
-        key = forcedKey;
+        key = `${forcedKey}:${cls.component || 'general'}`;
         console.log(`🔑 Forcing standard key via context: ${forcedKey} for "${name}"`);
       }
     }
     
-    // FIX-HOURS-V4: Extra säkerhet - lägg till item-typ till nyckeln för att förhindra el/kakel/klinker merge
-    const itemType = detectItemType(name);
-    key = `${key}_${itemType}`;
+    // Warn if standard domain doesn't match classified domain
+    if (standard && cls.domain !== 'other') {
+      const stdDomain = standard.jobType.split('_')[0];
+      if (stdDomain !== cls.domain && !['el', 'tiles'].includes(cls.domain)) {
+        console.warn(`⚠️ Domain mismatch: standard=${stdDomain} vs classified=${cls.domain} for "${name}"`);
+      }
+    }
 
-    const entry = { original, name, hours, standard };
+    const entry = { original, name, hours, standard, cls };
     if (!groups.has(key)) groups.set(key, [entry]);
     else groups.get(key)!.push(entry);
+  }
+  
+  // FIX-HOURS-V5: Hard separation guard - split groups with mixed domains
+  const guardedGroups = new Map<string, Array<any>>();
+  for (const [key, group] of groups.entries()) {
+    if (group.length === 1) {
+      guardedGroups.set(key, group);
+      continue;
+    }
+    
+    // Check if all items share the same domain
+    const domains = new Set(group.map(g => g.cls.domain));
+    if (domains.size === 1) {
+      guardedGroups.set(key, group);
+    } else {
+      // Split by domain
+      console.warn(`🚨 Hard-guard split: key=${key} has mixed domains:`, Array.from(domains));
+      for (const g of group) {
+        const splitKey = `${key}_SPLIT_${g.cls.domain}`;
+        if (!guardedGroups.has(splitKey)) guardedGroups.set(splitKey, [g]);
+        else guardedGroups.get(splitKey)!.push(g);
+      }
+    }
+  }
+  
+  // Replace groups with guarded groups
+  groups.clear();
+  for (const [key, group] of guardedGroups.entries()) {
+    groups.set(key, group);
   }
 
   const friendlyNameMap: Record<string, string> = {

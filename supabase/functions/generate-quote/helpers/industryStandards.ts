@@ -1304,6 +1304,13 @@ export const INDUSTRY_STANDARDS: JobStandard[] = [
  * - When work items need context to select the right sub-standard
  * - New job types work automatically with STEG 2/3 unless they have sub-components
  */
+// FIX-HOURS-V5: Token-baserad matchning för att undvika substring-problem
+function hasWord(text: string, word: string): boolean {
+  if (!text || !word) return false;
+  const pattern = new RegExp(`\\b${word}\\b`, 'i');
+  return pattern.test(text);
+}
+
 export function findStandard(
   jobDescription: string,
   context?: { jobType?: string; category?: string }
@@ -1327,16 +1334,15 @@ export function findStandard(
         return INDUSTRY_STANDARDS.find(s => s.jobType === 'vvs_badrum') || null;
       }
       
-      // FIX-HOURS-V4: El - matcha ENDAST el-relaterade termer (ALDRIG kakel/klinker)
-      if ((lower.includes('el-installation') || lower.includes('elinstallation') || 
-           (lower.includes('el') && lower.includes('våtrum'))) && 
-          !lower.includes('kakel') && !lower.includes('klinker')) {
+      // FIX-HOURS-V5: El - ENDAST om "el" som ord nämns utan kakel/klinker
+      if ((hasWord(lower, 'el-installation') || hasWord(lower, 'elinstallation') || hasWord(lower, 'el')) && 
+          !hasWord(lower, 'kakel') && !hasWord(lower, 'klinker')) {
         return INDUSTRY_STANDARDS.find(s => s.jobType === 'el_badrum') || null;
       }
       
-      // FIX-HOURS-V4: Kakel - matcha kakelsättning, kakel vägg (ALDRIG el)
-      if ((lower.includes('kakel') || lower.includes('kakelsättning')) && 
-          !lower.includes('el')) {
+      // FIX-HOURS-V5: Kakel - matcha kakelsättning, kakel vägg (men inte om "el" som separat ord finns)
+      if ((hasWord(lower, 'kakel') || hasWord(lower, 'kakelsättning')) && 
+          !hasWord(lower, 'el-installation')) {
         // Om explicit "vägg" nämns eller "kakel och klinker" (kommer delas upp tidigare)
         if (lower.includes('vägg') || lower.includes('och')) {
           return INDUSTRY_STANDARDS.find(s => s.jobType === 'kakel_vagg') || null;
@@ -1345,8 +1351,8 @@ export function findStandard(
         return INDUSTRY_STANDARDS.find(s => s.jobType === 'kakel_vagg') || null;
       }
       
-      // FIX-HOURS-V4: Klinker - matcha endast när kakel INTE nämns samtidigt
-      if (lower.includes('klinker') && !lower.includes('kakel')) {
+      // FIX-HOURS-V5: Klinker - matcha endast när kakel INTE nämns samtidigt
+      if (hasWord(lower, 'klinker') && !hasWord(lower, 'kakel')) {
         return INDUSTRY_STANDARDS.find(s => s.jobType === 'klinker_golv') || null;
       }
       

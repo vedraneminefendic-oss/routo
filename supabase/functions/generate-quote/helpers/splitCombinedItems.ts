@@ -1,76 +1,77 @@
-// FIX-HOURS-V4: Split combined "kakel och klinker" items into separate work items
-// This runs BEFORE normalizeAndMergeDuplicates to ensure clean separation
-
 import { findStandard, calculateTimeFromStandard } from './industryStandards.ts';
+import { classifyWorkItem, hasWord } from './classifier.ts';
 
+/**
+ * FIX-HOURS-V5: Classifier-driven splitting of combined work items
+ * Splits items that mention multiple domains (e.g., "kakel och klinker", "el + ventilation")
+ */
 export function splitCombinedItems(
   quote: any,
   measurements: { area?: number; rooms?: number; quantity?: number; length?: number },
   projectType?: string
 ): any {
-  const items = quote?.workItems || [];
+  const items = Array.isArray(quote?.workItems) ? quote.workItems : [];
+  if (items.length === 0) return quote;
+
   const expanded: any[] = [];
-  
+
   for (const item of items) {
     const name = (item.name || item.workItemName || '').toLowerCase();
     const desc = (item.description || '').toLowerCase();
-    
-    // Om både "kakel" OCH "klinker" nämns i NAMNET eller BESKRIVNINGEN
-    const hasKakel = name.includes('kakel') || desc.includes('kakel');
-    const hasKlinker = name.includes('klinker') || desc.includes('klinker');
-    
-    if (hasKakel && hasKlinker) {
-      console.log(`✂️ Splitting combined item: "${item.name || item.workItemName}"`);
-      
-      // Dela upp i två separata poster
+    const text = `${name} ${desc}`;
+
+    // Check for "kakel och klinker" combination
+    const hasKakel = hasWord(text, 'kakel');
+    const hasKlinker = hasWord(text, 'klinker');
+    const hasBothTiles = hasKakel && hasKlinker;
+
+    if (hasBothTiles) {
+      console.log(`✂️ Splitting combined tiles item: "${item.name || item.workItemName}"`);
+
+      // Split into Kakel vägg and Klinker golv
       const kakelStd = findStandard('Kakel vägg', { jobType: projectType });
       const klinkerStd = findStandard('Klinker golv', { jobType: projectType });
-      
-      // Beräkna timmar baserat på standard och mått
+
       const kakelHours = kakelStd 
         ? calculateTimeFromStandard(kakelStd, measurements)
-        : 8.8; // Fallback
-      const klinkerHours = klinkerStd 
+        : 8.8;
+      const klinkerHours = klinkerStd
         ? calculateTimeFromStandard(klinkerStd, measurements)
-        : 11.2; // Fallback
-      
-      // Använd existerande hourlyRate eller standard
-      const hourlyRate = item.hourlyRate || kakelStd?.hourlyRate?.standard || 850;
-      
-      // Lägg till kakel-post
+        : 11.2;
+
       expanded.push({
         ...item,
         name: 'Kakel vägg',
         workItemName: 'Kakel vägg',
         hours: kakelHours,
         estimatedHours: kakelHours,
-        hourlyRate,
-        subtotal: Math.round(kakelHours * hourlyRate),
         description: 'Kakelsättning av väggar',
-        reasoning: `[UPPDELAD från "${item.name || item.workItemName}"] Baserat på ${measurements.area || 'okänt'} kvm`
+        reasoning: `[UPPDELAD från "${item.name || item.workItemName}"] Baserat på ${measurements.area || 4} kvm. ${item.reasoning || ''}`.trim()
       });
-      
-      // Lägg till klinker-post
+
       expanded.push({
         ...item,
         name: 'Klinker golv',
         workItemName: 'Klinker golv',
         hours: klinkerHours,
         estimatedHours: klinkerHours,
-        hourlyRate,
-        subtotal: Math.round(klinkerHours * hourlyRate),
         description: 'Klinkersättning av golv',
-        reasoning: `[UPPDELAD från "${item.name || item.workItemName}"] Baserat på ${measurements.area || 'okänt'} kvm`
+        reasoning: `[UPPDELAD från "${item.name || item.workItemName}"] Baserat på ${measurements.area || 4} kvm. ${item.reasoning || ''}`.trim()
       });
-      
-      console.log(`  → Kakel vägg: ${kakelHours.toFixed(1)}h`);
-      console.log(`  → Klinker golv: ${klinkerHours.toFixed(1)}h`);
-      
-    } else {
-      // Behåll original om inte kombinerad
-      expanded.push(item);
+
+      continue;
     }
+
+    // Future: Add more combination checks here (e.g., "el + ventilation")
+    // For now, only handle kakel+klinker
+
+    expanded.push(item);
   }
-  
-  return { ...quote, workItems: expanded };
+
+  console.log(`✂️ Split result: ${items.length} items → ${expanded.length} items (${expanded.length - items.length} splits)`);
+
+  return {
+    ...quote,
+    workItems: expanded
+  };
 }

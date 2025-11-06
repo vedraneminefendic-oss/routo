@@ -5470,6 +5470,14 @@ Svara med **1**, **2** eller **3** (eller "granska", "generera", "mer info")`;
     const { normalizeAndMergeDuplicates } = await import('./helpers/duplicateManager.ts');
     quote = normalizeAndMergeDuplicates(quote, measurementsForValidation, detectionResult.projectType);
     
+    // ============================================
+    // FIX-HOURS-V5: OVERLAP ADJUSTMENTS (e.g., el-installation - golvvärme)
+    // ============================================
+    
+    console.log('🔗 Checking for overlap adjustments (e.g., el vs golvvärme)...');
+    const { applyOverlapAdjustments } = await import('./helpers/relations.ts');
+    quote = applyOverlapAdjustments(quote, measurementsForValidation, detectionResult.projectType);
+    
     // Apply deterministic pricing (FAS 22: skip if draft mode)
     console.log('💰 Computing deterministic totals...');
     quote = computeQuoteTotals(quote, hourlyRates || [], equipmentRates || [], isDraft);
@@ -5904,6 +5912,10 @@ Svara med **1**, **2** eller **3** (eller "granska", "generera", "mer info")`;
           console.log('🔁 Post-fix: merge duplicates introduced by auto-fix');
           const { normalizeAndMergeDuplicates } = await import('./helpers/duplicateManager.ts');
           quote = normalizeAndMergeDuplicates(quote, measurementsForValidation, detectionResult.projectType);
+          
+          console.log('🔁 Post-fix: check overlap adjustments');
+          const { applyOverlapAdjustments } = await import('./helpers/relations.ts');
+          quote = applyOverlapAdjustments(quote, measurementsForValidation, detectionResult.projectType);
           
           console.log('🔁 Post-fix: auto-correct time estimates');
           autoCorrectTimeEstimates(quote, measurementsForValidation, true, detectionResult.projectType);
