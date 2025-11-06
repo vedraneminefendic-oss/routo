@@ -5469,9 +5469,9 @@ Svara med **1**, **2** eller **3** (eller "granska", "generera", "mer info")`;
     // FAS 2: NORMALIZE AND MERGE DUPLICATE WORK ITEMS (tillfälligt inaktiverad pga scope)
     // ============================================
     
-    // TODO: Flytta normalizeAndMergeDuplicates högre upp i filen eller refaktorera till helper
-    // console.log('🔍 Normalizing and merging duplicate work items...');
-    // quote = normalizeAndMergeDuplicates(quote, measurementsForValidation, detectedProjectType);
+    console.log('🔍 Normalizing and merging duplicate work items...');
+    const { normalizeAndMergeDuplicates } = await import('./helpers/duplicateManager.ts');
+    quote = normalizeAndMergeDuplicates(quote, measurementsForValidation, detectedProjectType);
     
     // Apply deterministic pricing (FAS 22: skip if draft mode)
     console.log('💰 Computing deterministic totals...');
