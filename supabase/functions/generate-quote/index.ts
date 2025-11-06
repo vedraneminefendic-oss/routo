@@ -5454,6 +5454,14 @@ Svara med **1**, **2** eller **3** (eller "granska", "generera", "mer info")`;
     console.log('📐 Final measurements for validation:', measurementsForValidation);
     
     // ============================================
+    // FIX-HOURS-V4: SPLIT COMBINED ITEMS (e.g., "Kakel och klinker")
+    // ============================================
+    
+    console.log('✂️ Splitting combined items (e.g., "Kakel och klinker")...');
+    const { splitCombinedItems } = await import('./helpers/splitCombinedItems.ts');
+    quote = splitCombinedItems(quote, measurementsForValidation, detectionResult.projectType);
+    
+    // ============================================
     // FAS 2: NORMALIZE AND MERGE DUPLICATE WORK ITEMS
     // ============================================
     

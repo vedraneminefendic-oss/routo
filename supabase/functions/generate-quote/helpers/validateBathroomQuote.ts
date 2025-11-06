@@ -213,15 +213,22 @@ export async function autoFixBathroomQuote(
   projectType?: string
 ): Promise<any> {
   
-  // Helper to check if work item already exists
+  // FIX-HOURS-V4: Helper to check if work item already exists - EXAKT matchning av standard
   const hasExistingItem = (standardJobType: string): boolean => {
     if (!quote.workItems || !Array.isArray(quote.workItems)) return false;
     
-    return quote.workItems.some((item: any) => {
+    for (const item of quote.workItems) {
       const itemName = (item.workItemName || item.name || '').toLowerCase();
       const standard = findStandard(itemName, { jobType: projectType || 'badrum' });
-      return standard?.jobType === standardJobType;
-    });
+      
+      // EXAKT matchning av standard - inte bara att någon del av namnet matchar
+      if (standard?.jobType === standardJobType) {
+        console.log(`✓ Found existing item for ${standardJobType}: "${item.name || item.workItemName}"`);
+        return true;
+      }
+    }
+    
+    return false;
   };
   
   const fixes: Record<string, any> = {
@@ -303,6 +310,47 @@ export async function autoFixBathroomQuote(
   };
   
   const fixedQuote = { ...quote };
+  
+  // FIX-HOURS-V4: Explicit check for missing kakel and klinker
+  if (!hasExistingItem('kakel_vagg')) {
+    console.log('  🔧 Missing Kakel vägg - adding...');
+    const kakelStd = findStandard('Kakel vägg', { jobType: projectType || 'badrum' });
+    const hours = kakelStd ? calculateTimeFromStandard(kakelStd, { area }) : 8.8;
+    const hourlyRate = kakelStd?.hourlyRate?.standard || 850;
+    
+    fixedQuote.workItems = fixedQuote.workItems || [];
+    fixedQuote.workItems.push({
+      name: 'Kakel vägg',
+      workItemName: 'Kakel vägg',
+      hours,
+      estimatedHours: hours,
+      hourlyRate,
+      subtotal: Math.round(hours * hourlyRate),
+      description: 'Kakelsättning av väggar',
+      reasoning: `[AUTO-TILLAGD] Baserat på ${area} kvm och standard kakel_vagg`
+    });
+    console.log(`  ✅ Auto-added: Kakel vägg (${hours.toFixed(1)}h × ${hourlyRate} kr = ${Math.round(hours * hourlyRate)} kr)`);
+  }
+  
+  if (!hasExistingItem('klinker_golv')) {
+    console.log('  🔧 Missing Klinker golv - adding...');
+    const klinkerStd = findStandard('Klinker golv', { jobType: projectType || 'badrum' });
+    const hours = klinkerStd ? calculateTimeFromStandard(klinkerStd, { area }) : 11.2;
+    const hourlyRate = klinkerStd?.hourlyRate?.standard || 850;
+    
+    fixedQuote.workItems = fixedQuote.workItems || [];
+    fixedQuote.workItems.push({
+      name: 'Klinker golv',
+      workItemName: 'Klinker golv',
+      hours,
+      estimatedHours: hours,
+      hourlyRate,
+      subtotal: Math.round(hours * hourlyRate),
+      description: 'Klinkersättning av golv',
+      reasoning: `[AUTO-TILLAGD] Baserat på ${area} kvm och standard klinker_golv`
+    });
+    console.log(`  ✅ Auto-added: Klinker golv (${hours.toFixed(1)}h × ${hourlyRate} kr = ${Math.round(hours * hourlyRate)} kr)`);
+  }
   
   // Add missing workItems with better keyword matching and dynamic hour calculation
   missing.forEach(missingItem => {

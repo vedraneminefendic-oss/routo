@@ -1326,22 +1326,31 @@ export function findStandard(
       if (lower.includes('vvs') || lower.includes('rör')) {
         return INDUSTRY_STANDARDS.find(s => s.jobType === 'vvs_badrum') || null;
       }
-      // FAS 2.1: Förbättrad matchning för el-installation (inkl. "våtrum", "installation")
-      if (lower.includes('el')) {
+      
+      // FIX-HOURS-V4: El - matcha ENDAST el-relaterade termer (ALDRIG kakel/klinker)
+      if ((lower.includes('el-installation') || lower.includes('elinstallation') || 
+           (lower.includes('el') && lower.includes('våtrum'))) && 
+          !lower.includes('kakel') && !lower.includes('klinker')) {
         return INDUSTRY_STANDARDS.find(s => s.jobType === 'el_badrum') || null;
       }
-      // FAS 2.1: Förbättrad matchning för kakel och klinker kombinerat
-      if (lower.includes('kakel')) {
-        // Om både kakel och klinker nämns, eller bara "kakel och", använd kakel_vagg
-        if (lower.includes('klinker') || lower.includes('vägg')) {
+      
+      // FIX-HOURS-V4: Kakel - matcha kakelsättning, kakel vägg (ALDRIG el)
+      if ((lower.includes('kakel') || lower.includes('kakelsättning')) && 
+          !lower.includes('el')) {
+        // Om explicit "vägg" nämns eller "kakel och klinker" (kommer delas upp tidigare)
+        if (lower.includes('vägg') || lower.includes('och')) {
           return INDUSTRY_STANDARDS.find(s => s.jobType === 'kakel_vagg') || null;
         }
+        // Annars, default till kakel_vagg för badrum
+        return INDUSTRY_STANDARDS.find(s => s.jobType === 'kakel_vagg') || null;
       }
-      // Separat matchning för bara klinker
+      
+      // FIX-HOURS-V4: Klinker - matcha endast när kakel INTE nämns samtidigt
       if (lower.includes('klinker') && !lower.includes('kakel')) {
         return INDUSTRY_STANDARDS.find(s => s.jobType === 'klinker_golv') || null;
       }
-      // Matchning för golv (men inte golvvärme)
+      
+      // Matchning för golv (men inte golvvärme, och inte om kakel nämnts)
       if (lower.includes('golv') && !lower.includes('golvvärme') && !lower.includes('kakel')) {
         return INDUSTRY_STANDARDS.find(s => s.jobType === 'klinker_golv') || null;
       }

@@ -12,6 +12,28 @@ function normalizeName(raw: string): string {
     .trim();
 }
 
+// FIX-HOURS-V4: Detektera item-typ för att förhindra fel-gruppering
+function detectItemType(name: string): string {
+  const n = name.toLowerCase();
+  
+  // El - ENDAST om "el" nämns utan kakel/klinker
+  if (n.includes('el') && !n.includes('kakel') && !n.includes('klinker')) {
+    return 'el';
+  }
+  
+  // Kakel - om "kakel" nämns (oavsett om klinker också nämns - splitCombinedItems ska hantera detta)
+  if (n.includes('kakel')) {
+    return 'kakel';
+  }
+  
+  // Klinker - ENDAST om "klinker" nämns utan kakel
+  if (n.includes('klinker') && !n.includes('kakel')) {
+    return 'klinker';
+  }
+  
+  return 'other';
+}
+
 export function normalizeAndMergeDuplicates(
   quote: any,
   measurements: { area?: number; rooms?: number; quantity?: number; length?: number },
@@ -32,7 +54,7 @@ export function normalizeAndMergeDuplicates(
     if (!standard && projectType?.toLowerCase().includes('badrum')) {
       const nameLower = name.toLowerCase();
       let forcedKey = '';
-      if (nameLower.includes('el')) {
+      if (nameLower.includes('el') && !nameLower.includes('kakel') && !nameLower.includes('klinker')) {
         forcedKey = 'el_badrum';
       } else if (nameLower.includes('kakel')) {
         forcedKey = 'kakel_vagg';
@@ -44,6 +66,10 @@ export function normalizeAndMergeDuplicates(
         console.log(`🔑 Forcing standard key via context: ${forcedKey} for "${name}"`);
       }
     }
+    
+    // FIX-HOURS-V4: Extra säkerhet - lägg till item-typ till nyckeln för att förhindra el/kakel/klinker merge
+    const itemType = detectItemType(name);
+    key = `${key}_${itemType}`;
 
     const entry = { original, name, hours, standard };
     if (!groups.has(key)) groups.set(key, [entry]);
