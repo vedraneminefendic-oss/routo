@@ -1362,8 +1362,8 @@ export function findStandard(
       }
     }
     
-    // Köksmoment
-    if (contextType.includes('kök')) {
+    // Köksmoment (matcha både "kök" och "kok" utan ö)
+    if (contextType.includes('kök') || contextType.includes('kok')) {
       if (lower.includes('rivning') || lower.includes('demonter')) {
         return INDUSTRY_STANDARDS.find(s => s.jobType === 'rivning_kok') || null;
       }
@@ -1381,8 +1381,9 @@ export function findStandard(
       }
     }
     
-    // Målningsmoment
-    if (contextType.includes('måla') || contextType.includes('målning')) {
+    // Målningsmoment (matcha både "målning" och "malning" utan å)
+    if (contextType.includes('måla') || contextType.includes('målning') || 
+        contextType.includes('mala') || contextType.includes('malning')) {
       if (lower.includes('spackling') || lower.includes('spackla') || lower.includes('slipning')) {
         return INDUSTRY_STANDARDS.find(s => s.jobType === 'spackling_sliping') || null;
       }
@@ -1413,8 +1414,8 @@ export function findStandard(
       }
     }
     
-    // Trädgårdsmoment
-    if (contextType.includes('trädgård')) {
+    // Trädgårdsmoment (matcha både "trädgård" och "tradgard" utan ä)
+    if (contextType.includes('trädgård') || contextType.includes('tradgard')) {
       if (lower.includes('plantering') || lower.includes('plantera')) {
         return INDUSTRY_STANDARDS.find(s => s.jobType === 'plantering') || null;
       }
