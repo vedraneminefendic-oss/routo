@@ -1,6 +1,8 @@
 /**
  * MATH GUARD - Final Math Validation & Auto-Correction
  * 
+ * FAS 3: Använder Formula Engine för alla beräkningar
+ * 
  * KRITISKT: Denna modul säkerställer att:
  * 1. Varje workItem: subtotal = hours × hourlyRate (avrundad till heltal)
  * 2. Alla totals (workCost, materialCost, equipmentCost, VAT, ROT/RUT) räknas om korrekt
@@ -8,6 +10,8 @@
  * 
  * Ska ALLTID köras innan offert returneras eller sparas.
  */
+
+import { calculateQuoteTotals, QuoteStructure, CalculationReport } from './formulaEngine.ts';
 
 interface WorkItem {
   name: string;
@@ -67,173 +71,122 @@ interface MathGuardResult {
 }
 
 /**
- * Huvudfunktion: Korrigerar alla subtotals och totals
+ * FAS 3: Huvudfunktion - Använder Formula Engine för alla beräkningar
+ * 
+ * Korrigerar alla subtotals och totals genom att använda den centrala Formula Engine
  */
 export function enforceWorkItemMath(quote: Quote): MathGuardResult {
-  console.log('\n🛡️ ===== MATH GUARD: Starting validation =====');
+  console.log('\n🛡️ ===== MATH GUARD: Starting validation (using Formula Engine) =====');
   
+  // Konvertera quote till QuoteStructure för Formula Engine
+  const quoteStructure: QuoteStructure = {
+    workItems: (quote.workItems || []).map(item => ({
+      name: item.name,
+      description: item.reasoning,
+      estimatedHours: item.hours,
+      hourlyRate: item.hourlyRate,
+      subtotal: item.subtotal
+    })),
+    materials: (quote.materials || []).map(mat => ({
+      name: mat.name,
+      quantity: 1,
+      unit: 'st',
+      estimatedCost: mat.subtotal
+    })),
+    equipment: (quote.equipment || []).map(eq => ({
+      name: eq.name,
+      quantity: 1,
+      unit: 'st',
+      estimatedCost: eq.subtotal
+    })),
+    summary: quote.summary,
+    deductionType: quote.deductionType || 'none'
+  };
+  
+  // Använd Formula Engine för att beräkna allt
+  const { quote: correctedStructure, report } = calculateQuoteTotals(
+    quoteStructure, 
+    quote.deductionType || 'none'
+  );
+  
+  // Konvertera tillbaka till Quote-format
   const corrections: MathGuardResult['corrections'] = [];
   let maxDiffPercent = 0;
-
-  // ============================================
-  // STEG 1: Korrigera varje workItem
-  // ============================================
   
-  const correctedWorkItems = (quote.workItems || []).map((item, index) => {
-    const hours = Number(item.hours) || 0;
-    const rate = Number(item.hourlyRate) || 0;
-    const correctSubtotal = Math.round(hours * rate);
-    const existingSubtotal = Number(item.subtotal) || 0;
-    
-    const diff = Math.abs(correctSubtotal - existingSubtotal);
-    const diffPercent = existingSubtotal > 0 ? (diff / existingSubtotal) * 100 : 0;
-    
-    maxDiffPercent = Math.max(maxDiffPercent, diffPercent);
-    
-    if (diffPercent > 10) {
-      console.warn(`⚠️ MATH CORRECTION #${index + 1}: "${item.name}"`);
-      console.warn(`   Hours: ${hours}h × Rate: ${rate} kr/h = ${correctSubtotal} kr`);
-      console.warn(`   Existing: ${existingSubtotal} kr`);
-      console.warn(`   Diff: ${diff.toFixed(2)} kr (${diffPercent.toFixed(1)}%)`);
+  // Samla korrigeringar från Formula Engine-rapporten
+  report.details.forEach(detail => {
+    const match = detail.match(/WorkItem "([^"]+)": (\d+) kr → (\d+) kr/);
+    if (match) {
+      const oldValue = parseInt(match[2]);
+      const newValue = parseInt(match[3]);
+      const diffPercent = oldValue > 0 ? Math.abs((newValue - oldValue) / oldValue) * 100 : 0;
+      maxDiffPercent = Math.max(maxDiffPercent, diffPercent);
       
       corrections.push({
-        itemName: item.name,
+        itemName: match[1],
         type: 'workItem',
         field: 'subtotal',
-        oldValue: existingSubtotal,
-        newValue: correctSubtotal,
-        diffPercent: diffPercent
+        oldValue,
+        newValue,
+        diffPercent
       });
-      
-      return {
-        ...item,
-        subtotal: correctSubtotal,
-        reasoning: item.reasoning
-          ? `${item.reasoning} [Math-korrigerad från ${existingSubtotal} kr]`
-          : `Beräknat: ${hours}h × ${rate} kr/h = ${correctSubtotal} kr`
-      };
     }
     
-    return item;
+    const totalMatch = detail.match(/Total corrected: (\d+) kr → (\d+) kr/);
+    if (totalMatch) {
+      const oldValue = parseInt(totalMatch[1]);
+      const newValue = parseInt(totalMatch[2]);
+      const diffPercent = oldValue > 0 ? Math.abs((newValue - oldValue) / oldValue) * 100 : 0;
+      
+      corrections.push({
+        itemName: 'Summary',
+        type: 'total',
+        field: 'customerPays',
+        oldValue,
+        newValue,
+        diffPercent
+      });
+    }
   });
-
-  // ============================================
-  // STEG 2: Räkna om alla totals
-  // ============================================
   
-  const workCost = correctedWorkItems.reduce((sum, w) => sum + (w.subtotal || 0), 0);
-  const materialCost = (quote.materials || []).reduce((sum, m) => sum + (m.subtotal || 0), 0);
-  const equipmentCost = (quote.equipment || []).reduce((sum, e) => sum + (e.subtotal || 0), 0);
-  
-  const totalBeforeVAT = workCost + materialCost + equipmentCost;
-  const vatAmount = Math.round(totalBeforeVAT * 0.25);
-  const totalWithVAT = totalBeforeVAT + vatAmount;
-  
-  // ============================================
-  // STEG 3: Räkna om ROT/RUT avdrag
-  // ============================================
-  
-  let deductionAmount = 0;
-  
-  if (quote.deductionType === 'rot') {
-    // ROT: 30% av arbetskostnaden, max 50 000 kr per person
-    deductionAmount = Math.min(Math.round(workCost * 0.30), 50000);
-  } else if (quote.deductionType === 'rut') {
-    // RUT: 50% av arbetskostnaden, max 75 000 kr per person
-    deductionAmount = Math.min(Math.round(workCost * 0.50), 75000);
-  }
-  
-  const customerPays = totalWithVAT - deductionAmount;
-  
-  // ============================================
-  // STEG 4: Jämför gamla vs nya totals
-  // ============================================
-  
-  const oldWorkCost = quote.summary?.workCost || 0;
-  const oldTotalWithVAT = quote.summary?.totalWithVAT || 0;
-  const oldCustomerPays = quote.summary?.customerPays || 0;
-  
-  let totalsCorrected = false;
-  
-  if (Math.abs(workCost - oldWorkCost) > 100) {
-    console.warn(`⚠️ TOTAL CORRECTION: workCost ${oldWorkCost} → ${workCost} kr`);
-    corrections.push({
-      itemName: 'Summary',
-      type: 'total',
-      field: 'workCost',
-      oldValue: oldWorkCost,
-      newValue: workCost,
-      diffPercent: oldWorkCost > 0 ? ((Math.abs(workCost - oldWorkCost) / oldWorkCost) * 100) : 0
-    });
-    totalsCorrected = true;
-  }
-  
-  if (Math.abs(totalWithVAT - oldTotalWithVAT) > 100) {
-    console.warn(`⚠️ TOTAL CORRECTION: totalWithVAT ${oldTotalWithVAT} → ${totalWithVAT} kr`);
-    corrections.push({
-      itemName: 'Summary',
-      type: 'total',
-      field: 'totalWithVAT',
-      oldValue: oldTotalWithVAT,
-      newValue: totalWithVAT,
-      diffPercent: oldTotalWithVAT > 0 ? ((Math.abs(totalWithVAT - oldTotalWithVAT) / oldTotalWithVAT) * 100) : 0
-    });
-    totalsCorrected = true;
-  }
-  
-  if (Math.abs(customerPays - oldCustomerPays) > 100) {
-    console.warn(`⚠️ TOTAL CORRECTION: customerPays ${oldCustomerPays} → ${customerPays} kr`);
-    corrections.push({
-      itemName: 'Summary',
-      type: 'total',
-      field: 'customerPays',
-      oldValue: oldCustomerPays,
-      newValue: customerPays,
-      diffPercent: oldCustomerPays > 0 ? ((Math.abs(customerPays - oldCustomerPays) / oldCustomerPays) * 100) : 0
-    });
-    totalsCorrected = true;
-  }
-
-  // ============================================
-  // STEG 5: Bygg korrigerad offert
-  // ============================================
+  // Bygg korrigerad quote med uppdaterad data från Formula Engine
+  const correctedWorkItems = correctedStructure.workItems.map((item, index) => ({
+    name: item.name,
+    hours: item.estimatedHours,
+    hourlyRate: item.hourlyRate,
+    subtotal: item.subtotal!,
+    reasoning: item.description || quote.workItems[index]?.reasoning
+  }));
   
   const correctedQuote: Quote = {
     ...quote,
     workItems: correctedWorkItems,
     summary: {
-      workCost,
-      materialCost,
-      equipmentCost,
-      totalBeforeVAT,
-      vatAmount,
-      totalWithVAT,
-      deductionAmount,
-      rotRutDeduction: deductionAmount > 0 ? deductionAmount : undefined,
-      customerPays
+      workCost: correctedStructure.summary!.workCost!,
+      materialCost: correctedStructure.summary!.materialCost!,
+      equipmentCost: correctedStructure.summary!.equipmentCost!,
+      totalBeforeVAT: correctedStructure.summary!.totalBeforeVAT!,
+      vatAmount: correctedStructure.summary!.vat!,
+      totalWithVAT: correctedStructure.summary!.totalWithVAT!,
+      deductionAmount: (correctedStructure.summary!.rotDeduction || 0) + (correctedStructure.summary!.rutDeduction || 0),
+      rotRutDeduction: (correctedStructure.summary!.rotDeduction || 0) + (correctedStructure.summary!.rutDeduction || 0),
+      customerPays: correctedStructure.summary!.customerPays!
     }
   };
-
-  // ============================================
-  // STEG 6: Sammanfattning
-  // ============================================
   
-  const workItemsCorrected = corrections.filter(c => c.type === 'workItem').length;
-  
-  console.log(`\n🛡️ MATH GUARD: Complete`);
-  console.log(`   Work items corrected: ${workItemsCorrected}/${correctedWorkItems.length}`);
-  console.log(`   Totals corrected: ${totalsCorrected ? 'Yes' : 'No'}`);
+  console.log(`\n🛡️ MATH GUARD: Complete (Formula Engine)`);
+  console.log(`   Work items recalculated: ${report.workItemsRecalculated}`);
+  console.log(`   Total corrections: ${report.totalCorrections}`);
   console.log(`   Max diff: ${maxDiffPercent.toFixed(1)}%`);
-  console.log(`   Total corrections: ${corrections.length}`);
   console.log('======================================\n');
-
+  
   return {
     correctedQuote,
     totalCorrections: corrections.length,
     corrections,
     summary: {
-      workItemsCorrected,
-      totalsCorrected,
+      workItemsCorrected: report.workItemsRecalculated,
+      totalsCorrected: report.totalCorrections > 0,
       maxDiffPercent
     }
   };

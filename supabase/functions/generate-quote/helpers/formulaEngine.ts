@@ -277,3 +277,199 @@ ${userMarkup > 0 ? `📊 Påslag: +${userMarkup}%` : ''}
     confidence: 0.8
   };
 }
+
+// ============================================================================
+// FAS 3: TOTAL CALCULATION ENGINE - Beräknar alla totaler automatiskt
+// ============================================================================
+
+export interface QuoteStructure {
+  workItems: Array<{
+    name: string;
+    description?: string;
+    estimatedHours: number;
+    hourlyRate: number;
+    subtotal?: number;
+  }>;
+  materials?: Array<{
+    name: string;
+    quantity: number;
+    unit: string;
+    estimatedCost: number;
+  }>;
+  equipment?: Array<{
+    name: string;
+    quantity?: number;
+    unit?: string;
+    estimatedCost: number;
+  }>;
+  summary?: {
+    workCost?: number;
+    materialCost?: number;
+    equipmentCost?: number;
+    totalBeforeVAT?: number;
+    vat?: number;
+    totalWithVAT?: number;
+    rotDeduction?: number;
+    rutDeduction?: number;
+    customerPays?: number;
+  };
+  deductionType?: string;
+  measurements?: {
+    area?: number;
+    [key: string]: any;
+  };
+}
+
+export interface CalculationReport {
+  workItemsRecalculated: number;
+  totalCorrections: number;
+  originalTotal?: number;
+  correctedTotal?: number;
+  details: string[];
+}
+
+/**
+ * FAS 3: CORE FORMULA ENGINE - Beräknar alla subtotals och totals
+ * 
+ * KRITISK REGEL: All matematik sker här, INTE i AI:n eller manuellt
+ * 
+ * @param quote - Quote-struktur med workItems, materials, equipment
+ * @param deductionType - 'rot' | 'rut' | 'none' 
+ * @returns Uppdaterad quote med alla beräknade värden + rapport
+ */
+export function calculateQuoteTotals(
+  quote: QuoteStructure,
+  deductionType: string = 'none'
+): { quote: QuoteStructure; report: CalculationReport } {
+  
+  console.log('🧮 FORMULA ENGINE: Starting total calculation...');
+  
+  const report: CalculationReport = {
+    workItemsRecalculated: 0,
+    totalCorrections: 0,
+    details: []
+  };
+  
+  // ============ 1. BERÄKNA WORKITEM SUBTOTALS ============
+  quote.workItems.forEach((item, index) => {
+    const calculatedSubtotal = Math.round(item.estimatedHours * item.hourlyRate);
+    const originalSubtotal = item.subtotal;
+    
+    if (originalSubtotal && Math.abs(calculatedSubtotal - originalSubtotal) > 0.01) {
+      report.workItemsRecalculated++;
+      report.details.push(
+        `WorkItem "${item.name}": ${originalSubtotal} kr → ${calculatedSubtotal} kr ` +
+        `(${item.estimatedHours}h × ${item.hourlyRate} kr/h)`
+      );
+    }
+    
+    item.subtotal = calculatedSubtotal;
+  });
+  
+  // ============ 2. SUMMERA ARBETSKOSTNAD ============
+  const workCost = quote.workItems.reduce((sum, item) => sum + (item.subtotal || 0), 0);
+  
+  // ============ 3. SUMMERA MATERIALKOSTNAD ============
+  const materialCost = quote.materials?.reduce(
+    (sum, mat) => sum + (mat.estimatedCost || 0), 
+    0
+  ) || 0;
+  
+  // ============ 4. SUMMERA UTRUSTNINGSKOSTNAD ============
+  const equipmentCost = quote.equipment?.reduce(
+    (sum, eq) => sum + (eq.estimatedCost || 0), 
+    0
+  ) || 0;
+  
+  // ============ 5. TOTAL FÖRE MOMS ============
+  const totalBeforeVAT = workCost + materialCost + equipmentCost;
+  
+  // ============ 6. MOMS (25%) ============
+  const vat = Math.round(totalBeforeVAT * 0.25);
+  
+  // ============ 7. TOTAL MED MOMS ============
+  const totalWithVAT = totalBeforeVAT + vat;
+  
+  // ============ 8. ROT/RUT AVDRAG ============
+  let rotDeduction = 0;
+  let rutDeduction = 0;
+  
+  if (deductionType === 'rot') {
+    // ROT: 30% på arbetskostnad (exklusive material)
+    rotDeduction = Math.round(workCost * 0.30);
+  } else if (deductionType === 'rut') {
+    // RUT: 50% på arbetskostnad (exklusive material)
+    rutDeduction = Math.round(workCost * 0.50);
+  }
+  
+  // ============ 9. KUND BETALAR ============
+  const customerPays = totalWithVAT - rotDeduction - rutDeduction;
+  
+  // ============ 10. SKAPA/UPPDATERA SUMMARY ============
+  const originalSummary = quote.summary;
+  
+  quote.summary = {
+    workCost,
+    materialCost,
+    equipmentCost,
+    totalBeforeVAT,
+    vat,
+    totalWithVAT,
+    rotDeduction,
+    rutDeduction,
+    customerPays
+  };
+  
+  // ============ 11. KONTROLLERA MOT ORIGINAL ============
+  if (originalSummary?.customerPays) {
+    const diff = Math.abs(customerPays - originalSummary.customerPays);
+    const diffPercent = (diff / originalSummary.customerPays) * 100;
+    
+    if (diff > 1) { // Mer än 1 kr skillnad
+      report.totalCorrections++;
+      report.originalTotal = originalSummary.customerPays;
+      report.correctedTotal = customerPays;
+      report.details.push(
+        `Total corrected: ${originalSummary.customerPays} kr → ${customerPays} kr ` +
+        `(${diffPercent.toFixed(1)}% skillnad)`
+      );
+    }
+  }
+  
+  // ============ 12. LOGG RESULTAT ============
+  console.log('✅ FORMULA ENGINE: Calculation complete', {
+    workCost,
+    materialCost,
+    equipmentCost,
+    totalBeforeVAT,
+    vat,
+    totalWithVAT,
+    deduction: deductionType === 'rot' ? rotDeduction : deductionType === 'rut' ? rutDeduction : 0,
+    customerPays,
+    workItemsRecalculated: report.workItemsRecalculated,
+    totalCorrections: report.totalCorrections
+  });
+  
+  return { quote, report };
+}
+
+/**
+ * FAS 3: QUICK RECALCULATION - Snabb omkörning av totaler utan rapport
+ * Används när man bara behöver uppdatera totaler snabbt
+ */
+export function recalculateQuoteTotals(
+  quote: QuoteStructure,
+  deductionType: string = 'none'
+): QuoteStructure {
+  const { quote: updatedQuote } = calculateQuoteTotals(quote, deductionType);
+  return updatedQuote;
+}
+
+/**
+ * FAS 3: VALIDATE QUOTE MATH - Kontrollerar om en quote har korrekta beräkningar
+ * Returnerar true om allt stämmer, false om något är fel
+ */
+export function validateQuoteMath(quote: QuoteStructure, deductionType: string = 'none'): boolean {
+  const { report } = calculateQuoteTotals(quote, deductionType);
+  return report.workItemsRecalculated === 0 && report.totalCorrections === 0;
+}
