@@ -1869,26 +1869,62 @@ function computeQuoteTotals(
     console.log('📄 FAS 22: Draft mode - preserving AI price intervals, applying sanity floor for totals');
 
     const summary = quote.summary || {};
-    const totalHours = (quote.workItems || []).reduce((sum: number, item: any) => sum + (Number(item.hours) || 0), 0);
+    const workItems = Array.isArray(quote.workItems) ? quote.workItems : [];
+    const totalHours = workItems.reduce((sum: number, item: any) => sum + (Number(item.hours) || 0), 0);
 
     // Use a conservative minimum hourly rate to satisfy generic validation
     const MIN_HOURLY_FLOOR = 500; // kr/h
     const currentMaterial = Number(summary.materialCost) || 0;
     const currentEquipment = Number(summary.equipmentCost) || 0;
-    const currentWork = Number(summary.workCost) || 0;
+
+    // Prefer calculating current work from items to keep quote consistent
+    const itemsWorkCost = workItems.reduce((sum: number, wi: any) => sum + (Number(wi.subtotal) || 0), 0);
+    const declaredWorkCost = Number(summary.workCost) || 0;
+    const baseWorkCost = itemsWorkCost > 0 ? itemsWorkCost : declaredWorkCost;
 
     const minWorkCost = Math.max(Math.round(totalHours * MIN_HOURLY_FLOOR), 0);
-    const adjustedWork = Math.max(currentWork, minWorkCost);
+    const adjustedWorkTarget = Math.max(baseWorkCost, minWorkCost);
 
-    const totalBeforeVAT = adjustedWork + currentMaterial + currentEquipment;
+    let adjustedWorkItems = workItems;
+
+    // Scale individual work items so summary stays consistent with items
+    if (baseWorkCost > 0 && adjustedWorkTarget > baseWorkCost && totalHours > 0) {
+      const factor = adjustedWorkTarget / baseWorkCost;
+      adjustedWorkItems = workItems.map((item: any) => {
+        const hours = Number(item.hours) || 0;
+        if (hours <= 0) return { ...item };
+        const baseHourly = (Number(item.hourlyRate) || ((Number(item.subtotal) || 0) / hours) || MIN_HOURLY_FLOOR);
+        const newHourly = Math.round(baseHourly * factor);
+        const newSubtotal = Math.round(hours * newHourly);
+        return { ...item, hourlyRate: newHourly, subtotal: newSubtotal };
+      });
+
+      // Fix rounding drift to hit target exactly by adjusting the largest item
+      let scaledWork = adjustedWorkItems.reduce((sum: number, wi: any) => sum + (Number(wi.subtotal) || 0), 0);
+      const drift = adjustedWorkTarget - scaledWork;
+      if (Math.abs(drift) >= 1) {
+        const idxMax = adjustedWorkItems.reduce((imax: number, wi: any, i: number, arr: any[]) =>
+          (Number(wi.subtotal) > Number(arr[imax]?.subtotal || 0) ? i : imax), 0);
+        adjustedWorkItems[idxMax] = {
+          ...adjustedWorkItems[idxMax],
+          subtotal: Number(adjustedWorkItems[idxMax].subtotal || 0) + Math.round(drift)
+        };
+        // Recompute after drift fix
+        scaledWork = adjustedWorkItems.reduce((sum: number, wi: any) => sum + (Number(wi.subtotal) || 0), 0);
+      }
+    }
+
+    const finalWorkCost = adjustedWorkItems.reduce((sum: number, wi: any) => sum + (Number(wi.subtotal) || 0), 0);
+    const totalBeforeVAT = finalWorkCost + currentMaterial + currentEquipment;
     const vatAmount = Math.round(totalBeforeVAT * 0.25);
     const totalWithVAT = totalBeforeVAT + vatAmount;
 
     return {
       ...quote,
+      workItems: adjustedWorkItems,
       summary: {
         ...summary,
-        workCost: adjustedWork,
+        workCost: finalWorkCost,
         materialCost: currentMaterial,
         equipmentCost: currentEquipment,
         totalBeforeVAT,
