@@ -265,6 +265,12 @@ export function autoCorrectTimeEstimates(
         item.hours = after;
         item.estimatedHours = after;
         
+        // KRITISKT: Räkna om subtotal baserat på korrigerade timmar
+        if (item.hourlyRate && item.hourlyRate > 0) {
+          item.subtotal = Math.round(after * item.hourlyRate);
+          console.log(`  💰 Uppdaterade subtotal för "${workItemName}": ${after}h × ${item.hourlyRate} kr/h = ${item.subtotal} kr`);
+        }
+        
         // Update reasoning to explain the correction with details
         const direction = after > before ? 'ökad' : 'minskad';
         const changePercent = Math.round(Math.abs((after - before) / before * 100));

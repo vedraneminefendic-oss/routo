@@ -1870,7 +1870,28 @@ function computeQuoteTotals(
 
     const summary = quote.summary || {};
     const workItems = Array.isArray(quote.workItems) ? quote.workItems : [];
-    const totalHours = workItems.reduce((sum: number, item: any) => sum + (Number(item.hours) || 0), 0);
+    
+    // KRITISKT: Räkna om subtotal för varje workItem FÖRST innan vi använder dem
+    const recalculatedWorkItems = workItems.map((item: any) => {
+      const hours = Number(item.hours) || 0;
+      const hourlyRate = Number(item.hourlyRate) || 0;
+      
+      if (hours > 0 && hourlyRate > 0) {
+        const correctSubtotal = Math.round(hours * hourlyRate);
+        
+        // Varna om subtotal avviker mycket från korrekt värde
+        const existingSubtotal = Number(item.subtotal) || 0;
+        if (existingSubtotal > 0 && Math.abs(correctSubtotal - existingSubtotal) / existingSubtotal > 0.1) {
+          console.warn(`⚠️ Korrigerar subtotal för "${item.name}": ${existingSubtotal} kr → ${correctSubtotal} kr`);
+        }
+        
+        return { ...item, subtotal: correctSubtotal };
+      }
+      
+      return item;
+    });
+    
+    const totalHours = recalculatedWorkItems.reduce((sum: number, item: any) => sum + (Number(item.hours) || 0), 0);
 
     // Use a conservative minimum hourly rate to satisfy generic validation
     const MIN_HOURLY_FLOOR = 500; // kr/h
@@ -1878,19 +1899,19 @@ function computeQuoteTotals(
     const currentEquipment = Number(summary.equipmentCost) || 0;
 
     // Prefer calculating current work from items to keep quote consistent
-    const itemsWorkCost = workItems.reduce((sum: number, wi: any) => sum + (Number(wi.subtotal) || 0), 0);
+    const itemsWorkCost = recalculatedWorkItems.reduce((sum: number, wi: any) => sum + (Number(wi.subtotal) || 0), 0);
     const declaredWorkCost = Number(summary.workCost) || 0;
     const baseWorkCost = itemsWorkCost > 0 ? itemsWorkCost : declaredWorkCost;
 
     const minWorkCost = Math.max(Math.round(totalHours * MIN_HOURLY_FLOOR), 0);
     const adjustedWorkTarget = Math.max(baseWorkCost, minWorkCost);
 
-    let adjustedWorkItems = workItems;
+    let adjustedWorkItems = recalculatedWorkItems;
 
     // Scale individual work items so summary stays consistent with items
     if (baseWorkCost > 0 && adjustedWorkTarget > baseWorkCost && totalHours > 0) {
       const factor = adjustedWorkTarget / baseWorkCost;
-      adjustedWorkItems = workItems.map((item: any) => {
+      adjustedWorkItems = recalculatedWorkItems.map((item: any) => {
         const hours = Number(item.hours) || 0;
         if (hours <= 0) return { ...item };
         const baseHourly = (Number(item.hourlyRate) || ((Number(item.subtotal) || 0) / hours) || MIN_HOURLY_FLOOR);

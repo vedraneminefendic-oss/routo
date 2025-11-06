@@ -523,11 +523,21 @@ function detectNegationOrCorrection(
     /^nej,?\s+(det\s+)?(finns|är)\s+(inget|inga)/i,        // "nej, det finns inget..."
     /^nej,?\s+inte\s+särskilt/i,                            // "nej, inte särskilt"
     /^nej,?\s+inte\s+något/i,                               // "nej, inte något"
+    /^(nä|nejdå)/i,                                          // "nä", "nejdå"
+    /inga\s+(konstigheter|problem|hinder|svårigheter)/i,    // "inga konstigheter/problem"
+    /inget\s+(särskilt|speciellt)/i,                         // "inget särskilt/speciellt"
   ];
   
   for (const pattern of negativeAnswerPatterns) {
     if (pattern.test(lower)) {
       console.log('✅ FAS 12: Negative answer to YES/NO question detected (NOT a negation)');
+      
+      // Check if this is specifically about complexity/special requirements
+      if (/svårare|konstigheter|problem|hinder|svårigheter|särskilt|speciellt/i.test(lower)) {
+        console.log('  → This is a "no_complexity" response');
+        return { isNegation: false, explanation: 'no_complexity' };
+      }
+      
       return { isNegation: false }; // This is NOT a negation/correction!
     }
   }
@@ -900,7 +910,39 @@ serve(async (req) => {
           conversationSummary
         );
         
-        if (negationResult.isNegation) {
+        // Handle "no_complexity" response FIRST before checking isNegation
+        if (negationResult.explanation === 'no_complexity') {
+          console.log('✅ FAS 12: User confirmed no special complexity requirements');
+          
+          // Update conversation summary and checklist
+          conversationSummary.specialRequirements = [];
+          if (!conversationSummary.checklist) conversationSummary.checklist = {};
+          conversationSummary.checklist.specialRequirements = true;
+          
+          // Save updated summary
+          await supabaseClient
+            .from('conversation_sessions')
+            .update({ conversation_summary: conversationSummary })
+            .eq('id', sessionId);
+          
+          // Save confirmation message
+          const confirmationMessage = {
+            role: 'assistant',
+            content: 'Toppen, då antar jag inga särskilda hinder. '
+          };
+          
+          await supabaseClient
+            .from('conversation_messages')
+            .insert({
+              session_id: sessionId,
+              role: confirmationMessage.role,
+              content: confirmationMessage.content
+            });
+          
+          console.log('✅ FAS 12: Saved no_complexity confirmation and updated checklist');
+          
+          // Continue with normal flow (don't ask follow-up about removing things)
+        } else if (negationResult.isNegation) {
           console.log('🚫 FAS 12: Negation detected!', negationResult);
           
           // Update conversation summary to reflect correction
