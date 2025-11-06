@@ -121,6 +121,15 @@ export function applyOverlapAdjustments(
           item.estimatedHours = newHours;
           item.reasoning = `${item.reasoning || ''} | [OVERLAP] ${adjustment.note || 'Justerad för överlapp'}`.trim();
           
+          // FIX-HOURS-V6: Add clarity to name
+          const itemName = item.workItemName || item.name || '';
+          if (!itemName.toLowerCase().includes('exkl. golvvärme') && !itemName.toLowerCase().includes('exkl golvvärme')) {
+            const newName = `${itemName} (exkl. golvvärme)`;
+            if (item.workItemName) item.workItemName = newName;
+            if (item.name) item.name = newName;
+            console.log(`📝 Renamed parent item: "${itemName}" → "${newName}"`);
+          }
+          
           // Update child item reasoning
           childItem.reasoning = `${childItem.reasoning || ''} | [RELATION] Ingår normalt i el-installation men specificerad separat här`.trim();
           

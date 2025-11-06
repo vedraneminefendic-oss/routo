@@ -57,25 +57,15 @@ export function normalizeAndMergeDuplicates(
     const cls = classifyWorkItem(name, description, projectType);
     classificationMap.set(original, cls);
     
-    // FIX-HOURS-V5: Bygg canonical key från classifier
-    let key = buildCanonicalKey(cls, standard?.jobType);
+    // FIX-HOURS-V6: Domain-first grouping key
+    const domainPart = cls.domain || 'other';
+    const stdPart = standard?.jobType || 'none';
+    const componentPart = cls.component || 'general';
+    const surfacePart = cls.surface || '-';
+    // Domain FIRST → prevents el/tiles merge at source
+    let key = `${domainPart}:${stdPart}:${componentPart}:${surfacePart}`;
     
-    // FORCE STANDARD KEY för badrum-kontext när standard saknas
-    if (!standard && projectType?.toLowerCase().includes('badrum')) {
-      const nameLower = name.toLowerCase();
-      let forcedKey = '';
-      if (hasWord(nameLower, 'el') && !hasWord(nameLower, 'kakel') && !hasWord(nameLower, 'klinker')) {
-        forcedKey = 'el_badrum';
-      } else if (hasWord(nameLower, 'kakel')) {
-        forcedKey = 'kakel_vagg';
-      } else if (hasWord(nameLower, 'klinker') && !hasWord(nameLower, 'kakel')) {
-        forcedKey = 'klinker_golv';
-      }
-      if (forcedKey) {
-        key = `${forcedKey}:${cls.component || 'general'}`;
-        console.log(`🔑 Forcing standard key via context: ${forcedKey} for "${name}"`);
-      }
-    }
+    console.log(`🧭 Classifier key: ${key} for "${name}"`);
     
     // Warn if standard domain doesn't match classified domain
     if (standard && cls.domain !== 'other') {
@@ -125,11 +115,44 @@ export function normalizeAndMergeDuplicates(
     klinker_golv: 'Klinker golv',
   };
 
+  // FIX-HOURS-V6: Helper to re-map standard by group domain
+  function remapStandardForGroup(group: any[], projectType?: string) {
+    const text = group.map(g => `${g.name} ${g.original.description||''}`).join(' ').toLowerCase();
+    const groupDomain = group[0].cls.domain;
+    
+    if (groupDomain === 'tiles') {
+      const wantKlinker = hasWord(text, 'klinker') && !hasWord(text, 'kakel');
+      const target = wantKlinker ? 'Klinker golv' : 'Kakel vägg';
+      return findStandard(target, { jobType: projectType || 'badrum' });
+    }
+    if (groupDomain === 'el') {
+      return findStandard('El-installation våtrum', { jobType: projectType || 'badrum' });
+    }
+    return null;
+  }
+
   const merged: any[] = [];
 
   for (const [key, group] of groups.entries()) {
     const representative = group[0];
-    const standard = representative?.standard || null;
+    let standard = representative?.standard || null;
+    const groupDomain = representative.cls?.domain || 'other';
+    
+    // FIX-HOURS-V6: Re-map standard if domain mismatch
+    if (standard) {
+      const stdDomain = standard.jobType.split('_')[0];
+      if (stdDomain !== groupDomain) {
+        console.warn(`⚠️ Standard/domain mismatch in group: std=${standard.jobType} vs domain=${groupDomain} → re-map`);
+        const remapped = remapStandardForGroup(group, projectType);
+        if (remapped) {
+          console.log(`↪️ Remapped standard: ${standard.jobType} → ${remapped.jobType}`);
+          standard = remapped;
+        } else {
+          console.warn(`⚠️ Could not re-map standard, dropping it`);
+          standard = null;
+        }
+      }
+    }
 
     if (group.length === 1) {
       const g = group[0];
@@ -162,11 +185,31 @@ export function normalizeAndMergeDuplicates(
 
     // Dubblettgrupp
     const sumBefore = group.reduce((s, g) => s + (g.hours || 0), 0);
-    const repName =
+    
+    // FIX-HOURS-V6: Domain-safe naming
+    let repName =
       (standard && friendlyNameMap[standard.jobType]) ||
       (standard && standard.jobType) ||
-      group.map((g) => g.name).sort((a, b) => b.length - a.length)[0] ||
       key;
+    
+    // Domain-based fallback if no standard
+    if (!standard || repName === key) {
+      const text = group.map(g => `${g.name} ${g.original.description||''}`).join(' ').toLowerCase();
+      if (groupDomain === 'tiles') {
+        repName = (hasWord(text, 'klinker') && !hasWord(text, 'kakel')) ? 'Klinker golv' : 'Kakel vägg';
+      } else if (groupDomain === 'el') {
+        repName = 'El-installation våtrum';
+      } else {
+        repName = group.map((g) => g.name).sort((a, b) => b.length - a.length)[0] || key;
+      }
+    }
+    
+    // Extra safety: if tiles domain but name contains "el-installation", override
+    if (groupDomain === 'tiles' && repName.toLowerCase().includes('el-installation')) {
+      const text = group.map(g => `${g.name} ${g.original.description||''}`).join(' ').toLowerCase();
+      repName = (hasWord(text, 'klinker') && !hasWord(text, 'kakel')) ? 'Klinker golv' : 'Kakel vägg';
+      console.warn(`🛡️ Safety override: tiles domain got el-installation name → corrected to ${repName}`);
+    }
 
     const validation = validateTimeEstimate(
       repName,
