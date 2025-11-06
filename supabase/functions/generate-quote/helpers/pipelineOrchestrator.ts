@@ -20,6 +20,7 @@
 import { enforceWorkItemMath, logQuoteReport } from './mathGuard.ts';
 import { detectFlags, filterCustomerProvidedMaterials } from './flagDetector.ts';
 import { findJobDefinition, type JobDefinition } from './jobRegistry.ts';
+import { mergeWorkItems, logMergeReport, type MergeResult } from './mergeEngine.ts';
 
 interface ParsedInput {
   description: string;
@@ -52,6 +53,7 @@ interface PipelineResult {
     workItemsCorrected: number;
     totalsCorrected: boolean;
   };
+  mergeResult: MergeResult;
   jobDefinition: JobDefinition;
   appliedFallbacks: string[];
 }
@@ -184,13 +186,27 @@ export async function runQuotePipeline(
   );
   
   // ============================================
-  // STEG 4-8: MERGE & FORMULA ENGINE
+  // STEG 4: MERGE ENGINE - Normalisera och slå samman dubbletter
   // ============================================
   
-  // TODO: I Fas 2 ska vi flytta all merge- och formula-logik hit
-  // För nu returnerar vi input direkt för att inte bryta befintlig funktionalitet
+  let workItems = params.workItems || [];
   
-  console.log('⚠️ STEG 4-8: Skipped (kommer implementeras i Fas 2)');
+  const mergeResult = mergeWorkItems(workItems, jobDef || undefined);
+  
+  if (mergeResult.duplicatesRemoved > 0 || mergeResult.itemsNormalized > 0) {
+    console.log(`🔀 MERGE: Removed ${mergeResult.duplicatesRemoved} duplicates, normalized ${mergeResult.itemsNormalized} items`);
+    logMergeReport(mergeResult);
+  }
+  
+  // Använd de mergade workItems från och med nu
+  workItems = mergeResult.mergedWorkItems;
+  
+  // ============================================
+  // STEG 5-8: FORMULA ENGINE
+  // ============================================
+  
+  // TODO: I nästa fas ska Formula Engine integreras här för att beräkna allt
+  console.log('⚠️ STEG 5-8: Formula Engine - Will be integrated in next phase');
   
   // ============================================
   // STEG 9: Filtrera kund-material
@@ -211,7 +227,7 @@ export async function runQuotePipeline(
   
   const quote: any = {
     ...params,
-    workItems: params.workItems || [],
+    workItems,  // Använd mergade workItems
     materials,
     equipment: params.equipment || [],
     summary: params.summary || {
@@ -225,7 +241,12 @@ export async function runQuotePipeline(
     },
     assumptions: [
       ...(params.assumptions || []),
-      ...appliedFallbacks.map(f => ({ text: f, confidence: 80 }))
+      ...appliedFallbacks.map(f => ({ text: f, confidence: 80 })),
+      // Lägg till merge-info som assumptions
+      ...mergeResult.mergeOperations.map(op => ({
+        text: `Slog samman "${op.originalItems.join(', ')}" till "${op.mergedInto}"`,
+        confidence: 95
+      }))
     ],
     customerResponsibilities: params.customerResponsibilities || [],
     validationWarnings: params.validationWarnings || []
@@ -281,6 +302,7 @@ export async function runQuotePipeline(
       totalCorrections: mathGuardResult.totalCorrections,
       ...mathGuardResult.summary
     },
+    mergeResult,
     jobDefinition: jobDef!,
     appliedFallbacks
   };
