@@ -214,57 +214,41 @@ ${jobCategory === 'målning' ? `
 
 ${jobCategory === 'kök' ? `
 
-**🚨 KRITISKT FÖR KÖKSRENOVERING:**
+**🍳 KRITISKT FÖR KÖKSRENOVERING${measurements?.area ? ` (${measurements.area} kvm)` : ''}:**
 
-⚠️ **ABSOLUTA MINIMIKRAV** som ALLTID MÅSTE ingå (även om kunden står för IKEA-kök):
+För kök ska du ALLTID dela upp arbetet i SEPARATA moment med MOMENT-SPECIFIKA standarder:
 
-1. **Rivning befintligt kök** (OBLIGATORISKT - minst 10h)
-   - Demontering av gamla skåp, bänkskivor, vitvaror
+1. **Rivning och demontering** (jobType: 'rivning_kok')
    - Standard: 1.2-3.0h per kvm (typical: 2.0h/kvm)
-   - Timpris: 650-900 kr/h (standard: 750 kr/h)
-   - För 10 kvm kök: ~20h
+   - Timpris: 650-850 kr/h (standard: 750 kr/h)
+   ${measurements?.area ? `- För ${measurements.area} kvm: ${(measurements.area * 2.0).toFixed(1)}h` : '- Yta saknas - använd 10 kvm som antagande (= 20h)'}
 
-2. **VVS-installation** (OBLIGATORISKT - minst 8h)
-   - Installation av diskho, diskmaskin, och andra VVS-anslutningar
-   - Standard: 0.8-2.0h per kvm (typical: 1.2h/kvm)
+2. **VVS-installation** (jobType: 'vvs_kok')
+   - Standard: 1.2-2.5h per kvm (typical: 1.8h/kvm)
    - Timpris: 800-1100 kr/h (standard: 950 kr/h)
-   - För 10 kvm kök: ~12h
+   ${measurements?.area ? `- För ${measurements.area} kvm: ${(measurements.area * 1.8).toFixed(1)}h` : '- Yta saknas - använd 10 kvm som antagande (= 18h)'}
 
-3. **El-installation** (OBLIGATORISKT - minst 12h)
-   - Nya uttag, spisplatta, ugn, köksfläkt
-   - Standard: 1.0-2.5h per kvm (typical: 1.5h/kvm)
+3. **El-installation** (jobType: 'el_kok')
+   - Standard: 1.5-2.5h per kvm (typical: 2.0h/kvm)
    - Timpris: 850-1100 kr/h (standard: 950 kr/h)
-   - För 10 kvm kök: ~15h
+   ${measurements?.area ? `- För ${measurements.area} kvm: ${(measurements.area * 2.0).toFixed(1)}h` : '- Yta saknas - använd 10 kvm som antagande (= 20h)'}
 
-4. **Montering skåp och bänkskiva** (OBLIGATORISKT - minst 16h)
-   - Montering av alla skåp, lådor och bänkskivor
-   - Standard: 3.0-7.0h per kvm (typical: 4.5h/kvm)
-   - Timpris: 650-900 kr/h (standard: 750 kr/h)
-   - För 10 kvm kök: ~45h
+4. **Montering skåp och bänkskiva** (jobType: 'montering_kok')
+   - Standard: 4.0-6.0h per kvm (typical: 5.0h/kvm)
+   - Timpris: 700-900 kr/h (standard: 800 kr/h)
+   ${measurements?.area ? `- För ${measurements.area} kvm: ${(measurements.area * 5.0).toFixed(1)}h` : '- Yta saknas - använd 10 kvm som antagande (= 50h)'}
 
-5. **Väggbeklädning** (OBLIGATORISKT - minst 8h)
-   - Kakel eller målning av väggar
-   - Standard: 1.0-2.2h per kvm (typical: 1.5h/kvm)
+5. **Kakel backsplash** (jobType: 'kakel_backsplash', VALFRITT)
+   - Standard: 1.0-2.0h per kvm (typical: 1.5h/kvm)
    - Timpris: 700-950 kr/h (standard: 800 kr/h)
-   - För 3 kvm backsplash: ~4.5h
+   - Inkludera ENDAST om kunden nämner "kakel" eller "backsplash"
 
-6. **Slutbesiktning och städning** (OBLIGATORISKT - minst 4h)
-   - Kontroll av funktion och slutstädning
-   - Timpris: 500-650 kr/h (standard: 550 kr/h)
+**TOTALT för ${measurements?.area || 10} kvm kök (utan kakel): ${measurements?.area ? (measurements.area * (2.0 + 1.8 + 2.0 + 5.0)).toFixed(0) : '108'} timmar**
 
-**MINIMUM KOSTNAD:**
-- Minst ${measurements?.area ? (measurements.area * 12000).toLocaleString('sv-SE') : '120 000'} kr (${measurements?.area || 10} kvm × 12 000 kr/kvm)
-- Rekommenderat: ${measurements?.area ? (measurements.area * 18000).toLocaleString('sv-SE') : '180 000'} kr (${measurements?.area || 10} kvm × 18 000 kr/kvm)
+**⚠️ ANVÄND ALDRIG 'kok_totalrenovering' för ENSKILDA moment!**
 
-**🚫 VANLIGA FEL SOM MÅSTE UNDVIKAS:**
-- Glöm INTE VVS och El även om kunden står för köket!
-- Glöm INTE Rivning - gamla köket måste bort först!
-- Glöm INTE Montering - någon måste montera skåpen!
-- Glöm INTE Väggarbete - väggar behöver förberedas!
-- Total kostnad FÅR INTE vara under ${measurements?.area ? (measurements.area * 12000).toLocaleString('sv-SE') : '120 000'} kr!
-
-**⚠️ OM TOTALEN BLIR FÖR LÅG:**
-Lägg till saknade moment eller öka timmarna! Validering kommer BLOCKERA offerten om den är för billig.
+**🚨 BERÄKNINGSREGEL: Multiplicera ALLTID standard (h/kvm) med faktisk area i kvm!**
+Exempel: VVS = 1.8h/kvm × ${measurements?.area || 10} kvm = ${measurements?.area ? (measurements.area * 1.8).toFixed(1) : '18'}h
 
 ` : ''}
 
@@ -394,6 +378,37 @@ För parkettläggning ska du ALLTID dela upp arbetet i SEPARATA moment med MOMEN
 
 **⚠️ ANVÄND ALDRIG 'parkettläggning' (1.5h/kvm) för ENSKILDA moment!**
 Den standarden är ENDAST för att validera total-tid, inte för att beräkna delmoment.
+
+` : ''}
+
+${!['badrum', 'kök', 'målning'].includes(jobCategory) ? `
+
+**⚙️ GENERISK GUIDE FÖR ${jobCategory.toUpperCase()}:**
+
+För att undvika orealistiska timuppskattningar:
+
+1. **Använd branschstandarder från INDUSTRY_STANDARDS**
+   - Sök efter relevanta standarder i vårt system (findStandard)
+   - Följ angivna timmar per enhet (h/kvm, h/rum, h/styck)
+
+2. **Dela upp i logiska moment**
+   - Rivning/förberedelser (om relevant)
+   - Huvudarbete (specifikt för jobbet)
+   - Efterarbete/städning
+
+3. **Typical timpriser per yrkeskategori:**
+   - Elektriker: 850-1100 kr/h
+   - VVS: 900-1100 kr/h
+   - Snickare: 700-850 kr/h
+   - Målare: 650-850 kr/h
+   - Murare: 750-900 kr/h
+   - Städare: 500-650 kr/h
+   - Trädgårdsskötare: 550-700 kr/h
+
+4. **Sanity checks:**
+   - Rivning: Max 3h/kvm för inomhus
+   - Installation: 1-4h/kvm beroende på komplexitet
+   - Efterarbete: Max 10% av total tid
 
 ` : ''}
 `;

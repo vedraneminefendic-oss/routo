@@ -133,21 +133,23 @@ export function validateTimeEstimate(
     const correctedTime = Math.min(estimatedHours, maxHours);
     const reductionPercent = ((estimatedHours - correctedTime) / estimatedHours) * 100;
     
-    // ⚠️ FAS 1.1: SAFETY CHECK - Förhindra extrema reduktioner (>70%) som ofta indikerar fel standard
+    // Check if deviation is >70% - likely wrong standard but ALWAYS apply correction with warning
     if (reductionPercent > 70) {
-      console.error(`🚨 KRITISK VARNING: ${workItemName}`);
-      console.error(`   Original: ${estimatedHours.toFixed(1)}h`);
-      console.error(`   Skulle korrigeras till: ${correctedTime.toFixed(1)}h (-${reductionPercent.toFixed(0)}%)`);
-      console.error(`   Standard: ${standard?.jobType} (${minHours.toFixed(1)}-${maxHours.toFixed(1)}h för ${amount} ${standard.timePerUnit.unit})`);
-      console.error(`   → Detta verkar FEL! Troligen fel standard. Behåller originaltid.`);
+      console.warn(`⚠️ STOR AVVIKELSE MEN KORRIGERAR ÄNDÅ: ${workItemName}`);
+      console.warn(`   Original: ${estimatedHours.toFixed(1)}h`);
+      console.warn(`   Korrigerad: ${correctedTime.toFixed(1)}h (-${reductionPercent.toFixed(0)}%)`);
+      console.warn(`   Standard: ${standard?.jobType} (${minHours.toFixed(1)}-${maxHours.toFixed(1)}h för ${amount} ${standard.timePerUnit.unit})`);
       
-      // TILLÅT INTE extrema reduktioner - returnera varning men behåll originaltid
-      warnings.push(`🚨 KRITISKT: "${workItemName}" har ${estimatedHours.toFixed(1)}h men standard "${standard?.jobType}" är ${minHours.toFixed(1)}-${maxHours.toFixed(1)}h. Detta skulle reducera med ${reductionPercent.toFixed(0)}% vilket indikerar fel standard. Behåller ${estimatedHours.toFixed(1)}h - kontrollera manuellt!`);
+      warnings.push(
+        `⚠️ STOR AVVIKELSE: "${workItemName}" har ${estimatedHours.toFixed(1)}h men standard "${standard?.jobType}" är ${minHours.toFixed(1)}-${maxHours.toFixed(1)}h. ` +
+        `Korrigerar till ${maxHours.toFixed(1)}h. Kontrollera att rätt standard används!`
+      );
+      
       return {
         isRealistic: false,
         warnings,
         suggestedRange: { min: minHours, max: maxHours },
-        correctedHours: estimatedHours,  // BEHÅLL original istället för att korrigera fel
+        correctedHours: maxHours, // Use max of standard range
         standard
       };
     }
