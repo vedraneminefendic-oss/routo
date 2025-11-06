@@ -1953,13 +1953,29 @@ function computeQuoteTotals(
     };
   });
   
+  // Apply minimum hourly floor to ensure effective hourly rate >= 500 kr/h
+  const totalHours = updatedWorkItems.reduce((sum: number, wi: any) => sum + (Number(wi.hours) || 0), 0);
+  const MIN_HOURLY_FLOOR = 500;
+  const minWorkCost = Math.max(Math.round(totalHours * MIN_HOURLY_FLOOR), 0);
+
+  let finalWorkItems = updatedWorkItems;
+  if (workCost > 0 && workCost < minWorkCost) {
+    const factor = minWorkCost / workCost;
+    finalWorkItems = updatedWorkItems.map((item: any) => {
+      const newHourly = Math.round((item.hourlyRate || 0) * factor);
+      const newSubtotal = Math.round((Number(item.hours) || 0) * newHourly);
+      return { ...item, hourlyRate: newHourly, subtotal: newSubtotal };
+    });
+    workCost = finalWorkItems.reduce((sum: number, it: any) => sum + (Number(it.subtotal) || 0), 0);
+  }
+
   const totalBeforeVAT = workCost + materialCost + equipmentCost;
   const vatAmount = Math.round(totalBeforeVAT * 0.25);
   const totalWithVAT = totalBeforeVAT + vatAmount;
   
   return {
     ...quote,
-    workItems: updatedWorkItems,
+    workItems: finalWorkItems,
     materials: updatedMaterials,
     equipment: updatedEquipment,
     summary: {
