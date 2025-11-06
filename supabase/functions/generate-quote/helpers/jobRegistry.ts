@@ -72,6 +72,23 @@ export interface JobDefinition {
   regionSensitive?: boolean;  // Om priset ska påverkas av region (default: true)
   seasonSensitive?: boolean;  // Om priset ska påverkas av säsong (default: true)
   
+  // FAS 1: FALLBACK BEHAVIOR - för saknade värden
+  fallbackBehavior?: {
+    defaultUnitQty: number;
+    assumptionText: string;
+  };
+  
+  // FAS 1: PROPORTION RULES - validering av proportioner
+  proportionRules?: {
+    maxSingleItemShare: number;  // Max andel för ett enskilt moment (t.ex. 0.50 = 50%)
+    demolitionMaxShare?: number;  // Max andel för rivning (t.ex. 0.30 = 30%)
+    minWorkItems: number;         // Minsta antal arbetsmoment
+  };
+  
+  // FAS 1: CUSTOMER MATERIAL PATTERNS - regex för att detektera kund-material
+  customerMaterialPatterns?: string[];
+  customerProvidedLabel?: string;  // T.ex. "kök och vitvaror"
+  
   // Metadata
   source: string;
   lastUpdated: string;

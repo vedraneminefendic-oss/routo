@@ -916,7 +916,15 @@ serve(async (req) => {
           
           // Update conversation summary and checklist
           conversationSummary.specialRequirements = [];
-          if (!conversationSummary.checklist) conversationSummary.checklist = {};
+          if (!conversationSummary.checklist) {
+            conversationSummary.checklist = {
+              scope: false,
+              size: false,
+              materials: false,
+              timeline: false,
+              specialRequirements: false
+            };
+          }
           conversationSummary.checklist.specialRequirements = true;
           
           // Save updated summary
