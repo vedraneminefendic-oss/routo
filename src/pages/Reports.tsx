@@ -10,6 +10,8 @@ import { QuotesByStatusChart } from "@/components/reports/QuotesByStatusChart";
 import { QuotesOverTimeChart } from "@/components/reports/QuotesOverTimeChart";
 import { AcceptanceRateChart } from "@/components/reports/AcceptanceRateChart";
 import { KeyPerformanceIndicators } from "@/components/reports/KeyPerformanceIndicators";
+import { CustomerLifetimeValue } from "@/components/reports/CustomerLifetimeValue";
+import { ProfitabilityByJobType } from "@/components/reports/ProfitabilityByJobType";
 import { startOfWeek, startOfMonth, startOfQuarter, startOfYear, endOfDay } from "date-fns";
 import { toast } from "sonner";
 import { AppHeader } from "@/components/AppHeader";
@@ -37,6 +39,7 @@ const Reports = () => {
   const [dateRange, setDateRange] = useState<{ from: Date; to: Date }>();
   const [statistics, setStatistics] = useState<Statistics | null>(null);
   const [quotes, setQuotes] = useState<any[]>([]);
+  const [customers, setCustomers] = useState<any[]>([]);
   const [timeSeriesData, setTimeSeriesData] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -120,6 +123,15 @@ const Reports = () => {
       if (!quotesError) {
         setQuotes(quotesData || []);
       }
+
+      // Load customers
+      const { data: customersData, error: customersError } = await supabase
+        .from('customers')
+        .select('id, name');
+      
+      if (!customersError) {
+        setCustomers(customersData || []);
+      }
       
       setLoading(false);
     };
@@ -198,6 +210,17 @@ const Reports = () => {
               loading={loading} 
             />
           </div>
+
+          <CustomerLifetimeValue 
+            quotes={quotes}
+            customers={customers}
+            loading={loading}
+          />
+
+          <ProfitabilityByJobType 
+            quotes={quotes}
+            loading={loading}
+          />
           
           <QuotesTable quotes={quotes} loading={loading} />
         </div>
