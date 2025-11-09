@@ -40,65 +40,63 @@ export interface CalculatedWorkItem {
   confidence: number;
 }
 
+export interface WorkItemGenerationResult {
+  workItems: CalculatedWorkItem[];
+  totalHours: number;
+  baseHours: number;
+  hourlyRate: number;
+  reasoning: string;
+}
+
 /**
- * KRITISK: All kvantifiering sker här, INTE i AI:n
- * FAS 0: Hybridmodell - Web → Bransch → User (viktad)
+ * Compute multipliers and hourly rate for work items
+ * Extracted to be reusable by both single and multi-item generation
  */
-export function calculateWorkItem(
+function computeMultipliers(
   params: ProjectParams,
   jobDef: JobDefinition
-): CalculatedWorkItem {
-  
-  console.log('🧮 FORMULA ENGINE: Calculating work item...', {
-    jobType: params.jobType,
-    unitQty: params.unitQty,
-    complexity: params.complexity,
-    userWeighting: params.userWeighting
-  });
-  
-  // 1. Basberäkning
-  const baseTimePerUnit = jobDef.timePerUnit[params.complexity];
-  const baseHours = params.unitQty * baseTimePerUnit;
-  
-  // 2. Applicera multiplikatorer
+): {
+  totalMultiplier: number;
+  appliedMultipliers: string[];
+  hourlyRate: number;
+  sourceOfTruth: 'web_market' | 'industry_benchmark' | 'user_rate_weighted';
+  confidence: number;
+} {
   let totalMultiplier = 1.0;
   const appliedMultipliers: string[] = [];
   
+  // Accessibility multiplier
   const accessMult = jobDef.multipliers.accessibility[params.accessibility];
   totalMultiplier *= accessMult;
   if (accessMult !== 1.0) {
     appliedMultipliers.push(`Tillgänglighet: ${accessMult}x`);
   }
   
+  // Quality multiplier
   const qualityMult = jobDef.multipliers.quality[params.qualityLevel];
   totalMultiplier *= qualityMult;
   if (qualityMult !== 1.0) {
     appliedMultipliers.push(`Kvalitet: ${qualityMult}x`);
   }
   
-  // APPLICERA REGION-MULTIPLIER (PUNKT 1)
+  // Region multiplier
   if (params.regionMultiplier && params.regionMultiplier !== 1.0 && jobDef.regionSensitive !== false) {
     totalMultiplier *= params.regionMultiplier;
     appliedMultipliers.push(`Region: ${params.regionMultiplier.toFixed(2)}x`);
   }
   
-  // APPLICERA SÄSONG-MULTIPLIER (PUNKT 1)
+  // Season multiplier
   if (params.seasonMultiplier && params.seasonMultiplier !== 1.0 && jobDef.seasonSensitive !== false) {
     totalMultiplier *= params.seasonMultiplier;
     appliedMultipliers.push(`Säsong: ${params.seasonMultiplier.toFixed(2)}x`);
   }
   
-  const finalHours = Math.round(baseHours * totalMultiplier * 10) / 10; // Max 1 decimal
-  
-  // 3. HYBRIDMODELL: Timpris med viktad prioritering
-  // PRIORITET: Web → Bransch → User (viktad efter erfarenhet)
+  // Calculate hourly rate using hybrid model
   let hourlyRate: number;
   let sourceOfTruth: 'web_market' | 'industry_benchmark' | 'user_rate_weighted';
   let confidence: number;
   
-  // KATEGORI-VIKTAD HYBRIDMODELL (PUNKT 3)
   if (params.categoryWeighting && params.categoryWeighting > 0 && (params.categoryAvgRate || params.userHourlyRate)) {
-    // Använd kategori-specifik rate om tillgänglig, annars global
     const userRate = params.categoryAvgRate || params.userHourlyRate!;
     const categoryWeight = params.categoryWeighting / 100;
     const marketWeight = 1 - categoryWeight;
@@ -110,16 +108,7 @@ export function calculateWorkItem(
     
     sourceOfTruth = params.categoryWeighting >= 50 ? 'user_rate_weighted' : 'web_market';
     confidence = 0.7 + (params.categoryWeighting / 100) * 0.3;
-    
-    console.log(`💰 Category-weighted rate (${params.jobCategory}):`, {
-      categoryQuotes: Math.round(params.categoryWeighting / 5),
-      userRate,
-      marketRate: jobDef.hourlyRateRange.typical,
-      categoryWeight: params.categoryWeighting,
-      finalRate: hourlyRate
-    });
   } else if (params.userHourlyRate && params.userWeighting > 0) {
-    // Fallback till global viktning
     const userWeight = params.userWeighting / 100;
     hourlyRate = Math.round(
       (params.userHourlyRate * userWeight) + 
@@ -127,60 +116,156 @@ export function calculateWorkItem(
     );
     sourceOfTruth = params.userWeighting >= 50 ? 'user_rate_weighted' : 'web_market';
     confidence = 0.7 + (params.userWeighting / 100) * 0.3;
-    
-    console.log('💰 Using global weighted rate:', {
-      userRate: params.userHourlyRate,
-      marketRate: jobDef.hourlyRateRange.typical,
-      userWeight: params.userWeighting,
-      finalRate: hourlyRate
-    });
   } else {
-    // Ny användare: använd marknadspris
     hourlyRate = jobDef.hourlyRateRange.typical;
     sourceOfTruth = 'web_market';
     confidence = 0.85;
-    
-    console.log('🌐 Using market rate:', hourlyRate);
   }
   
-  // 4. Subtotal
-  const subtotal = Math.round(finalHours * hourlyRate);
+  return { totalMultiplier, appliedMultipliers, hourlyRate, sourceOfTruth, confidence };
+}
+
+/**
+ * FAS 1: Generate ALL work items from Job Definition
+ * This is the NEW function that replaces single-item calculation
+ * 
+ * @param params - Project parameters (unitQty, complexity, etc.)
+ * @param jobDef - Job definition with standardWorkItems
+ * @returns All calculated work items with totals
+ */
+export function generateWorkItemsFromJobDefinition(
+  params: ProjectParams,
+  jobDef: JobDefinition
+): WorkItemGenerationResult {
   
-  // 5. Reasoning med region & säsong
+  console.log('🧮 FORMULA ENGINE: Generating all work items from job definition...', {
+    jobType: params.jobType,
+    unitQty: params.unitQty,
+    standardWorkItems: jobDef.standardWorkItems.length
+  });
+  
+  // Compute shared multipliers and hourly rate
+  const { totalMultiplier, appliedMultipliers, hourlyRate, sourceOfTruth, confidence } = 
+    computeMultipliers(params, jobDef);
+  
+  // Generate work items from standardWorkItems
+  const workItems: CalculatedWorkItem[] = [];
+  let totalHours = 0;
+  let baseHours = 0;
+  
+  for (const standardItem of jobDef.standardWorkItems) {
+    // Calculate hours: typicalHours (per unit) × unitQty × multipliers
+    const itemBaseHours = standardItem.typicalHours * params.unitQty;
+    const itemFinalHours = Math.round(itemBaseHours * totalMultiplier * 10) / 10; // Max 1 decimal
+    const itemSubtotal = Math.round(itemFinalHours * hourlyRate);
+    
+    baseHours += itemBaseHours;
+    totalHours += itemFinalHours;
+    
+    const itemReasoning = `
+📐 Bas: ${params.unitQty} ${jobDef.unitType} × ${standardItem.typicalHours}h/enhet = ${itemBaseHours.toFixed(1)}h
+${appliedMultipliers.length > 0 ? `⚙️ Multiplikatorer: ${appliedMultipliers.join(', ')}\n` : ''}⏱️ Final tid: ${itemFinalHours}h
+💰 Timpris: ${hourlyRate} kr/h
+💵 Subtotal: ${itemSubtotal.toLocaleString('sv-SE')} kr
+    `.trim();
+    
+    workItems.push({
+      name: standardItem.name,
+      description: `Beräknat enligt ${sourceOfTruth === 'user_rate_weighted' ? 'dina priser och marknadsdata' : 'marknadspriser'}`,
+      hours: itemFinalHours,
+      hourlyRate,
+      subtotal: itemSubtotal,
+      reasoning: itemReasoning,
+      appliedMultipliers,
+      sourceOfTruth,
+      confidence
+    });
+  }
+  
+  // Build summary reasoning
   const getMonthName = (month: number): string => {
     const months = ['Januari', 'Februari', 'Mars', 'April', 'Maj', 'Juni', 
                     'Juli', 'Augusti', 'September', 'Oktober', 'November', 'December'];
     return months[month - 1] || '';
   };
   
-  const reasoning = `
-📐 Bas: ${params.unitQty} ${jobDef.unitType} × ${baseTimePerUnit}h = ${baseHours.toFixed(1)}h
-${params.regionMultiplier && params.regionMultiplier !== 1.0 ? `📍 Region: ${params.location} (${(params.regionMultiplier - 1) * 100 > 0 ? '+' : ''}${((params.regionMultiplier - 1) * 100).toFixed(0)}%) - ${params.regionReason}` : ''}
-${params.seasonMultiplier && params.seasonMultiplier !== 1.0 && params.startMonth ? `📅 Säsong: ${getMonthName(params.startMonth)} (${(params.seasonMultiplier - 1) * 100 > 0 ? '+' : ''}${((params.seasonMultiplier - 1) * 100).toFixed(0)}%) - ${params.seasonReason}` : ''}
-${appliedMultipliers.length > 0 ? `⚙️ Multiplikatorer: ${appliedMultipliers.join(', ')}` : ''}
-⏱️ Total tid: ${finalHours}h
-💰 Timpris: ${hourlyRate} kr/h ${params.categoryWeighting ? `(${Math.round(params.categoryWeighting)}% dina ${params.jobCategory}-priser, ${100 - Math.round(params.categoryWeighting)}% marknad)` : params.userWeighting > 0 ? `(${Math.round(params.userWeighting)}% dina priser, ${100 - Math.round(params.userWeighting)}% marknad)` : '(marknadspris)'}
-💵 Subtotal: ${subtotal.toLocaleString('sv-SE')} kr
-  `.trim();
+  const reasoningParts: string[] = [
+    `📐 Projekt: ${params.unitQty} ${jobDef.unitType} ${jobDef.jobType}`,
+    `⏱️ Total bastid: ${baseHours.toFixed(1)}h`,
+  ];
   
-  console.log('✅ FORMULA ENGINE: Work item calculated', {
-    hours: finalHours,
+  if (params.regionMultiplier && params.regionMultiplier !== 1.0) {
+    reasoningParts.push(
+      `📍 Region: ${params.location} (${(params.regionMultiplier - 1) * 100 > 0 ? '+' : ''}${((params.regionMultiplier - 1) * 100).toFixed(0)}%) - ${params.regionReason}`
+    );
+  }
+  
+  if (params.seasonMultiplier && params.seasonMultiplier !== 1.0 && params.startMonth) {
+    reasoningParts.push(
+      `📅 Säsong: ${getMonthName(params.startMonth)} (${(params.seasonMultiplier - 1) * 100 > 0 ? '+' : ''}${((params.seasonMultiplier - 1) * 100).toFixed(0)}%) - ${params.seasonReason}`
+    );
+  }
+  
+  if (appliedMultipliers.length > 0) {
+    reasoningParts.push(`⚙️ Multiplikatorer: ${appliedMultipliers.join(', ')}`);
+  }
+  
+  reasoningParts.push(
+    `⏱️ Total justerad tid: ${totalHours.toFixed(1)}h`,
+    `💰 Timpris: ${hourlyRate} kr/h ${params.categoryWeighting ? `(${Math.round(params.categoryWeighting)}% dina ${params.jobCategory}-priser)` : params.userWeighting > 0 ? `(${Math.round(params.userWeighting)}% dina priser)` : '(marknadspris)'}`,
+    `\n🔍 Delmoment:\n${workItems.map(w => `  • ${w.name}: ${w.hours}h × ${hourlyRate} kr/h = ${w.subtotal.toLocaleString('sv-SE')} kr`).join('\n')}`
+  );
+  
+  const reasoning = reasoningParts.join('\n');
+  
+  console.log('✅ FORMULA ENGINE: Generated all work items', {
+    count: workItems.length,
+    totalHours,
     hourlyRate,
-    subtotal,
-    sourceOfTruth,
-    confidence
+    totalCost: workItems.reduce((sum, w) => sum + w.subtotal, 0)
   });
   
   return {
-    name: jobDef.standardWorkItems[0]?.name || `${jobDef.jobType} (standardmoment)`,
-    description: `Beräknat enligt ${sourceOfTruth === 'user_rate_weighted' ? 'dina priser och marknadsdata' : 'marknadspriser'}`,
-    hours: finalHours,
+    workItems,
+    totalHours,
+    baseHours,
     hourlyRate,
-    subtotal,
-    reasoning,
-    appliedMultipliers,
-    sourceOfTruth,
-    confidence
+    reasoning
+  };
+}
+
+/**
+ * WRAPPER: Single work item calculation (uses generateWorkItemsFromJobDefinition internally)
+ * Kept for backwards compatibility but now generates all items and returns summary
+ */
+export function calculateWorkItem(
+  params: ProjectParams,
+  jobDef: JobDefinition
+): CalculatedWorkItem {
+  
+  console.log('🧮 FORMULA ENGINE: Calculating work item (wrapper)...', {
+    jobType: params.jobType,
+    unitQty: params.unitQty
+  });
+  
+  // Use the new multi-item generator
+  const result = generateWorkItemsFromJobDefinition(params, jobDef);
+  
+  // Return summary item with total hours and reasoning
+  const totalSubtotal = result.workItems.reduce((sum, w) => sum + w.subtotal, 0);
+  
+  const reasoningParts: string[] = [result.reasoning];
+  
+  return {
+    name: jobDef.jobType,
+    description: `Beräknat enligt ${result.workItems[0]?.sourceOfTruth === 'user_rate_weighted' ? 'dina priser och marknadsdata' : 'marknadspriser'}`,
+    hours: result.totalHours,
+    hourlyRate: result.hourlyRate,
+    subtotal: totalSubtotal,
+    reasoning: result.reasoning,
+    appliedMultipliers: result.workItems[0]?.appliedMultipliers || [],
+    sourceOfTruth: result.workItems[0]?.sourceOfTruth || 'web_market',
+    confidence: result.workItems[0]?.confidence || 0.85
   };
 }
 

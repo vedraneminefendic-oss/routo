@@ -5062,7 +5062,7 @@ Svara med **1**, **2** eller **3** (eller "granska", "generera", "mer info")`;
     console.log('🔧 FAS 1-2: Post-processing quote with Formula Engine...');
     
     // Import Formula Engine and Global Validator
-    const { calculateWorkItem, calculateServiceVehicle } = await import('./helpers/formulaEngine.ts');
+    const { calculateServiceVehicle, generateWorkItemsFromJobDefinition, calculateQuoteTotals } = await import('./helpers/formulaEngine.ts');
     const { findJobDefinition, calculateUserWeighting } = await import('./helpers/jobRegistry.ts');
     const { validateQuote } = await import('./helpers/globalValidator.ts');
     const { getMaterialPrice } = await import('./helpers/materialPricing.ts');
@@ -5173,48 +5173,50 @@ Svara med **1**, **2** eller **3** (eller "granska", "generera", "mer info")`;
         r.work_type.toLowerCase().includes(jobDef.jobType.toLowerCase())
       )?.rate;
       
-      // 6. Recalculate workItems with Formula Engine (only main work item, keep AI's detailed breakdown)
-      if (quote.workItems && quote.workItems.length > 0) {
-        console.log(`🔧 Recalculating main work item with Formula Engine...`);
-        
-        const calculatedItem = calculateWorkItem({
-          jobType: jobDef.jobType,
-          unitQty,
-          complexity,
-          accessibility,
-          qualityLevel,
-          userHourlyRate,
-          userWeighting,
-          // PUNKT 1: Add region & season multipliers
-          regionMultiplier: regionalMultiplier.multiplier,
-          regionReason: regionalMultiplier.reason,
-          seasonMultiplier: seasonalMultiplier.multiplier,
-          seasonReason: seasonalMultiplier.reason,
-          location: locationResult.location,
-          locationSource: locationResult.source,
-          startMonth: startMonth,
-          // PUNKT 3: Add category weighting
-          jobCategory: jobCategoryDetected,
-          categoryWeighting: categoryWeighting,
-          categoryAvgRate: categoryAvgRate
-        }, jobDef);
-        
-        // Replace first work item (huvudarbete) with calculated one
-        quote.workItems[0] = {
-          name: calculatedItem.name,
-          hours: calculatedItem.hours,
-          hourlyRate: calculatedItem.hourlyRate,
-          subtotal: calculatedItem.subtotal,
-          reasoning: calculatedItem.reasoning,
-          sourceOfTruth: calculatedItem.sourceOfTruth,
-          confidence: calculatedItem.confidence
-        };
-        
-        console.log(`✅ Main work item recalculated: ${calculatedItem.name} (${calculatedItem.hours}h @ ${calculatedItem.hourlyRate} kr/h = ${calculatedItem.subtotal} kr)`);
-      }
+      // 6. Generate ALL work items with Formula Engine (replaces AI-generated items)
+      console.log(`🔧 Generating all work items with Formula Engine...`);
+      
+      const workItemParams = {
+        jobType: jobDef.jobType,
+        unitQty,
+        complexity,
+        accessibility,
+        qualityLevel,
+        userHourlyRate,
+        userWeighting,
+        // PUNKT 1: Add region & season multipliers
+        regionMultiplier: regionalMultiplier.multiplier,
+        regionReason: regionalMultiplier.reason,
+        seasonMultiplier: seasonalMultiplier.multiplier,
+        seasonReason: seasonalMultiplier.reason,
+        location: locationResult.location,
+        locationSource: locationResult.source,
+        startMonth: startMonth,
+        // PUNKT 3: Add category weighting
+        jobCategory: jobCategoryDetected,
+        categoryWeighting: categoryWeighting,
+        categoryAvgRate: categoryAvgRate
+      };
+      
+      const generatedWorkItems = generateWorkItemsFromJobDefinition(workItemParams, jobDef);
+      
+      // Replace ALL work items with calculated ones
+      quote.workItems = generatedWorkItems.workItems.map(item => ({
+        name: item.name,
+        description: item.description,
+        hours: item.hours,
+        estimatedHours: item.hours,
+        hourlyRate: item.hourlyRate,
+        subtotal: item.subtotal,
+        reasoning: item.reasoning,
+        sourceOfTruth: item.sourceOfTruth,
+        confidence: item.confidence
+      }));
+      
+      console.log(`✅ Generated ${quote.workItems.length} work items, total: ${generatedWorkItems.totalHours}h, ${generatedWorkItems.workItems.reduce((sum, w) => sum + w.subtotal, 0)} kr`);
       
       // 7. Check and add service vehicle if needed
-      const totalHours = quote.workItems?.reduce((sum: number, item: any) => sum + item.hours, 0) || 0;
+      const totalHours = generatedWorkItems.totalHours;
       const serviceVehicle = calculateServiceVehicle(
         totalHours,
         jobDef,
@@ -5223,11 +5225,13 @@ Svara med **1**, **2** eller **3** (eller "granska", "generera", "mer info")`;
       
       if (serviceVehicle) {
         quote.equipment = quote.equipment || [];
+        const days = jobDef.serviceVehicle?.unit === 'dag' ? 1 : 0.5;
         quote.equipment.push({
           name: serviceVehicle.name,
-          days: jobDef.serviceVehicle?.unit === 'dag' ? 1 : 0.5,
-          dailyRate: serviceVehicle.subtotal,
-          subtotal: serviceVehicle.subtotal,
+          quantity: 1,
+          days: days,
+          pricePerDay: serviceVehicle.subtotal / days, // Correct mapping for computeQuoteTotals
+          estimatedCost: serviceVehicle.subtotal,
           reasoning: serviceVehicle.reasoning,
           sourceOfTruth: serviceVehicle.sourceOfTruth,
           confidence: serviceVehicle.confidence
@@ -5252,8 +5256,14 @@ Svara med **1**, **2** eller **3** (eller "granska", "generera", "mer info")`;
         }
       }
       
-      // 9. Recalculate totals
-      quote = computeQuoteTotals(quote, hourlyRates || [], equipmentRates || [], isDraft);
+      // 9. Recalculate totals using Formula Engine
+      const { quote: recalculatedQuote, report } = calculateQuoteTotals(quote, deductionType);
+      quote = recalculatedQuote;
+      
+      if (report.workItemsRecalculated > 0 || report.totalCorrections > 0) {
+        console.log(`🔧 Formula Engine corrections:`, report);
+      }
+      
       console.log(`💰 Totals recalculated after Formula Engine: ${quote.summary?.totalBeforeVAT} kr`);
       
       // 10. Run Global Validator
@@ -5284,8 +5294,9 @@ Svara med **1**, **2** eller **3** (eller "granska", "generera", "mer info")`;
         const { applyAutoCorrections } = await import('./helpers/globalValidator.ts');
         quote = applyAutoCorrections(quote, globalValidation.autoCorrections);
         
-        // Recalculate after corrections
-        quote = computeQuoteTotals(quote, hourlyRates || [], equipmentRates || [], isDraft);
+        // Recalculate after corrections using Formula Engine
+        const { quote: correctedQuote } = calculateQuoteTotals(quote, deductionType);
+        quote = correctedQuote;
       }
       
       console.log('✅ FAS 1-2: Formula Engine integration complete');
@@ -5598,9 +5609,10 @@ Svara med **1**, **2** eller **3** (eller "granska", "generera", "mer info")`;
     const { applyOverlapAdjustments } = await import('./helpers/relations.ts');
     quote = applyOverlapAdjustments(quote, measurementsForValidation, detectionResult.projectType);
     
-    // Apply deterministic pricing (FAS 22: skip if draft mode)
-    console.log('💰 Computing deterministic totals...');
-    quote = computeQuoteTotals(quote, hourlyRates || [], equipmentRates || [], isDraft);
+    // Recalculate totals using Formula Engine
+    console.log('💰 Recalculating totals with Formula Engine...');
+    const { quote: totalizedQuote1 } = calculateQuoteTotals(quote, deductionType);
+    quote = totalizedQuote1;
     
     const timeValidation = validateQuoteTimeEstimates(quote, measurementsForValidation, detectionResult.projectType);
     
@@ -5620,8 +5632,9 @@ Svara med **1**, **2** eller **3** (eller "granska", "generera", "mer info")`;
             console.log(`   - ${c.workItem}: ${c.before.toFixed(1)}h → ${c.after.toFixed(1)}h`);
           });
           
-          // Re-calculate totals after correction (FAS 22: respect draft mode)
-          quote = computeQuoteTotals(quote, hourlyRates || [], equipmentRates || [], isDraft);
+          // Re-calculate totals with Formula Engine
+          const { quote: totalizedQuote2 } = calculateQuoteTotals(quote, deductionType);
+          quote = totalizedQuote2;
           console.log('💰 Totals recalculated after time corrections');
         }
       }
@@ -5739,10 +5752,11 @@ Svara med **1**, **2** eller **3** (eller "granska", "generera", "mer info")`;
         }
       }
       
-      // Om sanity-korrigeringar gjordes, räkna om totaler
+      // Om sanity-korrigeringar gjordes, räkna om totaler med Formula Engine
       if (sanityCorrectionsMade) {
         console.log('💰 Recalculating totals after sanity corrections...');
-        quote = computeQuoteTotals(quote, hourlyRates || [], equipmentRates || [], isDraft);
+        const { quote: totalizedQuote3 } = calculateQuoteTotals(quote, deductionType);
+        quote = totalizedQuote3;
       }
       
       // ============================================
@@ -5855,8 +5869,9 @@ Svara med **1**, **2** eller **3** (eller "granska", "generera", "mer info")`;
     if (forcedCorrections > 0) {
       console.log(`✅ P0: Forced ${forcedCorrections} corrections to match industry standards`);
       
-      // Re-calculate totals after forced corrections
-      quote = computeQuoteTotals(quote, hourlyRates || [], equipmentRates || [], isDraft);
+      // Re-calculate totals with Formula Engine
+      const { quote: totalizedQuote4 } = calculateQuoteTotals(quote, deductionType);
+      quote = totalizedQuote4;
       console.log('💰 Totals recalculated after P0 forced corrections');
     } else {
       console.log('✅ P0: All time estimates are within ±15% of industry standards');
@@ -5978,8 +5993,9 @@ Svara med **1**, **2** eller **3** (eller "granska", "generera", "mer info")`;
           subtotal: Math.round(item.subtotal * multiplier)
         })) || [];
         
-        // Re-calculate totals (FAS 22: respect draft mode)
-        quote = computeQuoteTotals(quote, hourlyRates || [], equipmentRates || [], isDraft);
+        // Re-calculate totals with Formula Engine
+        const { quote: totalizedQuote5 } = calculateQuoteTotals(quote, deductionType);
+        quote = totalizedQuote5;
         
         // STRATEGI 2: Om fortfarande under minimum, lägg till materialuppgradering
         const remainingGap = minPrice - (quote.summary?.totalBeforeVAT || 0);
@@ -5997,8 +6013,9 @@ Svara med **1**, **2** eller **3** (eller "granska", "generera", "mer info")`;
             subtotal: Math.round(remainingGap)
           });
           
-          // Final re-calculate (FAS 22: respect draft mode)
-          quote = computeQuoteTotals(quote, hourlyRates || [], equipmentRates || [], isDraft);
+          // Final re-calculate with Formula Engine
+          const { quote: totalizedQuote6 } = calculateQuoteTotals(quote, deductionType);
+          quote = totalizedQuote6;
         }
         
         console.log(`✅ Quote price corrected to ${quote.summary.totalBeforeVAT} kr (${Math.round(quote.summary.totalBeforeVAT / area)} kr/kvm)`);
@@ -6025,8 +6042,9 @@ Svara med **1**, **2** eller **3** (eller "granska", "generera", "mer info")`;
           quote = await autoFixBathroomQuote(quote, bathroomValidation.missing, area, detectionResult.projectType);
           console.log('✅ Quote auto-fixed successfully');
           
-          // Re-calculate totals after auto-fix (FAS 22: respect draft mode)
-          quote = computeQuoteTotals(quote, hourlyRates || [], equipmentRates || [], isDraft);
+          // Re-calculate totals with Formula Engine
+          const { quote: totalizedQuote7 } = calculateQuoteTotals(quote, deductionType);
+          quote = totalizedQuote7;
           
           // POST-FIX PIPELINE: Merge duplicates and re-validate after auto-fix
           console.log('🔁 Post-fix: merge duplicates introduced by auto-fix');
@@ -6040,8 +6058,9 @@ Svara med **1**, **2** eller **3** (eller "granska", "generera", "mer info")`;
           console.log('🔁 Post-fix: auto-correct time estimates');
           autoCorrectTimeEstimates(quote, measurementsForValidation, true, detectionResult.projectType);
           
-          console.log('🔁 Post-fix: recompute totals');
-          quote = computeQuoteTotals(quote, hourlyRates || [], equipmentRates || [], isDraft);
+          console.log('🔁 Post-fix: recompute totals with Formula Engine');
+          const { quote: totalizedQuote8 } = calculateQuoteTotals(quote, deductionType);
+          quote = totalizedQuote8;
           
           // Re-validate to log any remaining warnings
           const postFixValidation = validateQuoteTimeEstimates(quote, measurementsForValidation, detectionResult.projectType);

@@ -166,11 +166,11 @@ export const JOB_REGISTRY: JobDefinition[] = [
       totalMax: 350000
     },
     standardWorkItems: [
-      { name: 'Rivning och demontering', mandatory: true, typicalHours: 2.5 },
-      { name: 'VVS-installation', mandatory: true, typicalHours: 2.8 },
-      { name: 'El-installation', mandatory: true, typicalHours: 2.5 },
-      { name: 'Kakelsättning väggar', mandatory: true, typicalHours: 2.2 },
-      { name: 'Klinkersättning golv', mandatory: true, typicalHours: 2.8 }
+      { name: 'Rivning och demontering', mandatory: true, typicalHours: 0.35 }, // Per kvm
+      { name: 'VVS-installation', mandatory: true, typicalHours: 0.35 }, // Per kvm
+      { name: 'El-installation', mandatory: true, typicalHours: 0.31 }, // Per kvm
+      { name: 'Kakelsättning väggar', mandatory: true, typicalHours: 0.28 }, // Per kvm
+      { name: 'Klinkersättning golv', mandatory: true, typicalHours: 0.35 } // Per kvm
     ],
     applicableDeduction: 'rot',
     deductionPercentage: 30,
@@ -283,11 +283,11 @@ export const JOB_REGISTRY: JobDefinition[] = [
       totalMax: 80000
     },
     standardWorkItems: [
-      { name: 'Förberedelse och skydd', mandatory: true, typicalHours: 0.04 },
-      { name: 'Spackling och slipning', mandatory: true, typicalHours: 0.04 },
-      { name: 'Grundmålning', mandatory: true, typicalHours: 0.06 },
-      { name: 'Slutstrykningar', mandatory: true, typicalHours: 0.08 },
-      { name: 'Städning och efterarbete', mandatory: true, typicalHours: 0.04 }
+      { name: 'Förberedelse och skydd', mandatory: true, typicalHours: 0.08 }, // Per kvm
+      { name: 'Spackling och slipning', mandatory: true, typicalHours: 0.08 }, // Per kvm
+      { name: 'Grundmålning', mandatory: true, typicalHours: 0.12 }, // Per kvm
+      { name: 'Slutstrykningar', mandatory: true, typicalHours: 0.16 }, // Per kvm
+      { name: 'Städning och efterarbete', mandatory: true, typicalHours: 0.08 } // Per kvm
     ],
     applicableDeduction: 'rut',
     deductionPercentage: 50,
