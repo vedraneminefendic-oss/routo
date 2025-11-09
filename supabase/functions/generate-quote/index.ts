@@ -39,6 +39,30 @@ function stripMarkdownCodeFences(text: string): string {
     .trim();
 }
 
+// ============================================================================
+// HELPER: PARSE AI JSON SAFELY
+// ============================================================================
+
+function parseAIJSON(text: string): any {
+  const t = (text || '').trim();
+  if (!t) return {};
+  // Try direct after stripping code fences
+  try { return JSON.parse(stripMarkdownCodeFences(t)); } catch (_e) {}
+  // Try fenced block
+  const fenceMatch = t.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  if (fenceMatch) {
+    try { return JSON.parse(fenceMatch[1].trim()); } catch (_e) {}
+  }
+  // Try bracket extraction
+  const first = t.indexOf('{'); const last = t.lastIndexOf('}');
+  if (first !== -1 && last !== -1 && last > first) {
+    const sub = t.slice(first, last + 1);
+    try { return JSON.parse(sub); } catch (_e) {}
+  }
+  console.error('❌ Failed to parse AI JSON. Raw (truncated):', t.slice(0, 2000));
+  throw new Error('Invalid AI JSON response');
+}
+
 // Import validation helpers
 import { validateQuoteConsistency } from './helpers/validateQuoteConsistency.ts';
 import { isBathroomProject, getBathroomPromptAddition, BATHROOM_REQUIREMENTS } from './helpers/bathroomRequirements.ts';
@@ -327,7 +351,7 @@ Baserat på branschkunskap, beräkna realistiska uppskattningar för detta jobb.
 
     const data = await response.json();
     const content = stripMarkdownCodeFences(data.choices?.[0]?.message?.content || '{}');
-    const result = JSON.parse(content);
+    const result = parseAIJSON(content);
     
     // Beräkna total tid baserat på mått
     let totalTime = result.timeEstimate || 2;
@@ -785,7 +809,7 @@ Returnera bara JSON.`;
 
     const data = await response.json();
     const content = stripMarkdownCodeFences(data.choices[0].message.content);
-    const result = JSON.parse(content);
+    const result = parseAIJSON(content);
     
     return {
       understood: result.understood || {},
@@ -1168,7 +1192,7 @@ Returnera JSON:
 
     const data = await response.json();
     const content = stripMarkdownCodeFences(data.choices?.[0]?.message?.content || '{}');
-    const result = JSON.parse(content);
+    const result = parseAIJSON(content);
     
     console.log(`🤖 AI decision for "${itemName}":`, result);
     return result;
@@ -1773,7 +1797,7 @@ Returnera JSON: {"type": "rot"} eller {"type": "rut"} eller {"type": "none"}`;
 
     const data = await response.json();
     const content = stripMarkdownCodeFences(data.choices[0].message.content);
-    const result = JSON.parse(content);
+    const result = parseAIJSON(content);
     
     console.log('✅ AI detected:', result.type);
     return result.type || 'none';
@@ -2904,7 +2928,7 @@ Returnera JSON:
 
     const data = await response.json();
     const content = stripMarkdownCodeFences(data.choices[0].message.content);
-    const result = JSON.parse(content);
+    const result = parseAIJSON(content);
     
     // ✅ Extrahera BARA första frågan från AI:ns svar
     const allQuestions = result.questions || [];
@@ -3942,7 +3966,7 @@ ALLA texter i offerten MÅSTE vara på SVENSKA:
 
     const data = await response.json();
     const content = stripMarkdownCodeFences(data.choices[0].message.content);
-    const quote = JSON.parse(content);
+    const quote = parseAIJSON(content);
     
     // ÅTGÄRD 4: Debug-logging för AI response structure
     console.log('📊 AI Response Structure:', {
@@ -4123,7 +4147,7 @@ Returnera JSON med ALLA material från original-offerten men med bättre specifi
 
     const data = await response.json();
     const content = stripMarkdownCodeFences(data.choices[0].message.content);
-    const result = JSON.parse(content);
+    const result = parseAIJSON(content);
     
     // Update materials in quote
     if (result.materials && result.materials.length > 0) {

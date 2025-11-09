@@ -8,6 +8,34 @@ const corsHeaders = {
 const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY')!;
 const TEXT_MODEL = 'google/gemini-2.5-flash';
 
+// ============================================================================
+// HELPERS TO PARSE AI JSON SAFELY
+// ============================================================================
+function stripMarkdownCodeFences(text: string): string {
+  if (!text) return text;
+  return text
+    .replace(/^```(?:json)?\s*\n?/i, '')
+    .replace(/\n?```\s*$/, '')
+    .trim();
+}
+
+function parseAIJSON(text: string): any {
+  const t = (text || '').trim();
+  if (!t) return {};
+  try { return JSON.parse(stripMarkdownCodeFences(t)); } catch (_e) {}
+  const fenceMatch = t.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  if (fenceMatch) {
+    try { return JSON.parse(fenceMatch[1].trim()); } catch (_e) {}
+  }
+  const first = t.indexOf('{'); const last = t.lastIndexOf('}');
+  if (first !== -1 && last !== -1 && last > first) {
+    const sub = t.slice(first, last + 1);
+    try { return JSON.parse(sub); } catch (_e) {}
+  }
+  console.error('❌ Failed to parse AI JSON (classify). Raw (truncated):', t.slice(0, 2000));
+  throw new Error('Invalid AI JSON response');
+}
+
 interface ClassificationRequest {
   projectDescription: string;
   workType?: string;
@@ -244,7 +272,7 @@ Returnera bara JSON, inget annat.`;
     }
 
     const data = await response.json();
-    const result: ClassificationResponse = JSON.parse(data.choices[0].message.content);
+    const result = parseAIJSON(data.choices[0].message.content) as ClassificationResponse;
 
     console.log('✅ Classification result:', result);
 
