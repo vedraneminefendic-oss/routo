@@ -59,6 +59,28 @@ function calculateCompleteness(conversationSummary: any): {
 const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY')!;
 const TEXT_MODEL = 'google/gemini-2.5-flash';
 
+// ============================================================================
+// AI JSON HELPERS
+// ============================================================================
+function stripMarkdownCodeFences(text: string): string {
+  if (!text) return text;
+  return text
+    .replace(/^```(?:json)?\s*\n?/i, '')
+    .replace(/\n?```\s*$/, '')
+    .trim();
+}
+function parseAIJSON(text: string): any {
+  const t = (text || '').trim();
+  if (!t) return {};
+  try { return JSON.parse(stripMarkdownCodeFences(t)); } catch {}
+  const fence = t.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  if (fence) { try { return JSON.parse(fence[1].trim()); } catch {} }
+  const i = t.indexOf('{'), j = t.lastIndexOf('}');
+  if (i !== -1 && j > i) { const sub = t.slice(i, j + 1); try { return JSON.parse(sub); } catch {} }
+  console.error('❌ parseAIJSON failed (manage-conversation). Raw:', t.slice(0, 500));
+  throw new Error('Invalid AI JSON');
+}
+
 // ============================================
 // FAS 16: AI-DRIVEN SMART QUESTIONS
 // ============================================
@@ -280,7 +302,7 @@ Om alla checklist-kategorier är täckta, returnera: []`;
       jsonStr = content.split('```')[1].split('```')[0].trim();
     }
     
-    const questions = JSON.parse(jsonStr);
+    const questions = Array.isArray(content) ? content : parseAIJSON(jsonStr);
     // FAS 23: Hard cap at 4 questions maximum
     let validQuestions = Array.isArray(questions) ? questions.slice(0, 4) : [];
     
@@ -472,7 +494,7 @@ Returnera bara JSON, ingen annan text.`;
     }
 
     const data = await response.json();
-    const summary = JSON.parse(data.choices[0].message.content);
+    const summary = parseAIJSON(data.choices[0].message.content);
     
     console.log('✅ Generated conversation summary:', JSON.stringify(summary, null, 2));
     return summary;

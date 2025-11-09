@@ -6,6 +6,26 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+// Helpers to safely parse AI JSON
+function stripMarkdownCodeFences(text: string): string {
+  if (!text) return text;
+  return text
+    .replace(/^```(?:json)?\s*\n?/i, '')
+    .replace(/\n?```\s*$/, '')
+    .trim();
+}
+function parseAIJSON(text: string): any {
+  const t = (text || '').trim();
+  if (!t) return {};
+  try { return JSON.parse(stripMarkdownCodeFences(t)); } catch {}
+  const fence = t.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  if (fence) { try { return JSON.parse(fence[1].trim()); } catch {} }
+  const i = t.indexOf('{'), j = t.lastIndexOf('}');
+  if (i !== -1 && j > i) { const sub = t.slice(i, j + 1); try { return JSON.parse(sub); } catch {} }
+  console.error('❌ parseAIJSON failed (market-data). Raw:', t.slice(0, 500));
+  throw new Error('Invalid AI JSON');
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -115,7 +135,7 @@ Använd källor: byggfakta.se, husbyggaren.se, byggahus.se, rormokarna.se
     
     const aiContent = aiData.choices?.[0]?.message?.content || '{}';
     const jsonMatch = aiContent.match(/\{[\s\S]*\}/);
-    const marketInsights = jsonMatch ? JSON.parse(jsonMatch[0]) : {};
+    const marketInsights = jsonMatch ? parseAIJSON(jsonMatch[0]) : {};
     
     console.log('🤖 AI Market Insights:', marketInsights);
 

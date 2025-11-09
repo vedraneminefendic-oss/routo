@@ -6,6 +6,26 @@ import { JobDefinition } from './jobRegistry.ts';
 
 const TEXT_MODEL = 'google/gemini-2.5-flash';
 
+// Helpers to safely parse AI JSON within helpers scope
+function stripMarkdownCodeFences(text: string): string {
+  if (!text) return text;
+  return text
+    .replace(/^```(?:json)?\s*\n?/i, '')
+    .replace(/\n?```\s*$/, '')
+    .trim();
+}
+function parseAIJSON(text: string): any {
+  const t = (text || '').trim();
+  if (!t) return {};
+  try { return JSON.parse(stripMarkdownCodeFences(t)); } catch {}
+  const fence = t.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  if (fence) { try { return JSON.parse(fence[1].trim()); } catch {} }
+  const i = t.indexOf('{'), j = t.lastIndexOf('}');
+  if (i !== -1 && j > i) { const sub = t.slice(i, j + 1); try { return JSON.parse(sub); } catch {} }
+  console.error('❌ parseAIJSON failed (materialPricing). Raw:', t.slice(0, 500));
+  throw new Error('Invalid AI JSON');
+}
+
 interface MaterialPrice {
   budget: number;
   standard: number;
@@ -129,7 +149,7 @@ Returnera JSON med 3 prisnivåer:
     }
 
     const data = await response.json();
-    const result = JSON.parse(data.choices[0].message.content);
+    const result = parseAIJSON(data.choices[0].message.content);
     
     // 3. Spara i cache med 3 nivåer
     await supabase.from('industry_benchmarks').upsert({
