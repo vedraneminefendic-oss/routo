@@ -21,6 +21,24 @@ const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY')!;
 
 const TEXT_MODEL = 'google/gemini-2.5-flash';
 
+// ============================================================================
+// HELPER: STRIP MARKDOWN CODE FENCES FROM JSON
+// ============================================================================
+
+/**
+ * Strip markdown code fences from AI response before parsing JSON
+ * Handles both ```json and ``` wrapped responses
+ */
+function stripMarkdownCodeFences(text: string): string {
+  if (!text) return text;
+  
+  // Remove ```json or ``` at start and ``` at end
+  return text
+    .replace(/^```(?:json)?\s*\n?/i, '')
+    .replace(/\n?```\s*$/, '')
+    .trim();
+}
+
 // Import validation helpers
 import { validateQuoteConsistency } from './helpers/validateQuoteConsistency.ts';
 import { isBathroomProject, getBathroomPromptAddition, BATHROOM_REQUIREMENTS } from './helpers/bathroomRequirements.ts';
@@ -308,7 +326,8 @@ Baserat på branschkunskap, beräkna realistiska uppskattningar för detta jobb.
     }
 
     const data = await response.json();
-    const result = JSON.parse(data.choices?.[0]?.message?.content || '{}');
+    const content = stripMarkdownCodeFences(data.choices?.[0]?.message?.content || '{}');
+    const result = JSON.parse(content);
     
     // Beräkna total tid baserat på mått
     let totalTime = result.timeEstimate || 2;
@@ -765,7 +784,8 @@ Returnera bara JSON.`;
     }
 
     const data = await response.json();
-    const result = JSON.parse(data.choices[0].message.content);
+    const content = stripMarkdownCodeFences(data.choices[0].message.content);
+    const result = JSON.parse(content);
     
     return {
       understood: result.understood || {},
@@ -1147,7 +1167,8 @@ Returnera JSON:
     }
 
     const data = await response.json();
-    const result = JSON.parse(data.choices?.[0]?.message?.content || '{}');
+    const content = stripMarkdownCodeFences(data.choices?.[0]?.message?.content || '{}');
+    const result = JSON.parse(content);
     
     console.log(`🤖 AI decision for "${itemName}":`, result);
     return result;
@@ -1751,7 +1772,8 @@ Returnera JSON: {"type": "rot"} eller {"type": "rut"} eller {"type": "none"}`;
     }
 
     const data = await response.json();
-    const result = JSON.parse(data.choices[0].message.content);
+    const content = stripMarkdownCodeFences(data.choices[0].message.content);
+    const result = JSON.parse(content);
     
     console.log('✅ AI detected:', result.type);
     return result.type || 'none';
@@ -2881,7 +2903,8 @@ Returnera JSON:
     }
 
     const data = await response.json();
-    const result = JSON.parse(data.choices[0].message.content);
+    const content = stripMarkdownCodeFences(data.choices[0].message.content);
+    const result = JSON.parse(content);
     
     // ✅ Extrahera BARA första frågan från AI:ns svar
     const allQuestions = result.questions || [];
@@ -3918,7 +3941,8 @@ ALLA texter i offerten MÅSTE vara på SVENSKA:
     }
 
     const data = await response.json();
-    const quote = JSON.parse(data.choices[0].message.content);
+    const content = stripMarkdownCodeFences(data.choices[0].message.content);
+    const quote = JSON.parse(content);
     
     // ÅTGÄRD 4: Debug-logging för AI response structure
     console.log('📊 AI Response Structure:', {
@@ -4098,7 +4122,8 @@ Returnera JSON med ALLA material från original-offerten men med bättre specifi
     }
 
     const data = await response.json();
-    const result = JSON.parse(data.choices[0].message.content);
+    const content = stripMarkdownCodeFences(data.choices[0].message.content);
+    const result = JSON.parse(content);
     
     // Update materials in quote
     if (result.materials && result.materials.length > 0) {
