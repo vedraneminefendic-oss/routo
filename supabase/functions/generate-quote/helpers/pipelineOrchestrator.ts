@@ -21,7 +21,7 @@ import { enforceWorkItemMath, logQuoteReport } from './mathGuard.ts';
 import { detectFlags, filterCustomerProvidedMaterials } from './flagDetector.ts';
 import { findJobDefinition, type JobDefinition } from './jobRegistry.ts';
 import { mergeWorkItems, logMergeReport, type MergeResult } from './mergeEngine.ts';
-import { validateQuoteDomain, attachValidationWarnings, type DomainValidationResult } from './domainValidator.ts';
+import { validateQuoteDomain, type DomainValidationResult } from './domainValidator.ts';
 
 interface ParsedInput {
   description: string;
@@ -297,10 +297,10 @@ export async function runQuotePipeline(
   }
   
   // ============================================
-  // STEG 9: Attach domain validation warnings
+  // STEG 9: Domain validation now consolidated in globalValidator
   // ============================================
   
-  attachValidationWarnings(quote, domainValidation);
+  // FAS 1: Validation warnings now handled by globalValidator
   
   // ============================================
   // STEG 10: Validera proportioner

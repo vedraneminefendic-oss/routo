@@ -3150,27 +3150,7 @@ Kunde inte hämta aktuell branschdata. Använd standardpriser och uppskattningar
   // Använd mått som redan extraherades ovan (rad 2728-2739)
   const area = measurements.area || 8; // Default 8 kvm om inget angivet
   
-  // Check bathroom project
-  if (isBathroomProject(description)) {
-    domainKnowledgeText = getBathroomPromptAddition(area);
-    console.log('🚿🚿🚿 BATHROOM PROJECT DETECTED 🚿🚿🚿');
-    console.log('📝 Description:', description);
-    console.log('📏 Extracted area:', area, 'kvm');
-    console.log('💰 Expected minimum price:', Math.round(area * 18000), 'SEK');
-    console.log('💰 Expected recommended price:', Math.round(area * 25000), 'SEK');
-  }
-  
-  // Check kitchen project
-  if (isKitchenProject(description)) {
-    domainKnowledgeText = getKitchenPromptAddition(area);
-    console.log('🍳 Kitchen project detected! Adding requirements checklist...');
-  }
-  
-  // Check painting project
-  if (isPaintingProject(description)) {
-    domainKnowledgeText = getPaintingPromptAddition(area);
-    console.log('🎨 Painting project detected! Adding requirements checklist...');
-  }
+  // FAS 1: Domain knowledge now handled by jobRegistry + Formula Engine
 
   // ============================================
   // PROPOSAL 1: INDUSTRY STANDARDS INTEGRATION
@@ -5995,128 +5975,7 @@ Svara med **1**, **2** eller **3** (eller "granska", "generera", "mer info")`;
       suggestedMoments: detectionResult.suggestedMoments // FAS 5: New field
     };
     
-    // BATHROOM VALIDATION
-    if (isBathroomProject(completeDescription)) {
-      console.log('🔍 Running bathroom quote validation...');
-      
-      // Extrahera area från konversation
-      const allText = (completeDescription + ' ' + actualConversationHistory.map((m: any) => m.content).join(' ')).toLowerCase();
-      const areaMatch = allText.match(/(\d+(?:[.,]\d+)?)\s*kvm/);
-      const area = areaMatch ? parseFloat(areaMatch[1].replace(',', '.')) : 8;
-      
-      // FAS 6: Enhanced logging with project details
-      console.log('🛁 BATHROOM QUOTE DETAILS', {
-        area: area,
-        price: quote.summary?.totalBeforeVAT,
-        pricePerSqm: Math.round((quote.summary?.totalBeforeVAT || 0) / area),
-        scope: projectIntent.scope,
-        workItems: quote.workItems?.map((w: any) => ({ name: w.name, hours: w.hours, cost: w.subtotal })) || [],
-        hasVVS: quote.workItems?.some((w: any) => w.name?.toLowerCase().includes('vvs')),
-        hasEl: quote.workItems?.some((w: any) => w.name?.toLowerCase().includes('el')),
-        hasTätskikt: quote.workItems?.some((w: any) => w.name?.toLowerCase().includes('tätskikt')),
-        hasGolvvärme: quote.workItems?.some((w: any) => w.name?.toLowerCase().includes('golvvärme'))
-      });
-      
-      // FAS 4: AGGRESSIVE PRICE FLOOR - Ensures minimum price is ALWAYS met
-      const minPrice = area * 18000;
-      const maxPrice = area * 30000;
-      const actualPrice = quote.summary?.totalBeforeVAT || 0;
-      
-      if (actualPrice < minPrice) {
-        console.error(`🚨 BATHROOM QUOTE TOO CHEAP: ${actualPrice} kr (minimum: ${minPrice} kr)`);
-        console.error('🔧 Applying aggressive price floor correction...');
-        
-        // STRATEGI 1: Öka timpriser proportionellt (men max 1200 kr/h)
-        const multiplier = Math.min(minPrice / actualPrice, 2.0); // Max 2x ökning
-        quote.workItems = quote.workItems?.map((item: any) => ({
-          ...item,
-          hourlyRate: Math.min(Math.round(item.hourlyRate * multiplier), 1200),
-          subtotal: Math.round(item.subtotal * multiplier)
-        })) || [];
-        
-        // Re-calculate totals with Formula Engine
-        const { quote: totalizedQuote5 } = calculateQuoteTotals(quote, deductionType);
-        quote = totalizedQuote5;
-        
-        // STRATEGI 2: Om fortfarande under minimum, lägg till materialuppgradering
-        const remainingGap = minPrice - (quote.summary?.totalBeforeVAT || 0);
-        if (remainingGap > 0) {
-          console.warn(`⚠️ Still ${remainingGap} kr below minimum after hourly rate increase`);
-          console.log('🔧 Adding premium material upgrade to reach minimum...');
-          
-          quote.materials = quote.materials || [];
-          quote.materials.push({
-            name: 'Högkvalitativa materialuppgraderingar',
-            description: 'Premium-material och komponenter för långsiktig hållbarhet och kvalitet',
-            quantity: 1,
-            unit: 'paket',
-            pricePerUnit: Math.round(remainingGap),
-            subtotal: Math.round(remainingGap)
-          });
-          
-          // Final re-calculate with Formula Engine
-          const { quote: totalizedQuote6 } = calculateQuoteTotals(quote, deductionType);
-          quote = totalizedQuote6;
-        }
-        
-        console.log(`✅ Quote price corrected to ${quote.summary.totalBeforeVAT} kr (${Math.round(quote.summary.totalBeforeVAT / area)} kr/kvm)`);
-        
-        // FAS 6: Log price floor correction details
-        console.log('💰 PRICE FLOOR CORRECTION', {
-          original: actualPrice,
-          minimum: minPrice,
-          final: quote.summary.totalBeforeVAT,
-          multiplierUsed: multiplier.toFixed(2),
-          materialUpgradeAdded: remainingGap > 0 ? Math.round(remainingGap) : 0
-        });
-      }
-      
-      const bathroomValidation = validateBathroomQuote(quote, area, 18000, 30000);
-      
-      if (!bathroomValidation.isValid) {
-        console.warn('⚠️ Bathroom quote validation failed:', bathroomValidation.issues);
-        validationWarnings = bathroomValidation.issues;
-        
-        // AUTO-FIX: Lägg till saknade komponenter
-        if (bathroomValidation.missing.length > 0) {
-          console.log('🔧 Auto-fixing quote with missing components:', bathroomValidation.missing);
-          quote = await autoFixBathroomQuote(quote, bathroomValidation.missing, area, detectionResult.projectType);
-          console.log('✅ Quote auto-fixed successfully');
-          
-          // Re-calculate totals with Formula Engine
-          const { quote: totalizedQuote7 } = calculateQuoteTotals(quote, deductionType);
-          quote = totalizedQuote7;
-          
-          // POST-FIX PIPELINE: Merge duplicates and re-validate after auto-fix
-          console.log('🔁 Post-fix: merge duplicates introduced by auto-fix');
-          const { normalizeAndMergeDuplicates } = await import('./helpers/duplicateManager.ts');
-          quote = normalizeAndMergeDuplicates(quote, measurementsForValidation, detectionResult.projectType);
-          
-          console.log('🔁 Post-fix: check overlap adjustments');
-          const { applyOverlapAdjustments } = await import('./helpers/relations.ts');
-          quote = applyOverlapAdjustments(quote, measurementsForValidation, detectionResult.projectType);
-          
-          console.log('🔁 Post-fix: auto-correct time estimates');
-          autoCorrectTimeEstimates(quote, measurementsForValidation, true, detectionResult.projectType);
-          
-          console.log('🔁 Post-fix: recompute totals with Formula Engine');
-          const { quote: totalizedQuote8 } = calculateQuoteTotals(quote, deductionType);
-          quote = totalizedQuote8;
-          
-          // Re-validate to log any remaining warnings
-          const postFixValidation = validateQuoteTimeEstimates(quote, measurementsForValidation, detectionResult.projectType);
-          if (!postFixValidation.isValid) {
-            console.warn('⚠️ Post-fix validation warnings:');
-            postFixValidation.warnings.forEach(w => console.warn(`   - ${w}`));
-          }
-        }
-        
-        // Logga validationssammanfattning
-        console.log(generateValidationSummary(bathroomValidation));
-      } else {
-        console.log('✅ Bathroom quote passed validation');
-      }
-    }
+    // FAS 1: Validation now handled by globalValidator + jobRegistry
 
     // ============================================
     // NEW: GENERATE ASSUMPTIONS FROM HISTORY
@@ -6142,45 +6001,7 @@ Svara med **1**, **2** eller **3** (eller "granska", "generera", "mer info")`;
     // Add assumptions to quote
     quote.assumptions = assumptions;
     
-    // ============================================
-    // NEW: ADD CUSTOMER RESPONSIBILITIES
-    // ============================================
-    if (isBathroomProject(completeDescription) || isKitchenProject(completeDescription)) {
-      quote.customerResponsibilities = [];
-      
-      // Check if customer mentioned buying materials themselves
-      const conversationText = actualConversationHistory.map(m => m.content).join(' ').toLowerCase();
-      
-      if (conversationText.includes('själv') && (conversationText.includes('kakel') || conversationText.includes('inredning'))) {
-        if (isBathroomProject(completeDescription)) {
-          quote.customerResponsibilities.push({
-            item: 'Kakel/klinker',
-            estimatedCost: '15 000 - 30 000 kr',
-            note: 'Kunden köper själv enligt eget val av stil och kvalitet. Vi monterar det ni väljer.'
-          });
-          quote.customerResponsibilities.push({
-            item: 'Badrumsinredning (WC, dusch, tvättställ, skåp)',
-            estimatedCost: '20 000 - 50 000 kr',
-            note: 'Kunden köper själv. Vi monterar och ansluter inredningen.'
-          });
-        }
-        
-        if (isKitchenProject(completeDescription)) {
-          quote.customerResponsibilities.push({
-            item: 'Köksluckor och bänkskiva',
-            estimatedCost: '40 000 - 80 000 kr',
-            note: 'Kunden väljer och köper själv från t.ex. IKEA. Vi monterar kök et.'
-          });
-          quote.customerResponsibilities.push({
-            item: 'Vitvaror (spis, ugn, kyl, diskmaskin)',
-            estimatedCost: '30 000 - 60 000 kr',
-            note: 'Kunden köper själv. Vi ansluter och installerar vitvarorna.'
-          });
-        }
-        
-        console.log(`✅ Added ${quote.customerResponsibilities.length} customer responsibility items`);
-      }
-    }
+    // FAS 1: Customer responsibilities now handled by conversation flow
     
     // ============================================
     // NEW: CLASSIFY ROT/RUT PER WORK ITEM
@@ -6367,205 +6188,15 @@ Svara med **1**, **2** eller **3** (eller "granska", "generera", "mer info")`;
       }
     }
     
-    // ============================================
-    // KITCHEN VALIDATION - Kritisk validering av köksofferter
-    // ============================================
-    let kitchenValidationWarnings: string[] = [];
+    // FAS 1: Kitchen validation now handled by globalValidator + jobRegistry
     
-    if (isKitchenProject(description, quote.projectType)) {
-      const area = measurementsForValidation?.area || 10; // Default to 10 sqm if not specified
-      console.log('🍳 Validerar köksoffert för area:', area, 'kvm');
-      
-      const kitchenValidation = validateKitchenQuote(quote, area);
-      
-      if (!kitchenValidation.passed) {
-        console.error('❌ KRITISK: Köksofferten uppfyller inte minimikrav!');
-        console.error('Fel:', kitchenValidation.errors);
-        
-        const validationSummary = generateKitchenValidationSummary(kitchenValidation);
-        
-        // Return error immediately - do not allow underpriced kitchen quotes
-        return new Response(
-          JSON.stringify({
-            error: 'Köksofferten kunde inte genereras - uppfyller inte minimikrav',
-            details: kitchenValidation.errors,
-            summary: validationSummary,
-            missingItems: kitchenValidation.missingItems,
-            underHouredItems: kitchenValidation.underHouredItems,
-            totalIssue: kitchenValidation.totalIssue,
-            suggestion: 'Offerten måste inkludera alla obligatoriska arbetsmoment med tillräckliga timmar och uppfylla minimikostnaden.',
-          }),
-          {
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-            status: 400,
-          }
-        );
-      } else if (kitchenValidation.warnings.length > 0) {
-        console.warn('⚠️ Köksvalidering OK men med varningar:', kitchenValidation.warnings);
-        kitchenValidationWarnings = kitchenValidation.warnings;
-      } else {
-        console.log('✅ Köksvalidering: Alla krav uppfyllda');
-      }
-    }
+    // FAS 1: Painting validation now handled by globalValidator + jobRegistry
     
-    // ============================================
-    // PAINTING VALIDATION
-    // ============================================
-    let paintingValidationWarnings: string[] = [];
-
-    if (isPaintingProject(description, quote.projectType)) {
-      const area = measurementsForValidation?.area || 50; // Default 50 kvm väggyta
-      console.log('🎨 Validerar målningsoffert för area:', area, 'kvm väggyta');
-      
-      const paintingValidation = validatePaintingQuote(quote, area);
-      
-      if (!paintingValidation.passed) {
-        console.error('❌ KRITISK: Målningsofferten uppfyller inte minimikrav!');
-        console.error('Fel:', paintingValidation.errors);
-        
-        const validationSummary = generatePaintingValidationSummary(paintingValidation);
-        
-        return new Response(
-          JSON.stringify({
-            error: 'Målningsofferten kunde inte genereras - uppfyller inte minimikrav',
-            details: paintingValidation.errors,
-            summary: validationSummary,
-            missingItems: paintingValidation.missingItems,
-            underHouredItems: paintingValidation.underHouredItems,
-            totalIssue: paintingValidation.totalIssue,
-            suggestion: 'Målningsofferten måste inkludera förberedelser, spackling, grund- och slutstrykningar.',
-          }),
-          {
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-            status: 400,
-          }
-        );
-      } else if (paintingValidation.warnings.length > 0) {
-        console.warn('⚠️ Målningsvalidering OK men med varningar:', paintingValidation.warnings);
-        paintingValidationWarnings = paintingValidation.warnings;
-      } else {
-        console.log('✅ Målningsvalidering: Alla krav uppfyllda');
-      }
-    }
+    // FAS 1: Cleaning validation now handled by globalValidator + jobRegistry
     
-    // ============================================
-    // CLEANING VALIDATION
-    // ============================================
-    let cleaningValidationWarnings: string[] = [];
+    // FAS 1: Gardening validation now handled by globalValidator + jobRegistry
     
-    if (isCleaningProject(description, quote.projectType)) {
-      const area = measurementsForValidation?.area || 50; // Default 50 kvm
-      console.log('🧹 Validerar städningsoffert för area:', area, 'kvm');
-      
-      const cleaningValidation = validateCleaningQuote(quote, area);
-      
-      if (!cleaningValidation.passed) {
-        console.error('❌ KRITISK: Städningsofferten uppfyller inte minimikrav!');
-        console.error('Fel:', cleaningValidation.errors);
-        
-        const validationSummary = generateCleaningValidationSummary(cleaningValidation);
-        
-        return new Response(
-          JSON.stringify({
-            error: 'Städningsofferten kunde inte genereras - uppfyller inte minimikrav',
-            details: cleaningValidation.errors,
-            summary: validationSummary,
-            missingItems: cleaningValidation.missingItems,
-            underHouredItems: cleaningValidation.underHouredItems,
-            totalIssue: cleaningValidation.totalIssue,
-            suggestion: 'Städningsofferten måste inkludera grundstädning, sanitetsutrymmen och rimliga timmar.',
-          }),
-          {
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-            status: 400,
-          }
-        );
-      } else if (cleaningValidation.warnings.length > 0) {
-        console.warn('⚠️ Städningsvalidering OK men med varningar:', cleaningValidation.warnings);
-        cleaningValidationWarnings = cleaningValidation.warnings;
-      } else {
-        console.log('✅ Städningsvalidering: Alla krav uppfyllda');
-      }
-    }
-    
-    // ============================================
-    // GARDENING/TREE FELLING VALIDATION
-    // ============================================
-    let gardeningValidationWarnings: string[] = [];
-    
-    if (isGardeningProject(description, quote.projectType)) {
-      const quantity = measurementsForValidation?.quantity || 1; // Default 1 träd
-      console.log('🌲 Validerar trädfällningsoffert för antal:', quantity, 'träd');
-      
-      const gardeningValidation = validateGardeningQuote(quote, quantity);
-      
-      if (!gardeningValidation.passed) {
-        console.error('❌ KRITISK: Trädfällningsofferten uppfyller inte minimikrav!');
-        console.error('Fel:', gardeningValidation.errors);
-        
-        const validationSummary = generateGardeningValidationSummary(gardeningValidation);
-        
-        return new Response(
-          JSON.stringify({
-            error: 'Trädfällningsofferten kunde inte genereras - uppfyller inte minimikrav',
-            details: gardeningValidation.errors,
-            summary: validationSummary,
-            missingItems: gardeningValidation.missingItems,
-            underHouredItems: gardeningValidation.underHouredItems,
-            totalIssue: gardeningValidation.totalIssue,
-            suggestion: 'Trädfällningsofferten måste inkludera fällning, kapning, bortforsling och rimliga timmar.',
-          }),
-          {
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-            status: 400,
-          }
-        );
-      } else if (gardeningValidation.warnings.length > 0) {
-        console.warn('⚠️ Trädfällningsvalidering OK men med varningar:', gardeningValidation.warnings);
-        gardeningValidationWarnings = gardeningValidation.warnings;
-      } else {
-        console.log('✅ Trädfällningsvalidering: Alla krav uppfyllda');
-      }
-    }
-    
-    // ============================================
-    // ELECTRICAL VALIDATION
-    // ============================================
-    let electricalValidationWarnings: string[] = [];
-    
-    if (isElectricalProject(description, quote.projectType)) {
-      console.log('⚡ Validerar el-offert');
-      
-      const electricalValidation = validateElectricalQuote(quote);
-      
-      if (!electricalValidation.passed) {
-        console.error('❌ KRITISK: El-offerten uppfyller inte minimikrav!');
-        console.error('Fel:', electricalValidation.errors);
-        
-        const validationSummary = generateElectricalValidationSummary(electricalValidation);
-        
-        return new Response(
-          JSON.stringify({
-            error: 'El-offerten kunde inte genereras - uppfyller inte minimikrav',
-            details: electricalValidation.errors,
-            summary: validationSummary,
-            missingItems: electricalValidation.missingItems,
-            underHouredItems: electricalValidation.underHouredItems,
-            totalIssue: electricalValidation.totalIssue,
-            suggestion: 'El-offerten måste inkludera planering, installation, inkoppling och rimligt timpris.',
-          }),
-          {
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-            status: 400,
-          }
-        );
-      } else if (electricalValidation.warnings.length > 0) {
-        console.warn('⚠️ El-validering OK men med varningar:', electricalValidation.warnings);
-        electricalValidationWarnings = electricalValidation.warnings;
-      } else {
-        console.log('✅ El-validering: Alla krav uppfyllda');
-      }
-    }
+    // FAS 1: Electrical validation now handled by globalValidator + jobRegistry
     
     // ============================================
     // GENERIC FALLBACK VALIDATION
@@ -6855,12 +6486,6 @@ Svara med **1**, **2** eller **3** (eller "granska", "generera", "mer info")`;
         validation: validation.issues.length > 0 ? {
           warnings: validation.issues
         } : undefined,
-        bathroomValidation: validationWarnings.length > 0 ? validationWarnings : undefined,
-        kitchenValidation: kitchenValidationWarnings.length > 0 ? kitchenValidationWarnings : undefined,
-        paintingValidation: paintingValidationWarnings.length > 0 ? paintingValidationWarnings : undefined,
-        cleaningValidation: cleaningValidationWarnings.length > 0 ? cleaningValidationWarnings : undefined,
-        gardeningValidation: gardeningValidationWarnings.length > 0 ? gardeningValidationWarnings : undefined,
-        electricalValidation: electricalValidationWarnings.length > 0 ? electricalValidationWarnings : undefined,
         genericValidation: genericValidationWarnings.length > 0 ? genericValidationWarnings : undefined,
         conversationValidation: !conversationValidation.isValid || conversationValidation.warnings.length > 0 ? {
           removedItems: conversationValidation.unmentionedItems,

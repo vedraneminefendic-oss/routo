@@ -37,7 +37,7 @@ export async function validateQuoteDomain(
   console.log(`✅ Domain validation skipped (FAS 1: all validation now in globalValidator + jobRegistry)`);
   
   return {
-    jobType: jobDef.type[0] || 'unknown',
+    jobType: jobDef.jobType || 'unknown',
     passed: true,
     errors: [],
     warnings: [],
