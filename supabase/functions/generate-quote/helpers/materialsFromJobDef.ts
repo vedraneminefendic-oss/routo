@@ -37,16 +37,30 @@ export function generateMaterialsFromJobDefinition(
   
   for (const matCalc of jobDef.materialCalculations) {
     try {
-      // Evaluate formula safely
+      // Evaluate formula safely using Function constructor instead of eval
       let calculatedQty = 0;
       
       // Create safe evaluation context
-      const unitQty = params.unitQty;
-      const quantity = params.unitQty;
-      const Math = globalThis.Math;
+      const context = {
+        unitQty: params.unitQty,
+        quantity: params.unitQty,
+        area: params.unitQty,
+        Math: Math
+      };
       
-      // Evaluate formula
-      calculatedQty = eval(matCalc.formula);
+      // Replace common variables in formula
+      let formula = matCalc.formula
+        .replace(/\bunitQty\b/g, context.unitQty.toString())
+        .replace(/\bquantity\b/g, context.quantity.toString())
+        .replace(/\barea\b/g, context.area.toString());
+      
+      // Evaluate formula using Function (safer than eval)
+      try {
+        calculatedQty = new Function('Math', `return ${formula}`)(Math);
+      } catch (e) {
+        console.error(`❌ Failed to evaluate formula "${matCalc.formula}":`, e);
+        continue;
+      }
       
       // Round if needed
       const finalQty = matCalc.roundUp ? Math.ceil(calculatedQty) : Math.round(calculatedQty * 100) / 100;

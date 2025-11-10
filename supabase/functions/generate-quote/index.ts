@@ -5083,6 +5083,7 @@ Svara med **1**, **2** eller **3** (eller "granska", "generera", "mer info")`;
     const { findJobDefinition, calculateUserWeighting } = await import('./helpers/jobRegistry.ts');
     const { validateQuote } = await import('./helpers/globalValidator.ts');
     const { getMaterialPrice } = await import('./helpers/materialPricing.ts');
+    const { generateMaterialsFromJobDefinition } = await import('./helpers/materialsFromJobDef.ts');
     
     // 1. Determine job type from conversationSummary or description
     const jobDef = findJobDefinition(
@@ -5235,6 +5236,37 @@ Svara med **1**, **2** eller **3** (eller "granska", "generera", "mer info")`;
       }));
       
       console.log(`✅ Generated ${quote.workItems.length} work items, total: ${generatedWorkItems.totalHours}h, ${generatedWorkItems.workItems.reduce((sum, w) => sum + w.subtotal, 0)} kr`);
+      
+      // 6.5. Generate materials from jobDef if materialCalculations exist
+      if (jobDef.materialCalculations && jobDef.materialCalculations.length > 0) {
+        console.log(`🧪 Generating materials from jobDef (${jobDef.materialCalculations.length} material calculations)...`);
+        
+        const generatedMaterials = generateMaterialsFromJobDefinition(
+          {
+            unitQty,
+            qualityLevel
+          },
+          jobDef
+        );
+        
+        // Replace or merge materials
+        if (generatedMaterials.length > 0) {
+          quote.materials = generatedMaterials.map(mat => ({
+            name: mat.name,
+            quantity: mat.quantity,
+            unit: mat.unit,
+            pricePerUnit: mat.pricePerUnit,
+            estimatedCost: mat.estimatedCost,
+            subtotal: mat.estimatedCost,
+            reasoning: mat.reasoning
+          }));
+          
+          console.log(`✅ Generated ${generatedMaterials.length} materials from jobDef`);
+          generatedMaterials.forEach(mat => {
+            console.log(`  - ${mat.name}: ${mat.quantity} ${mat.unit} × ${mat.pricePerUnit} kr = ${mat.estimatedCost} kr`);
+          });
+        }
+      }
       
       // 7. Check and add service vehicle if needed
       const totalHours = generatedWorkItems.totalHours;
