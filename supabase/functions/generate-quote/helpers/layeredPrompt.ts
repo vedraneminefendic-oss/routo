@@ -2,7 +2,6 @@
 // LAYERED PROMPT - FAS 2: HYBRIDMODELL (WEB → BRANSCH → USER)
 // ============================================================================
 
-import { PAINTING_REQUIREMENTS } from './paintingRequirements.ts';
 import { getJobDefinition } from './jobRegistry.ts';
 import { generateJobInstructions } from './promptGenerator.ts';
 

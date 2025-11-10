@@ -63,21 +63,9 @@ function parseAIJSON(text: string): any {
   throw new Error('Invalid AI JSON response');
 }
 
-// Import validation helpers
+// Import validation helpers (FAS 1: requirements borttagna, allt i jobRegistry nu)
 import { validateQuoteConsistency } from './helpers/validateQuoteConsistency.ts';
-import { isBathroomProject, getBathroomPromptAddition, BATHROOM_REQUIREMENTS } from './helpers/bathroomRequirements.ts';
-import { validateBathroomQuote, generateValidationSummary, autoFixBathroomQuote } from './helpers/validateBathroomQuote.ts';
-import { isKitchenProject, getKitchenPromptAddition, KITCHEN_REQUIREMENTS } from './helpers/kitchenRequirements.ts';
-import { validateKitchenQuote, generateKitchenValidationSummary } from './helpers/validateKitchenQuote.ts';
-import { isPaintingProject, getPaintingPromptAddition, PAINTING_REQUIREMENTS } from './helpers/paintingRequirements.ts';
-import { validatePaintingQuote, generatePaintingValidationSummary } from './helpers/validatePaintingQuote.ts';
 import { validateGenericQuote, generateGenericValidationSummary, needsGenericValidation } from './helpers/genericQuoteValidation.ts';
-import { isCleaningProject, getCleaningPromptAddition } from './helpers/cleaningRequirements.ts';
-import { validateCleaningQuote, generateCleaningValidationSummary } from './helpers/validateCleaningQuote.ts';
-import { isGardeningProject, getGardeningPromptAddition } from './helpers/gardeningRequirements.ts';
-import { validateGardeningQuote, generateGardeningValidationSummary } from './helpers/validateGardeningQuote.ts';
-import { isElectricalProject, getElectricalPromptAddition } from './helpers/electricalRequirements.ts';
-import { validateElectricalQuote, generateElectricalValidationSummary } from './helpers/validateElectricalQuote.ts';
 // FAS 2 & 5: Import project standards and intent detection
 import { detectProjectType, detectProjectTypeAdvanced, getProjectPromptAddition, PROJECT_STANDARDS, normalizeKeyword, detectScope, detectProjectIntent, type ProjectIntent, type DetectionResult } from './helpers/projectStandards.ts';
 // FAS 1, 2, 4: Import layered prompt and material pricing
@@ -5116,8 +5104,12 @@ Svara med **1**, **2** eller **3** (eller "granska", "generera", "mer info")`;
     const { validateQuote } = await import('./helpers/globalValidator.ts');
     const { getMaterialPrice } = await import('./helpers/materialPricing.ts');
     
-    // 1. Determine job type from description
-    const jobDef = findJobDefinition(completeDescription);
+    // 1. Determine job type from conversationSummary or description
+    const jobDef = findJobDefinition(
+      conversationSummary?.projectType || 
+      conversationSummary?.workType || 
+      completeDescription
+    );
     
     // ============================================================================
     // PUNKT 1: LOCATION ENGINE - Derive location and multipliers

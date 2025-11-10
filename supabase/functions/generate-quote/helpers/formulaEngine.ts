@@ -154,20 +154,33 @@ export function generateWorkItemsFromJobDefinition(
   let baseHours = 0;
   
   for (const standardItem of jobDef.standardWorkItems) {
-    // Calculate hours: typicalHours (per unit) × unitQty × multipliers
-    const itemBaseHours = standardItem.typicalHours * params.unitQty;
+    // Check if this work item should be multiplied by unitQty
+    const shouldMultiplyByUnit = standardItem.perUnit !== false; // Default true for backwards compatibility
+    
+    // Calculate hours
+    const itemBaseHours = shouldMultiplyByUnit 
+      ? standardItem.typicalHours * params.unitQty  // Multiplicera med antal enheter
+      : standardItem.typicalHours;                   // Fast tid
+    
     const itemFinalHours = Math.round(itemBaseHours * totalMultiplier * 10) / 10; // Max 1 decimal
     const itemSubtotal = Math.round(itemFinalHours * hourlyRate);
     
     baseHours += itemBaseHours;
     totalHours += itemFinalHours;
     
-    const itemReasoning = `
+    const itemReasoning = shouldMultiplyByUnit 
+      ? `
 📐 Bas: ${params.unitQty} ${jobDef.unitType} × ${standardItem.typicalHours}h/enhet = ${itemBaseHours.toFixed(1)}h
 ${appliedMultipliers.length > 0 ? `⚙️ Multiplikatorer: ${appliedMultipliers.join(', ')}\n` : ''}⏱️ Final tid: ${itemFinalHours}h
 💰 Timpris: ${hourlyRate} kr/h
 💵 Subtotal: ${itemSubtotal.toLocaleString('sv-SE')} kr
-    `.trim();
+      `.trim()
+      : `
+📐 Fast tid: ${standardItem.typicalHours}h
+${appliedMultipliers.length > 0 ? `⚙️ Multiplikatorer: ${appliedMultipliers.join(', ')}\n` : ''}⏱️ Final tid: ${itemFinalHours}h
+💰 Timpris: ${hourlyRate} kr/h
+💵 Subtotal: ${itemSubtotal.toLocaleString('sv-SE')} kr
+      `.trim();
     
     workItems.push({
       name: standardItem.name,

@@ -47,6 +47,20 @@ export interface JobDefinition {
     name: string;
     mandatory: boolean;
     typicalHours: number;
+    perUnit?: boolean;  // Om true: multiplicera med unitQty, om false: fast tid
+  }>;
+  
+  // Materialkalkylering (FAS 1)
+  materialCalculations?: Array<{
+    name: string;
+    unit: string;
+    formula: string;  // t.ex. "area / 6.5" eller "quantity * 8"
+    roundUp?: boolean;
+    pricePerUnit: {
+      budget: number;
+      standard: number;
+      premium: number;
+    };
   }>;
   
   // ROT/RUT (med korrekta satser)
@@ -124,7 +138,17 @@ export const JOB_REGISTRY: JobDefinition[] = [
       totalMax: 15000 
     },
     standardWorkItems: [
-      { name: 'Grundstädning', mandatory: true, typicalHours: 0.18 }
+      { name: 'Grundstädning', mandatory: true, typicalHours: 0.15, perUnit: true },
+      { name: 'Sanitetsutrymmen', mandatory: true, typicalHours: 0.06, perUnit: true },
+      { name: 'Fönsterputs', mandatory: false, typicalHours: 0.04, perUnit: true }
+    ],
+    materialCalculations: [
+      {
+        name: 'Städmaterial och rengöringsmedel',
+        unit: 'set',
+        formula: '1',
+        pricePerUnit: { budget: 300, standard: 500, premium: 800 }
+      }
     ],
     applicableDeduction: 'rut',
     deductionPercentage: 50,
@@ -166,11 +190,34 @@ export const JOB_REGISTRY: JobDefinition[] = [
       totalMax: 350000
     },
     standardWorkItems: [
-      { name: 'Rivning och demontering', mandatory: true, typicalHours: 0.35 }, // Per kvm
-      { name: 'VVS-installation', mandatory: true, typicalHours: 0.35 }, // Per kvm
-      { name: 'El-installation', mandatory: true, typicalHours: 0.31 }, // Per kvm
-      { name: 'Kakelsättning väggar', mandatory: true, typicalHours: 0.28 }, // Per kvm
-      { name: 'Klinkersättning golv', mandatory: true, typicalHours: 0.35 } // Per kvm
+      { name: 'Rivning och demontering', mandatory: true, typicalHours: 2.2, perUnit: true },
+      { name: 'VVS-installation', mandatory: true, typicalHours: 2.5, perUnit: true },
+      { name: 'El-installation', mandatory: true, typicalHours: 1.5, perUnit: true },
+      { name: 'Golvläggning och tätskikt', mandatory: true, typicalHours: 1.8, perUnit: true },
+      { name: 'Väggbeklädnad', mandatory: true, typicalHours: 2.0, perUnit: true },
+      { name: 'Montering inredning', mandatory: true, typicalHours: 1.0, perUnit: true }
+    ],
+    materialCalculations: [
+      {
+        name: 'Kakel och klinker',
+        unit: 'kvm',
+        formula: 'unitQty * 2.5',
+        roundUp: true,
+        pricePerUnit: { budget: 200, standard: 400, premium: 800 }
+      },
+      {
+        name: 'VVS-artiklar',
+        unit: 'set',
+        formula: '1',
+        pricePerUnit: { budget: 8000, standard: 15000, premium: 30000 }
+      },
+      {
+        name: 'Tätskikt och fogmassa',
+        unit: 'kvm',
+        formula: 'unitQty * 1.2',
+        roundUp: true,
+        pricePerUnit: { budget: 150, standard: 250, premium: 400 }
+      }
     ],
     applicableDeduction: 'rot',
     deductionPercentage: 30,
@@ -223,11 +270,34 @@ export const JOB_REGISTRY: JobDefinition[] = [
       totalMax: 400000
     },
     standardWorkItems: [
-      { name: 'Rivning och demontering', mandatory: true, typicalHours: 2.0 },
-      { name: 'VVS-installation', mandatory: true, typicalHours: 1.8 },
-      { name: 'El-installation', mandatory: true, typicalHours: 2.0 },
-      { name: 'Montering skåp och bänkskiva', mandatory: true, typicalHours: 5.0 },
-      { name: 'Kakel backsplash', mandatory: false, typicalHours: 1.5 }
+      { name: 'Rivning befintligt kök', mandatory: true, typicalHours: 10, perUnit: false },
+      { name: 'VVS-installation', mandatory: true, typicalHours: 8, perUnit: false },
+      { name: 'El-installation', mandatory: true, typicalHours: 12, perUnit: false },
+      { name: 'Montering skåp och bänkskiva', mandatory: true, typicalHours: 16, perUnit: false },
+      { name: 'Väggbeklädning', mandatory: false, typicalHours: 8, perUnit: false },
+      { name: 'Slutbesiktning', mandatory: true, typicalHours: 4, perUnit: false }
+    ],
+    materialCalculations: [
+      {
+        name: 'Köksskåp',
+        unit: 'löpmeter',
+        formula: 'unitQty * 0.8',
+        roundUp: true,
+        pricePerUnit: { budget: 3000, standard: 6000, premium: 12000 }
+      },
+      {
+        name: 'Bänkskiva',
+        unit: 'löpmeter',
+        formula: 'unitQty * 0.8',
+        roundUp: true,
+        pricePerUnit: { budget: 1500, standard: 3000, premium: 6000 }
+      },
+      {
+        name: 'Diskho och blandare',
+        unit: 'set',
+        formula: '1',
+        pricePerUnit: { budget: 2000, standard: 4000, premium: 8000 }
+      }
     ],
     applicableDeduction: 'rot',
     deductionPercentage: 30,
@@ -283,11 +353,40 @@ export const JOB_REGISTRY: JobDefinition[] = [
       totalMax: 80000
     },
     standardWorkItems: [
-      { name: 'Förberedelse och skydd', mandatory: true, typicalHours: 0.08 }, // Per kvm
-      { name: 'Spackling och slipning', mandatory: true, typicalHours: 0.08 }, // Per kvm
-      { name: 'Grundmålning', mandatory: true, typicalHours: 0.12 }, // Per kvm
-      { name: 'Slutstrykningar', mandatory: true, typicalHours: 0.16 }, // Per kvm
-      { name: 'Städning och efterarbete', mandatory: true, typicalHours: 0.08 } // Per kvm
+      { name: 'Förberedelser och skydd', mandatory: true, typicalHours: 0.08, perUnit: true },
+      { name: 'Spackling och slipning', mandatory: true, typicalHours: 0.08, perUnit: true },
+      { name: 'Grundmålning', mandatory: false, typicalHours: 0.12, perUnit: true },
+      { name: 'Slutstrykningar', mandatory: true, typicalHours: 0.16, perUnit: true },
+      { name: 'Städning och efterarbete', mandatory: true, typicalHours: 0.08, perUnit: true }
+    ],
+    materialCalculations: [
+      {
+        name: 'Täckfärg',
+        unit: 'liter',
+        formula: 'unitQty / 6.5',
+        roundUp: true,
+        pricePerUnit: { budget: 150, standard: 250, premium: 400 }
+      },
+      {
+        name: 'Spackel',
+        unit: 'kg',
+        formula: 'unitQty * 0.15',
+        roundUp: true,
+        pricePerUnit: { budget: 80, standard: 120, premium: 200 }
+      },
+      {
+        name: 'Maskering och skyddsduk',
+        unit: 'set',
+        formula: '1',
+        pricePerUnit: { budget: 200, standard: 300, premium: 500 }
+      },
+      {
+        name: 'Grundfärg',
+        unit: 'liter',
+        formula: 'unitQty / 8',
+        roundUp: true,
+        pricePerUnit: { budget: 120, standard: 200, premium: 350 }
+      }
     ],
     applicableDeduction: 'rut',
     deductionPercentage: 50,
