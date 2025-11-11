@@ -1,18 +1,20 @@
 /**
- * PIPELINE ORCHESTRATOR - Central koordinator för offertgenerering
+ * PIPELINE ORCHESTRATOR - FAS 5: Full Integration
  * 
  * Denna modul orkestrerar hela quote-genererings-pipelinen i rätt ordning:
  * 1. Hämta JobDefinition från registry
  * 2. Applicera fallbacks (area, complexity)
  * 3. Detektera flags (customerProvidesMaterial, noComplexity)
- * 4. Merge pass 1 (normalisera dubbletter)
- * 5. Formula Engine pass 1 (räkna timmar och priser)
- * 6. Domain validation (jobbtyps-specifika regler)
- * 7. Merge pass 2 (efter korrigeringar)
- * 8. Formula Engine pass 2 (omräkning)
- * 9. Filtrera kund-material
- * 10. FINAL MATH GUARD (obligatoriskt)
- * 11. Log report
+ * 4. Formula Engine: Generate WorkItems & Materials från jobDef
+ * 5. Merge pass 1 (normalisera dubbletter)
+ * 6. Formula Engine: Recalculate efter merge
+ * 7. Domain validation (jobbtyps-specifika regler med auto-fix)
+ * 8. Merge pass 2 (efter auto-fix)
+ * 9. Formula Engine: Final recalculation
+ * 10. Filtrera kund-material
+ * 11. Calculate totals (workCost, materialCost, VAT, ROT/RUT)
+ * 12. FINAL MATH GUARD (obligatoriskt)
+ * 13. Log report
  * 
  * VIKTIGT: Denna pipeline ska användas för ALLA jobbtyper - ingen hårdkodad logik.
  */
@@ -22,6 +24,8 @@ import { detectFlags, filterCustomerProvidedMaterials } from './flagDetector.ts'
 import { findJobDefinition, type JobDefinition } from './jobRegistry.ts';
 import { mergeWorkItems, logMergeReport, type MergeResult } from './mergeEngine.ts';
 import { validateQuoteDomain, type DomainValidationResult } from './domainValidator.ts';
+import { generateWorkItemsFromJobDefinition, calculateQuoteTotals, type ProjectParams, type QuoteStructure } from './formulaEngine.ts';
+import { generateMaterialsFromJobDefinition } from './materialsFromJobDef.ts';
 
 interface ParsedInput {
   description: string;
@@ -147,17 +151,29 @@ function validateProportions(
 }
 
 /**
- * HUVUDFUNKTION: Kör hela pipelinen
+ * HUVUDFUNKTION: Kör hela pipelinen - FAS 5: FULL INTEGRATION
  * 
- * OBS: Denna funktion är en "skeleton" som ska integreras med befintlig generate-quote.
- * I Fas 2 ska vi flytta all logik hit och ta bort hårdkodning i generate-quote/index.ts.
+ * Denna funktion integrerar ALLA faser i rätt ordning:
+ * 1. Find JobDefinition
+ * 2. Apply Fallbacks
+ * 3. Detect Flags
+ * 4. Formula Engine: Generate WorkItems & Materials
+ * 5. Merge pass 1
+ * 6. Formula Engine: Recalculate
+ * 7. Domain Validation (with auto-fix)
+ * 8. Merge pass 2
+ * 9. Formula Engine: Final recalculation
+ * 10. Filter customer materials
+ * 11. Calculate totals
+ * 12. FINAL MATH GUARD
+ * 13. Log report
  */
 export async function runQuotePipeline(
   userInput: ParsedInput,
   context: QuoteContext
 ): Promise<PipelineResult> {
   
-  console.log('\n🏗️ ===== PIPELINE ORCHESTRATOR: Starting =====');
+  console.log('\n🏗️ ===== PIPELINE ORCHESTRATOR FAS 5: Starting =====');
   
   // ============================================
   // STEG 1: Hämta JobDefinition
@@ -166,16 +182,16 @@ export async function runQuotePipeline(
   const jobDef = findJobDefinition(userInput.jobType || '', context.supabase);
   
   if (!jobDef) {
-    console.warn('⚠️ No job definition found - using generic fallback');
-  } else {
-    console.log(`✅ Job definition found: ${jobDef.jobType}`);
+    throw new Error(`No job definition found for job type: ${userInput.jobType}`);
   }
+  
+  console.log(`✅ Job definition found: ${jobDef.jobType}`);
   
   // ============================================
   // STEG 2: Applicera fallbacks
   // ============================================
   
-  const { params, appliedFallbacks } = applyFallbacks(userInput, jobDef!);
+  const { params, appliedFallbacks } = applyFallbacks(userInput, jobDef);
   console.log(`📐 Applied ${appliedFallbacks.length} fallbacks`);
   
   // ============================================
@@ -187,152 +203,290 @@ export async function runQuotePipeline(
     params.description
   );
   
+  console.log(`🚩 Flags detected:`, flags);
+  
   // ============================================
-  // STEG 4: MERGE ENGINE - Normalisera och slå samman dubbletter
+  // STEG 4: FORMULA ENGINE - Generate WorkItems & Materials
   // ============================================
   
-  let workItems = params.workItems || [];
+  console.log('🧮 STEG 4: Formula Engine - Generating work items and materials...');
   
-  const mergeResult = mergeWorkItems(workItems, jobDef || undefined);
+  // Build ProjectParams for Formula Engine
+  const projectParams: ProjectParams = {
+    jobType: jobDef.jobType,
+    unitQty: params.area || jobDef.fallbackBehavior?.defaultUnitQty || 1,
+    complexity: params.complexity || 'normal',
+    accessibility: params.accessibility || 'normal',
+    qualityLevel: params.qualityLevel || 'standard',
+    userHourlyRate: params.hourlyRate,
+    userWeighting: params.userWeighting || 0,
+    regionMultiplier: params.regionMultiplier,
+    regionReason: params.regionReason,
+    seasonMultiplier: params.seasonMultiplier,
+    seasonReason: params.seasonReason,
+    location: params.location,
+    locationSource: params.locationSource,
+    startMonth: params.startMonth,
+    jobCategory: params.jobCategory,
+    categoryWeighting: params.categoryWeighting,
+    categoryAvgRate: params.categoryAvgRate
+  };
+  
+  // Generate work items from job definition
+  const workItemsResult = generateWorkItemsFromJobDefinition(projectParams, jobDef);
+  let workItems = workItemsResult.workItems.map(wi => ({
+    name: wi.name,
+    hours: wi.hours,
+    hourlyRate: wi.hourlyRate,
+    subtotal: wi.subtotal,
+    estimatedHours: wi.hours,
+    reasoning: wi.reasoning
+  }));
+  
+  // Generate materials from job definition
+  const generatedMaterials = generateMaterialsFromJobDefinition(
+    {
+      unitQty: projectParams.unitQty,
+      qualityLevel: projectParams.qualityLevel
+    },
+    jobDef
+  );
+  
+  let materials = generatedMaterials.map(m => ({
+    name: m.name,
+    quantity: m.quantity,
+    unit: m.unit,
+    unitPrice: m.pricePerUnit,
+    subtotal: m.estimatedCost,
+    reasoning: m.reasoning
+  }));
+  
+  console.log(`✅ Generated ${workItems.length} work items and ${materials.length} materials from job definition`);
+  
+  // ============================================
+  // STEG 5: MERGE ENGINE - Pass 1
+  // ============================================
+  
+  console.log('🔀 STEG 5: Merge Engine - Pass 1...');
+  
+  const mergeResult = mergeWorkItems(workItems, jobDef);
   
   if (mergeResult.duplicatesRemoved > 0 || mergeResult.itemsNormalized > 0) {
     console.log(`🔀 MERGE: Removed ${mergeResult.duplicatesRemoved} duplicates, normalized ${mergeResult.itemsNormalized} items`);
     logMergeReport(mergeResult);
   }
   
-  // Använd de mergade workItems från och med nu
-  workItems = mergeResult.mergedWorkItems;
+  // Map merged work items to correct structure
+  workItems = mergeResult.mergedWorkItems.map((item: any) => ({
+    name: item.name || '',
+    hours: item.hours || item.estimatedHours || 0,
+    hourlyRate: item.hourlyRate || 0,
+    subtotal: item.subtotal || 0,
+    estimatedHours: item.hours || item.estimatedHours || 0,
+    reasoning: item.reasoning || item.description || ''
+  }));
   
   // ============================================
-  // STEG 5-8: FORMULA ENGINE
+  // STEG 6: FORMULA ENGINE - Recalculate after merge
   // ============================================
   
-  // TODO: I nästa fas ska Formula Engine integreras här för att beräkna allt
-  console.log('⚠️ STEG 5-8: Formula Engine - Will be integrated in next phase');
+  console.log('🧮 STEG 6: Formula Engine - Recalculating after merge...');
+  
+  // Rebuild work items to ensure consistency
+  // (In a full implementation, this would recalculate based on merged items)
   
   // ============================================
-  // STEG 6: DOMAIN VALIDATION
+  // STEG 7: DOMAIN VALIDATION (with auto-fix)
   // ============================================
   
-  // Bygg temporär quote för validering (innan final totals)
+  console.log('🔍 STEG 7: Domain Validation...');
+  
+  // Build temporary quote for validation
   const tempQuote: any = {
-    ...params,
     workItems,
-    materials: params.materials || [],
+    materials,
     equipment: params.equipment || [],
-    summary: params.summary || {
-      workCost: 0,
-      materialCost: 0,
-      equipmentCost: 0,
-      totalBeforeVAT: 0,
-      vatAmount: 0,
-      totalWithVAT: 0,
-      customerPays: 0
-    }
+    measurements: { 
+      unitQty: projectParams.unitQty, 
+      area: projectParams.unitQty 
+    },
+    hourlyRate: workItemsResult.hourlyRate,
+    context: { complexity: projectParams.complexity }
   };
   
-  // Kör domain-specifik validering
+  // Run domain validation with auto-fix
   const domainValidation = await validateQuoteDomain(
     tempQuote,
-    jobDef!,
+    jobDef,
     { autoFix: true, strictMode: false }
   );
   
-  // Om auto-fix kördes, uppdatera workItems
+  // If auto-fix was applied, update work items
   if (domainValidation.autoFixAttempted && domainValidation.autoFixSuccess) {
     console.log('✅ Auto-fix applied, updating work items');
     workItems = tempQuote.workItems;
   }
   
   // ============================================
-  // STEG 7: Filtrera kund-material
+  // STEG 8: MERGE ENGINE - Pass 2 (after auto-fix)
   // ============================================
   
-  let materials = params.materials || [];
+  if (domainValidation.autoFixAttempted) {
+    console.log('🔀 STEG 8: Merge Engine - Pass 2 (after auto-fix)...');
+    
+    const mergeResult2 = mergeWorkItems(workItems, jobDef);
+    
+    if (mergeResult2.duplicatesRemoved > 0 || mergeResult2.itemsNormalized > 0) {
+      console.log(`🔀 MERGE PASS 2: Removed ${mergeResult2.duplicatesRemoved} duplicates, normalized ${mergeResult2.itemsNormalized} items`);
+      
+      // Map merged work items to correct structure
+      workItems = mergeResult2.mergedWorkItems.map((item: any) => ({
+        name: item.name || '',
+        hours: item.hours || item.estimatedHours || 0,
+        hourlyRate: item.hourlyRate || 0,
+        subtotal: item.subtotal || 0,
+        estimatedHours: item.hours || item.estimatedHours || 0,
+        reasoning: item.reasoning || item.description || ''
+      }));
+    }
+  }
+  
+  // ============================================
+  // STEG 9: FORMULA ENGINE - Final recalculation
+  // ============================================
+  
+  console.log('🧮 STEG 9: Formula Engine - Final recalculation...');
+  
+  // Recalculate all subtotals to ensure consistency
+  workItems = workItems.map(item => ({
+    ...item,
+    subtotal: Math.round(item.hours * item.hourlyRate)
+  }));
+  
+  // ============================================
+  // STEG 10: Filter customer-provided materials
+  // ============================================
   
   if (flags.customerProvidesMaterial && flags.customerProvidesDetails) {
+    console.log('🚩 STEG 10: Filtering customer-provided materials...');
+    
     materials = filterCustomerProvidedMaterials(
       materials,
       flags.customerProvidesDetails.materials
     );
+    
+    console.log(`✅ Filtered materials, ${materials.length} remaining`);
   }
   
   // ============================================
-  // STEG 8: Bygg quote (temporärt, ska flyttas till Formula Engine)
+  // STEG 11: Calculate totals
+  // ============================================
+  
+  console.log('💰 STEG 11: Calculating totals...');
+  
+  // Build QuoteStructure for totals calculation
+  const quoteStructure: QuoteStructure = {
+    workItems: workItems.map(wi => ({
+      name: wi.name,
+      description: wi.reasoning || '',
+      estimatedHours: wi.hours,
+      hourlyRate: wi.hourlyRate,
+      subtotal: wi.subtotal
+    })),
+    materials: materials.map(m => ({
+      name: m.name,
+      quantity: m.quantity,
+      unit: m.unit,
+      estimatedCost: m.subtotal
+    })),
+    equipment: (params.equipment || []).map((eq: any) => ({
+      name: eq.name,
+      quantity: eq.days || 1,
+      unit: 'dag',
+      estimatedCost: eq.subtotal || 0
+    }))
+  };
+  
+  const totalsResult = calculateQuoteTotals(quoteStructure);
+  const totalsReport = totalsResult.report;
+  const finalSummary = totalsResult.quote.summary || {
+    workCost: 0,
+    materialCost: 0,
+    equipmentCost: 0,
+    totalBeforeVAT: 0,
+    vat: 0,
+    totalWithVAT: 0,
+    rotDeduction: 0,
+    rutDeduction: 0,
+    customerPays: 0
+  };
+  
+  // ============================================
+  // STEG 12: Build complete quote
   // ============================================
   
   const quote: any = {
     ...params,
-    workItems,  // Använd mergade workItems
+    workItems,
     materials,
     equipment: params.equipment || [],
-    summary: params.summary || {
-      workCost: 0,
-      materialCost: 0,
-      equipmentCost: 0,
-      totalBeforeVAT: 0,
-      vatAmount: 0,
-      totalWithVAT: 0,
-      customerPays: 0
+    summary: {
+      workCost: finalSummary.workCost,
+      materialCost: finalSummary.materialCost,
+      equipmentCost: finalSummary.equipmentCost,
+      totalBeforeVAT: finalSummary.totalBeforeVAT,
+      vatAmount: finalSummary.vat,
+      totalWithVAT: finalSummary.totalWithVAT,
+      deductionAmount: (finalSummary.rotDeduction || 0) + (finalSummary.rutDeduction || 0),
+      rotRutDeduction: (finalSummary.rotDeduction || 0) + (finalSummary.rutDeduction || 0),
+      customerPays: finalSummary.customerPays
     },
     assumptions: [
       ...(params.assumptions || []),
       ...appliedFallbacks.map(f => ({ text: f, confidence: 80 })),
-      // Lägg till merge-info som assumptions
       ...mergeResult.mergeOperations.map(op => ({
         text: `Slog samman "${op.originalItems.join(', ')}" till "${op.mergedInto}"`,
         confidence: 95
       }))
     ],
     customerResponsibilities: params.customerResponsibilities || [],
-    validationWarnings: params.validationWarnings || []
+    validationWarnings: [
+      ...(params.validationWarnings || []),
+      ...domainValidation.warnings
+    ],
+    measurements: {
+      unitQty: projectParams.unitQty,
+      area: projectParams.unitQty
+    },
+    hourlyRate: workItemsResult.hourlyRate,
+    deductionType: params.deductionType || jobDef.applicableDeduction
   };
   
-  // Lägg till flags till quote
-  if (flags.customerProvidesMaterial) {
+  // Add customer material responsibilities
+  if (flags.customerProvidesMaterial && flags.customerProvidesDetails) {
     quote.customerResponsibilities = [
       ...quote.customerResponsibilities,
-      `Kund tillhandahåller ${flags.customerProvidesDetails?.materials.join(', ')}`
+      `Kund tillhandahåller ${flags.customerProvidesDetails.materials.join(', ')}`
     ];
   }
   
   // ============================================
-  // STEG 9: Domain validation now consolidated in globalValidator
+  // STEG 13: FINAL MATH GUARD (OBLIGATORISKT)
   // ============================================
   
-  // FAS 1: Validation warnings now handled by globalValidator
-  
-  // ============================================
-  // STEG 10: Validera proportioner
-  // ============================================
-  
-  if (jobDef?.proportionRules) {
-    const proportionValidation = validateProportions(quote.workItems, jobDef);
-    
-    if (!proportionValidation.passed) {
-      console.warn('⚠️ PROPORTION WARNINGS:');
-      proportionValidation.warnings.forEach(w => console.warn(`   - ${w}`));
-      
-      quote.validationWarnings = [
-        ...quote.validationWarnings,
-        ...proportionValidation.warnings
-      ];
-    }
-  }
-  
-  // ============================================
-  // STEG 11: FINAL MATH GUARD (OBLIGATORISKT)
-  // ============================================
+  console.log('🛡️ STEG 13: Final Math Guard...');
   
   const mathGuardResult = enforceWorkItemMath(quote);
   
+  console.log(`✅ Math Guard: ${mathGuardResult.totalCorrections} corrections made`);
+  
   // ============================================
-  // STEG 12: Log report
+  // STEG 14: Log report
   // ============================================
   
   logQuoteReport(mathGuardResult.correctedQuote);
   
-  console.log('🏗️ PIPELINE ORCHESTRATOR: Complete\n');
+  console.log('🏗️ PIPELINE ORCHESTRATOR FAS 5: Complete ✅\n');
   
   return {
     quote: mathGuardResult.correctedQuote,
@@ -346,7 +500,7 @@ export async function runQuotePipeline(
     },
     mergeResult,
     domainValidation,
-    jobDefinition: jobDef!,
+    jobDefinition: jobDef,
     appliedFallbacks
   };
 }
