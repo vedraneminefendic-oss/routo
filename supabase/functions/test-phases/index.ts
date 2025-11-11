@@ -1,5 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { runRegressionTests } from "../generate-quote/helpers/regressionTests.ts";
+import { runRegressionTests } from "./regressionTests.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
