@@ -95,61 +95,43 @@ export async function buildLayeredPrompt(
   // ============ LAGER 1: MARKNADSNIVÅ (WEBBEN - HÖGSTA PRIORITET FÖR NYA) ============
   
   const layer1_market = `
-**LAGER 1: MARKNADSNIVÅ (WEBBEN - ${marketWeighting.toFixed(0)}% vikt)**
+**FAS 6: SIMPLIFIED INTERPRETATION LAYER**
+
+**DIN UPPGIFT:**
+Tolka användarens önskemål och returnera ENDAST strukturerad data.
+Pipeline Orchestrator kommer att beräkna ALL matematik automatiskt.
+
+**RETURNERA:**
+{
+  "workItems": [
+    { "name": "Arbetsmoment", "description": "Beskrivning", "estimatedHours": 0, "hourlyRate": 0 }
+  ],
+  "materials": [
+    { "name": "Material", "quantity": 0, "unit": "st/kvm/liter", "estimatedCost": 0 }
+  ],
+  "equipment": [
+    { "name": "Utrustning", "quantity": 1, "days": 1, "pricePerDay": 0 }
+  ],
+  "assumptions": ["Lista på antaganden"],
+  "customerResponsibilities": ["Vad kunden ansvarar för"]
+}
+
+**VIKTIGT:**
+- Sätt estimatedHours och hourlyRate till 0 - Formula Engine beräknar korrekt värde
+- Sätt estimatedCost till 0 för materials och equipment
+- Fokusera på att identifiera VILKA arbetsmoment som behövs
+- Ange reasoning för varför ett moment inkluderas
+
+**ROT/RUT-regler:**
+- ROT: 30% avdrag på arbetskostnad (renovering, ombyggnad, underhåll)
+- RUT: 50% avdrag på arbetskostnad (städning, trädgård, snöröjning)
 
 ${liveSearchResult ? `
-**Live-webbsökning utförd:**
+**Marknadsinformation:**
 - Arbetstyp: ${description}
-- Tidsuppskattning: ${liveSearchResult.timeEstimate} timmar
-- Prisklass: ${liveSearchResult.priceRange.min}-${liveSearchResult.priceRange.max} kr
+- Tidsuppskattning: ${liveSearchResult.timeEstimate}h
 - Timpris: ${liveSearchResult.hourlyRate} kr/h
-- Källa: ${liveSearchResult.source}
-- Confidence: ${liveSearchResult.confidence}
-` : 'Webbaserad prisinformation från jobbdefinitioner och branschstandarder'}
-
-**ROT/RUT-regler (från Skatteverket):**
-- ROT: 30% avdrag på arbetskostnad, max 50 000 kr/år per person
-  - Gäller: Renovering, ombyggnad, tillbyggnad, underhåll i BOSTAD
-  - Gäller INTE: Nybyggnation, fritidshus som inte är permanentbostad
-- RUT: 50% avdrag på arbetskostnad, max 75 000 kr/år per person
-  - Gäller: Hushållsnära tjänster (städning, trädgård, snöröjning, flytthjälp)
-  - Gäller INTE: Arbete på annans fastighet, material, trädfällning
-
-**INSTRUKTION:** Detta är MARKNADSPRISER som ger användarna genast trovärdiga offerter.
-För denna ${jobCategory}-offert: Använd ${100 - categoryWeighting}% marknadspriser + ${categoryWeighting.toFixed(0)}% användarens ${jobCategory}-priser.
-${categoryQuotes > 0 ? `Användarens genomsnittliga timpris i ${jobCategory}: ${categoryAvgRate} kr/h (baserat på ${categoryQuotes} offerter)` : `Ny kategori för användaren - använd 100% marknadspriser`}
-
-${(() => {
-  // Hämta JobDefinition från registry
-  const jobDef = getJobDefinition(jobCategory);
-  
-  // Generera dynamiska instruktioner baserat på JobDefinition
-  return generateJobInstructions(jobDef, measurements);
-})()}
-
-**⚙️ GENERISK GUIDE:**
-
-För alla jobbtyper gäller:
-1. Använd data från Job Registry (hämtat automatiskt)
-2. Dela upp i logiska moment från standardWorkItems
-3. Följ timePerUnit och hourlyRateRange från definitionen
-4. Respektera proportionRules (max shares, min items)
-5. Formula Engine beräknar ALL matematik automatiskt
-
-**DU FÅR ALDRIG:**
-- Räkna subtotals själv (Formula Engine gör det)
-- Räkna totals, moms, ROT/RUT själv
-- Använda "totalrenovering"-standarder för enskilda moment
-- Skapa arbetsmoment som inte finns i Job Registry (utan bra skäl)
-
-**🤖 VIKTIGT FÖR AI:**
-Du får ENDAST generera strukturerad data med:
-- workItems: { name, description, estimatedHours, hourlyRate }
-- materials: { name, quantity, unit, estimatedCost }
-- equipment: { name, quantity, unit, estimatedCost }
-
-RÄKNA ALDRIG subtotals eller totals själv - Formula Engine gör det automatiskt.
-Din uppgift är att TOLKA användarens behov och skapa strukturerad data.
+` : ''}
 `;
   
   // ============ HÄMTA ANVÄNDARDATA ============

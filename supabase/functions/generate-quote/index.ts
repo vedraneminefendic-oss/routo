@@ -5048,35 +5048,112 @@ Svara med **1**, **2** eller **3** (eller "granska", "generera", "mer info")`;
       }
     }
     
-    // SPRINT 1: Parse exclusions och inclusions från konversation
-    const exclusionsForQuote = parseExclusions(actualConversationHistory);
-    const inclusionsForQuote = detectInclusions(actualConversationHistory);
-    console.log(`📋 Exclusions parsed: ${exclusionsForQuote.length}`);
+    // ============================================================================
+    // FAS 6: PIPELINE INTEGRATION - USE PIPELINE ORCHESTRATOR INSTEAD OF AI
+    // ============================================================================
     
-    // ÅTGÄRD 4C: Använd faktisk historik från DB även här
-    // FAS 20: Pass isDraft parameter from request
-    // FAS 1: Pass userId for layered prompt
-    let quote = await generateQuoteWithAI(
-      completeDescription,
-      actualConversationHistory,
-      hourlyRates || [],
-      equipmentRates || [],
-      similarQuotes,
-      learningContext,
-      finalDeductionType,
-      LOVABLE_API_KEY,
-      exclusionsForQuote,
-      previousQuote,
-      false, // includeExplanations
-      isDraft,
-      user_id // FAS 1: userId för layered prompt
+    console.log('🚀 FAS 6: Using Pipeline Orchestrator for deterministic quote generation...');
+    
+    // Import Pipeline Orchestrator
+    const { runQuotePipeline } = await import('./helpers/pipelineOrchestrator.ts');
+    
+    // 1. Interpret user input (extract structured data only)
+    const { interpretUserInput } = await import('./helpers/interpretUserInput.ts');
+    
+    let interpretation;
+    try {
+      interpretation = await interpretUserInput(
+        completeDescription,
+        actualConversationHistory,
+        LOVABLE_API_KEY
+      );
+    } catch (error) {
+      console.error('❌ Failed to interpret user input:', error);
+      // Fallback to basic extraction
+      const allText = (completeDescription + ' ' + actualConversationHistory.map((m: any) => m.content).join(' ')).toLowerCase();
+      
+      interpretation = {
+        jobType: conversationSummary?.projectType || 'målning',
+        area: parseFloat(allText.match(/(\d+(?:[.,]\d+)?)\s*(?:kvm|kvadratmeter)/i)?.[1]?.replace(',', '.') || '0') || undefined,
+        complexity: 'normal' as const,
+        accessibility: 'normal' as const,
+        qualityLevel: 'standard' as const,
+        specialRequirements: [],
+        customerProvidesMaterial: allText.includes('kunden') && (allText.includes('material') || allText.includes('tillhandahåll')),
+        customerProvidesDetails: [],
+        exclusions: [],
+        inclusions: [],
+        assumptions: ['Tolkning misslyckades - använder grundläggande extraktion'],
+        clarificationsNeeded: []
+      };
+    }
+    
+    console.log('🧠 Interpretation complete:', interpretation);
+    
+    // 2. Extract location and month for multipliers
+    const convText = (completeDescription + ' ' + actualConversationHistory.map((m: any) => m.content).join(' ')).toLowerCase();
+    const extractedLocation = interpretation.location || (convText.match(/\b(stockholm|göteborg|malmö|uppsala|västerås|örebro|linköping|helsingborg|jönköping|norrköping|lund|umeå|gävle|borås|södertälje|eskilstuna|karlstad|täby|växjö|halmstad|sundsvall|luleå|trollhättan|östersund|borlänge|falun|skövde|karlskrona|kristianstad|kalmar|vänersborg|arvika|nyköping|lidingö|landskrona|enköping|strängnäs|trelleborg|ängelholm|lidköping|katrineholm|sandviken|varberg|uddevalla|motala|kungsbacka|skellefteå|mariestad|Örnsköldsvik|ystad|huskvarna|nässjö|kiruna|åmål)\b/i)?.[0] || null);
+    
+    const extractedMonth = interpretation.startMonth || (() => {
+      const monthNamesArray = ['januari', 'februari', 'mars', 'april', 'maj', 'juni', 'juli', 'augusti', 'september', 'oktober', 'november', 'december'];
+      const monthMatchResult = convText.match(/\b(januari|februari|mars|april|maj|juni|juli|augusti|september|oktober|november|december)\b/i);
+      return monthMatchResult ? monthNamesArray.indexOf(monthMatchResult[0].toLowerCase()) + 1 : new Date().getMonth() + 1;
+    })();
+    
+    // 3. Run Pipeline Orchestrator - this handles EVERYTHING deterministically
+    const pipelineResult = await runQuotePipeline(
+      {
+        description: completeDescription,
+        conversationHistory: actualConversationHistory,
+        jobType: interpretation.jobType,
+        area: interpretation.area,
+        length: interpretation.length,
+        quantity: interpretation.quantity,
+        rooms: interpretation.rooms,
+        complexity: interpretation.complexity,
+        accessibility: interpretation.accessibility,
+        qualityLevel: interpretation.qualityLevel,
+        specialRequirements: interpretation.specialRequirements,
+        customerProvidesMaterial: interpretation.customerProvidesMaterial,
+        customerProvidesDetails: interpretation.customerProvidesDetails,
+        exclusions: interpretation.exclusions,
+        inclusions: interpretation.inclusions,
+        location: extractedLocation,
+        startMonth: extractedMonth
+      },
+      {
+        userId: user_id,
+        supabase: supabaseClient,
+        sessionId: conversation_session_id,
+        customerId: customerId,
+        hourlyRates: hourlyRates || [],
+        equipmentRates: equipmentRates || [],
+        learningContext: learningContext
+      }
     );
     
-    // ============================================================================
-    // FAS 1-2: FORMULA ENGINE INTEGRATION + SERVICEBIL
-    // ============================================================================
+    // Use the pipeline result - mathematically perfect!
+    let quote = pipelineResult.quote;
     
-    console.log('🔧 FAS 1-2: Post-processing quote with Formula Engine...');
+    // Add interpretation assumptions to quote
+    if (interpretation.assumptions && interpretation.assumptions.length > 0) {
+      quote.assumptions = [
+        ...(quote.assumptions || []),
+        ...interpretation.assumptions
+      ];
+    }
+    
+    console.log('✅ FAS 6: Pipeline Orchestrator complete');
+    console.log(`📊 Quote generated: ${quote.workItems?.length || 0} work items, ${quote.materials?.length || 0} materials`);
+    console.log(`💰 Total: ${quote.summary?.totalBeforeVAT || 0} kr (before VAT)`);
+    
+    // Log pipeline statistics
+    if (pipelineResult.corrections?.totalCorrections) {
+      console.log(`🔧 Math Guard: ${pipelineResult.corrections.totalCorrections} corrections applied`);
+    }
+    if (pipelineResult.domainValidation && !pipelineResult.domainValidation.passed) {
+      console.warn(`⚠️ Domain validation:`, pipelineResult.domainValidation.warnings);
+    }
     
     // Import Formula Engine and Global Validator
     const { calculateServiceVehicle, generateWorkItemsFromJobDefinition, calculateQuoteTotals } = await import('./helpers/formulaEngine.ts');
