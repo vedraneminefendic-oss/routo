@@ -425,6 +425,15 @@ export async function runQuotePipeline(
   // STEG 12: Build complete quote
   // ============================================
   
+  // Calculate ROT/RUT deductions based on deductionType
+  const deductionType = params.deductionType || jobDef.applicableDeduction;
+  const workCost = finalSummary.workCost || 0;
+  const rotDeduction = deductionType === 'rot' ? workCost * 0.30 : 0;
+  const rutDeduction = deductionType === 'rut' ? workCost * 0.50 : 0;
+  const totalDeduction = rotDeduction + rutDeduction;
+  const customerPays = finalSummary.customerPays || 0;
+  const customerPaysAfterDeduction = customerPays - totalDeduction;
+  
   const quote: any = {
     ...params,
     workItems,
@@ -437,9 +446,11 @@ export async function runQuotePipeline(
       totalBeforeVAT: finalSummary.totalBeforeVAT,
       vatAmount: finalSummary.vat,
       totalWithVAT: finalSummary.totalWithVAT,
-      deductionAmount: (finalSummary.rotDeduction || 0) + (finalSummary.rutDeduction || 0),
-      rotRutDeduction: (finalSummary.rotDeduction || 0) + (finalSummary.rutDeduction || 0),
-      customerPays: finalSummary.customerPays
+      deductionAmount: totalDeduction,
+      rotDeduction: rotDeduction,
+      rutDeduction: rutDeduction,
+      rotRutDeduction: totalDeduction,
+      customerPays: customerPaysAfterDeduction > 0 ? customerPaysAfterDeduction : customerPays
     },
     assumptions: [
       ...(params.assumptions || []),
