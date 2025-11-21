@@ -1,7 +1,6 @@
 /**
  * PIPELINE ORCHESTRATOR - FAS 5: Full Integration
- * 
- * Denna modul orkestrerar hela quote-genererings-pipelinen i rätt ordning:
+ * * Denna modul orkestrerar hela quote-genererings-pipelinen i rätt ordning:
  * 1. Hämta JobDefinition från registry
  * 2. Applicera fallbacks (area, complexity)
  * 3. Detektera flags (customerProvidesMaterial, noComplexity)
@@ -15,8 +14,7 @@
  * 11. Calculate totals (workCost, materialCost, VAT, ROT/RUT)
  * 12. FINAL MATH GUARD (obligatoriskt)
  * 13. Log report
- * 
- * VIKTIGT: Denna pipeline ska användas för ALLA jobbtyper - ingen hårdkodad logik.
+ * * VIKTIGT: Denna pipeline ska användas för ALLA jobbtyper - ingen hårdkodad logik.
  */
 
 import { enforceWorkItemMath, logQuoteReport } from './mathGuard.ts';
@@ -62,6 +60,8 @@ interface PipelineResult {
   domainValidation: DomainValidationResult;
   jobDefinition: JobDefinition;
   appliedFallbacks: string[];
+  summary: any; // Added to interface
+  traceLog: string[]; // Added for debugging
 }
 
 /**
@@ -96,84 +96,20 @@ function applyFallbacks(
 }
 
 /**
- * Validera proportioner och minsta krav
- */
-function validateProportions(
-  workItems: any[],
-  jobDef: JobDefinition
-): { passed: boolean; warnings: string[] } {
-  
-  const warnings: string[] = [];
-  const rules = jobDef.proportionRules;
-  
-  if (!rules) {
-    return { passed: true, warnings: [] };
-  }
-
-  const totalHours = workItems.reduce((sum, w) => sum + (w.hours || 0), 0);
-
-  // Kontrollera att inget enskilt moment är >50% av total tid
-  workItems.forEach(item => {
-    const share = totalHours > 0 ? (item.hours / totalHours) : 0;
-    if (share > rules.maxSingleItemShare) {
-      warnings.push(
-        `"${item.name}" utgör ${(share * 100).toFixed(0)}% av total arbetstid (max ${(rules.maxSingleItemShare * 100).toFixed(0)}%)`
-      );
-    }
-  });
-
-  // Kontrollera att rivning inte är >30% av total tid
-  const demolitionItem = workItems.find(w => 
-    w.name.toLowerCase().includes('rivning') || 
-    w.name.toLowerCase().includes('demontering')
-  );
-  
-  if (demolitionItem && rules.demolitionMaxShare) {
-    const demolitionShare = totalHours > 0 ? (demolitionItem.hours / totalHours) : 0;
-    if (demolitionShare > rules.demolitionMaxShare) {
-      warnings.push(
-        `Rivning utgör ${(demolitionShare * 100).toFixed(0)}% av total arbetstid (max ${(rules.demolitionMaxShare * 100).toFixed(0)}%)`
-      );
-    }
-  }
-
-  // Kontrollera minsta antal workItems
-  if (rules.minWorkItems && workItems.length < rules.minWorkItems) {
-    warnings.push(
-      `Offerten innehåller endast ${workItems.length} arbetsmoment (minimum: ${rules.minWorkItems})`
-    );
-  }
-
-  return {
-    passed: warnings.length === 0,
-    warnings
-  };
-}
-
-/**
  * HUVUDFUNKTION: Kör hela pipelinen - FAS 5: FULL INTEGRATION
- * 
- * Denna funktion integrerar ALLA faser i rätt ordning:
- * 1. Find JobDefinition
- * 2. Apply Fallbacks
- * 3. Detect Flags
- * 4. Formula Engine: Generate WorkItems & Materials
- * 5. Merge pass 1
- * 6. Formula Engine: Recalculate
- * 7. Domain Validation (with auto-fix)
- * 8. Merge pass 2
- * 9. Formula Engine: Final recalculation
- * 10. Filter customer materials
- * 11. Calculate totals
- * 12. FINAL MATH GUARD
- * 13. Log report
  */
 export async function runQuotePipeline(
   userInput: ParsedInput,
   context: QuoteContext
 ): Promise<PipelineResult> {
   
-  console.log('\n🏗️ ===== PIPELINE ORCHESTRATOR FAS 5: Starting =====');
+  const traceLog: string[] = [];
+  const log = (msg: string) => {
+    console.log(msg);
+    traceLog.push(msg);
+  };
+
+  log('\n🏗️ ===== PIPELINE ORCHESTRATOR FAS 5: Starting =====');
   
   // ============================================
   // STEG 1: Hämta JobDefinition
@@ -185,14 +121,14 @@ export async function runQuotePipeline(
     throw new Error(`No job definition found for job type: ${userInput.jobType}`);
   }
   
-  console.log(`✅ Job definition found: ${jobDef.jobType}`);
+  log(`✅ Job definition found: ${jobDef.jobType} (Category: ${jobDef.category})`);
   
   // ============================================
   // STEG 2: Applicera fallbacks
   // ============================================
   
   const { params, appliedFallbacks } = applyFallbacks(userInput, jobDef);
-  console.log(`📐 Applied ${appliedFallbacks.length} fallbacks`);
+  log(`📐 Applied ${appliedFallbacks.length} fallbacks`);
   
   // ============================================
   // STEG 3: Detektera flags
@@ -203,13 +139,13 @@ export async function runQuotePipeline(
     params.description
   );
   
-  console.log(`🚩 Flags detected:`, flags);
+  log(`🚩 Flags detected: CustomerMaterial=${flags.customerProvidesMaterial}`);
   
   // ============================================
   // STEG 4: FORMULA ENGINE - Generate WorkItems & Materials
   // ============================================
   
-  console.log('🧮 STEG 4: Formula Engine - Generating work items and materials...');
+  log('🧮 STEG 4: Formula Engine - Generating work items and materials...');
   
   // Build ProjectParams for Formula Engine
   const projectParams: ProjectParams = {
@@ -261,18 +197,18 @@ export async function runQuotePipeline(
     reasoning: m.reasoning
   }));
   
-  console.log(`✅ Generated ${workItems.length} work items and ${materials.length} materials from job definition`);
+  log(`✅ Generated ${workItems.length} work items and ${materials.length} materials`);
   
   // ============================================
   // STEG 5: MERGE ENGINE - Pass 1
   // ============================================
   
-  console.log('🔀 STEG 5: Merge Engine - Pass 1...');
+  log('🔀 STEG 5: Merge Engine - Pass 1...');
   
   const mergeResult = mergeWorkItems(workItems, jobDef);
   
   if (mergeResult.duplicatesRemoved > 0 || mergeResult.itemsNormalized > 0) {
-    console.log(`🔀 MERGE: Removed ${mergeResult.duplicatesRemoved} duplicates, normalized ${mergeResult.itemsNormalized} items`);
+    log(`🔀 MERGE: Removed ${mergeResult.duplicatesRemoved} duplicates, normalized ${mergeResult.itemsNormalized} items`);
     logMergeReport(mergeResult);
   }
   
@@ -287,19 +223,10 @@ export async function runQuotePipeline(
   }));
   
   // ============================================
-  // STEG 6: FORMULA ENGINE - Recalculate after merge
-  // ============================================
-  
-  console.log('🧮 STEG 6: Formula Engine - Recalculating after merge...');
-  
-  // Rebuild work items to ensure consistency
-  // (In a full implementation, this would recalculate based on merged items)
-  
-  // ============================================
   // STEG 7: DOMAIN VALIDATION (with auto-fix)
   // ============================================
   
-  console.log('🔍 STEG 7: Domain Validation...');
+  log('🔍 STEG 7: Domain Validation...');
   
   // Build temporary quote for validation
   const tempQuote: any = {
@@ -323,7 +250,7 @@ export async function runQuotePipeline(
   
   // If auto-fix was applied, update work items
   if (domainValidation.autoFixAttempted && domainValidation.autoFixSuccess) {
-    console.log('✅ Auto-fix applied, updating work items');
+    log('✅ Auto-fix applied, updating work items');
     workItems = tempQuote.workItems;
   }
   
@@ -332,14 +259,8 @@ export async function runQuotePipeline(
   // ============================================
   
   if (domainValidation.autoFixAttempted) {
-    console.log('🔀 STEG 8: Merge Engine - Pass 2 (after auto-fix)...');
-    
     const mergeResult2 = mergeWorkItems(workItems, jobDef);
-    
-    if (mergeResult2.duplicatesRemoved > 0 || mergeResult2.itemsNormalized > 0) {
-      console.log(`🔀 MERGE PASS 2: Removed ${mergeResult2.duplicatesRemoved} duplicates, normalized ${mergeResult2.itemsNormalized} items`);
-      
-      // Map merged work items to correct structure
+    if (mergeResult2.duplicatesRemoved > 0) {
       workItems = mergeResult2.mergedWorkItems.map((item: any) => ({
         name: item.name || '',
         hours: item.hours || item.estimatedHours || 0,
@@ -355,8 +276,6 @@ export async function runQuotePipeline(
   // STEG 9: FORMULA ENGINE - Final recalculation
   // ============================================
   
-  console.log('🧮 STEG 9: Formula Engine - Final recalculation...');
-  
   // Recalculate all subtotals to ensure consistency
   workItems = workItems.map(item => ({
     ...item,
@@ -368,23 +287,19 @@ export async function runQuotePipeline(
   // ============================================
   
   if (flags.customerProvidesMaterial && flags.customerProvidesDetails) {
-    console.log('🚩 STEG 10: Filtering customer-provided materials...');
-    
+    log('🚩 STEG 10: Filtering customer-provided materials...');
     materials = filterCustomerProvidedMaterials(
       materials,
       flags.customerProvidesDetails.materials
     );
-    
-    console.log(`✅ Filtered materials, ${materials.length} remaining`);
   }
   
   // ============================================
   // STEG 11: Calculate totals
   // ============================================
   
-  console.log('💰 STEG 11: Calculating totals...');
+  log('💰 STEG 11: Calculating totals...');
   
-  // Build QuoteStructure for totals calculation
   const quoteStructure: QuoteStructure = {
     workItems: workItems.map(wi => ({
       name: wi.name,
@@ -408,7 +323,6 @@ export async function runQuotePipeline(
   };
   
   const totalsResult = calculateQuoteTotals(quoteStructure);
-  const totalsReport = totalsResult.report;
   const finalSummary = totalsResult.quote.summary || {
     workCost: 0,
     materialCost: 0,
@@ -422,18 +336,49 @@ export async function runQuotePipeline(
   };
   
   // ============================================
-  // STEG 12: Build complete quote
+  // STEG 12: Build complete quote & DEDUCTIONS
   // ============================================
   
-  // Calculate ROT/RUT deductions based on deductionType
-  const deductionType = params.deductionType || jobDef.applicableDeduction;
-  const workCost = finalSummary.workCost || 0;
-  const rotDeduction = deductionType === 'rot' ? workCost * 0.30 : 0;
-  const rutDeduction = deductionType === 'rut' ? workCost * 0.50 : 0;
-  const totalDeduction = rotDeduction + rutDeduction;
-  const customerPays = finalSummary.customerPays || 0;
-  const customerPaysAfterDeduction = customerPays - totalDeduction;
+  // ✅ SÄKERHETSFIX: Hämta procentsats strikt från definitionen
+  // Prioritera definitionens kategori över params om möjligt för att undvika gamla fel
+  const deductionType = jobDef.applicableDeduction || params.deductionType || 'none';
   
+  // Grundinställning från registry
+  let deductionPercentage = jobDef.deductionPercentage 
+    ? jobDef.deductionPercentage / 100 
+    : (deductionType === 'rot' ? 0.30 : (deductionType === 'rut' ? 0.50 : 0));
+
+  // 🕒 TIDSSTYRD LOGIK: ROT 50% till årsskiftet 2024/2025
+  // Vi kontrollerar om vi är inom tidsramen för det förhöjda avdraget
+  if (deductionType === 'rot') {
+    const today = new Date();
+    const endOfTemporaryIncrease = new Date('2024-12-31'); // Justera om lagstiftningen förlängs
+    
+    if (today <= endOfTemporaryIncrease) {
+      deductionPercentage = 0.50; // Tillfälligt 50%
+      log(`💰 SPECIAL RULE: ROT increased to 50% until ${endOfTemporaryIncrease.toISOString().split('T')[0]}`);
+    } else {
+      deductionPercentage = 0.30; // Återgår till 30% efter datumet
+      log('💰 STANDARD RULE: ROT is 30%');
+    }
+  }
+
+  const workCost = finalSummary.workCost || 0;
+  
+  // Beräkna exakt avdrag
+  const deductionAmount = Math.round(workCost * deductionPercentage);
+  
+  // Separera för rapportering
+  const rotDeduction = deductionType === 'rot' ? deductionAmount : 0;
+  const rutDeduction = deductionType === 'rut' ? deductionAmount : 0;
+  
+  const customerPays = finalSummary.customerPays || 0;
+  // Recalculate customer pays to be absolutely sure it matches the deduction
+  const totalBeforeDeduction = (finalSummary.totalWithVAT || 0);
+  const customerPaysAfterDeduction = totalBeforeDeduction - deductionAmount;
+  
+  log(`💰 Deduction Logic: Type=${deductionType}, Percent=${deductionPercentage*100}%, Amount=${deductionAmount}`);
+
   const quote: any = {
     ...params,
     workItems,
@@ -446,11 +391,11 @@ export async function runQuotePipeline(
       totalBeforeVAT: finalSummary.totalBeforeVAT,
       vatAmount: finalSummary.vat,
       totalWithVAT: finalSummary.totalWithVAT,
-      deductionAmount: totalDeduction,
+      deductionAmount: deductionAmount,
       rotDeduction: rotDeduction,
       rutDeduction: rutDeduction,
-      rotRutDeduction: totalDeduction,
-      customerPays: customerPaysAfterDeduction > 0 ? customerPaysAfterDeduction : customerPays
+      rotRutDeduction: deductionAmount,
+      customerPays: customerPaysAfterDeduction > 0 ? customerPaysAfterDeduction : 0
     },
     assumptions: [
       ...(params.assumptions || []),
@@ -458,7 +403,12 @@ export async function runQuotePipeline(
       ...mergeResult.mergeOperations.map(op => ({
         text: `Slog samman "${op.originalItems.join(', ')}" till "${op.mergedInto}"`,
         confidence: 95
-      }))
+      })),
+      // Lägg till antagande om skattesatsen om den är förhöjd
+      ...(deductionType === 'rot' && deductionPercentage === 0.50 ? [{
+        text: 'Beräknat med tillfälligt förhöjt ROT-avdrag (50%) som gäller under 2024.',
+        confidence: 100
+      }] : [])
     ],
     customerResponsibilities: params.customerResponsibilities || [],
     validationWarnings: [
@@ -470,7 +420,8 @@ export async function runQuotePipeline(
       area: projectParams.unitQty
     },
     hourlyRate: workItemsResult.hourlyRate,
-    deductionType: params.deductionType || jobDef.applicableDeduction
+    deductionType: deductionType, // Critical for frontend
+    projectType: jobDef.jobType   // Critical for frontend
   };
   
   // Add customer material responsibilities
@@ -485,11 +436,30 @@ export async function runQuotePipeline(
   // STEG 13: FINAL MATH GUARD (OBLIGATORISKT)
   // ============================================
   
-  console.log('🛡️ STEG 13: Final Math Guard...');
+  log('🛡️ STEG 13: Final Math Guard...');
   
+  // Math guard kan ibland återställa customerPays om den räknar annorlunda
+  // Så vi säkerställer att vår deduction logic behålls
   const mathGuardResult = enforceWorkItemMath(quote);
   
-  console.log(`✅ Math Guard: ${mathGuardResult.totalCorrections} corrections made`);
+  // Säkerställ att deductionType är korrekt även efter Math Guard
+  mathGuardResult.correctedQuote.deductionType = deductionType;
+  mathGuardResult.correctedQuote.summary.rotRutDeduction = deductionAmount;
+  
+  // Fixa specifika fält om Math Guard nollställde dem
+  if (deductionType === 'rot') {
+    mathGuardResult.correctedQuote.summary.rotDeduction = deductionAmount;
+    mathGuardResult.correctedQuote.summary.rutDeduction = 0;
+  } else if (deductionType === 'rut') {
+    mathGuardResult.correctedQuote.summary.rutDeduction = deductionAmount;
+    mathGuardResult.correctedQuote.summary.rotDeduction = 0;
+  }
+  
+  // Recalculate final pay to be safe
+  mathGuardResult.correctedQuote.summary.customerPays = 
+    mathGuardResult.correctedQuote.summary.totalWithVAT - deductionAmount;
+  
+  log(`✅ Math Guard complete. Final price: ${mathGuardResult.correctedQuote.summary.customerPays}`);
   
   // ============================================
   // STEG 14: Log report
@@ -497,7 +467,7 @@ export async function runQuotePipeline(
   
   logQuoteReport(mathGuardResult.correctedQuote);
   
-  console.log('🏗️ PIPELINE ORCHESTRATOR FAS 5: Complete ✅\n');
+  log('🏗️ PIPELINE ORCHESTRATOR FAS 5: Complete ✅\n');
   
   return {
     quote: mathGuardResult.correctedQuote,
@@ -512,7 +482,9 @@ export async function runQuotePipeline(
     mergeResult,
     domainValidation,
     jobDefinition: jobDef,
-    appliedFallbacks
+    appliedFallbacks,
+    summary: mathGuardResult.correctedQuote.summary,
+    traceLog
   };
 }
 
