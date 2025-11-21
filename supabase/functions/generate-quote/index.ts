@@ -5430,7 +5430,7 @@ Svara med **1**, **2** eller **3** (eller "granska", "generera", "mer info")`;
     
     // Recalculate totals using Formula Engine
     console.log('💰 Recalculating totals with Formula Engine...');
-    const { quote: totalizedQuote1 } = calculateQuoteTotals(quote, deductionType);
+    const { quote: totalizedQuote1 } = computeQuoteTotals(quote, hourlyRates || [], equipmentRates || []);
     quote = totalizedQuote1;
     
     const timeValidation = validateQuoteTimeEstimates(quote, measurementsForValidation, detectionResult.projectType);
@@ -5452,7 +5452,7 @@ Svara med **1**, **2** eller **3** (eller "granska", "generera", "mer info")`;
           });
           
           // Re-calculate totals with Formula Engine
-          const { quote: totalizedQuote2 } = calculateQuoteTotals(quote, deductionType);
+          const { quote: totalizedQuote2 } = computeQuoteTotals(quote, hourlyRates || [], equipmentRates || []);
           quote = totalizedQuote2;
           console.log('💰 Totals recalculated after time corrections');
         }
@@ -5574,7 +5574,7 @@ Svara med **1**, **2** eller **3** (eller "granska", "generera", "mer info")`;
       // Om sanity-korrigeringar gjordes, räkna om totaler med Formula Engine
       if (sanityCorrectionsMade) {
         console.log('💰 Recalculating totals after sanity corrections...');
-        const { quote: totalizedQuote3 } = calculateQuoteTotals(quote, deductionType);
+        const { quote: totalizedQuote3 } = computeQuoteTotals(quote, hourlyRates || [], equipmentRates || []);
         quote = totalizedQuote3;
       }
       
@@ -5689,7 +5689,7 @@ Svara med **1**, **2** eller **3** (eller "granska", "generera", "mer info")`;
       console.log(`✅ P0: Forced ${forcedCorrections} corrections to match industry standards`);
       
       // Re-calculate totals with Formula Engine
-      const { quote: totalizedQuote4 } = calculateQuoteTotals(quote, deductionType);
+      const { quote: totalizedQuote4 } = computeQuoteTotals(quote, hourlyRates || [], equipmentRates || []);
       quote = totalizedQuote4;
       console.log('💰 Totals recalculated after P0 forced corrections');
     } else {
