@@ -5054,8 +5054,16 @@ Svara med **1**, **2** eller **3** (eller "granska", "generera", "mer info")`;
     
     console.log('🚀 FAS 6: Using Pipeline Orchestrator for deterministic quote generation...');
     
-    // Import Pipeline Orchestrator
+    // Import Pipeline Orchestrator and Job Registry
     const { runQuotePipeline } = await import('./helpers/pipelineOrchestrator.ts');
+    const { findJobDefinition } = await import('./helpers/jobRegistry.ts');
+    
+    // 0. Find job definition to get required fields (BEFORE interpretation)
+    const preliminaryJobType = conversationSummary?.projectType || conversationSummary?.workType || 'målning';
+    const jobDefForValidation = findJobDefinition(preliminaryJobType);
+    const requiredFields = jobDefForValidation?.requiredInput || [];
+    
+    console.log(`🔍 Required fields for ${preliminaryJobType}: ${requiredFields.join(', ') || 'none'}`);
     
     // 1. Interpret user input (extract structured data only)
     const { interpretUserInput } = await import('./helpers/interpretUserInput.ts');
@@ -5065,7 +5073,8 @@ Svara med **1**, **2** eller **3** (eller "granska", "generera", "mer info")`;
       interpretation = await interpretUserInput(
         completeDescription,
         actualConversationHistory,
-        LOVABLE_API_KEY
+        LOVABLE_API_KEY,
+        requiredFields
       );
     } catch (error) {
       console.error('❌ Failed to interpret user input:', error);
@@ -5084,11 +5093,26 @@ Svara med **1**, **2** eller **3** (eller "granska", "generera", "mer info")`;
         exclusions: [],
         inclusions: [],
         assumptions: ['Tolkning misslyckades - använder grundläggande extraktion'],
-        clarificationsNeeded: []
+        clarificationsNeeded: [],
+        missingCriticalInfo: true
       };
     }
     
     console.log('🧠 Interpretation complete:', interpretation);
+    
+    // INTERROGATION MODE: Check if critical info is missing
+    if (interpretation.missingCriticalInfo && interpretation.clarificationsNeeded.length > 0) {
+      console.log('🛑 Missing critical info, returning questions to user');
+      return new Response(JSON.stringify({
+        type: 'clarification_request',
+        message: interpretation.clarificationsNeeded[0],
+        questions: interpretation.clarificationsNeeded,
+        interpretation: interpretation
+      }), { 
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        status: 200
+      });
+    }
     
     // 2. Extract location and month for multipliers
     const convText = (completeDescription + ' ' + actualConversationHistory.map((m: any) => m.content).join(' ')).toLowerCase();

@@ -6,6 +6,9 @@ export interface JobDefinition {
   jobType: string;
   category: 'rot' | 'rut' | 'none';
   
+  // Obligatorisk input för att generera offert (optional för bakåtkompatibilitet)
+  requiredInput?: string[];  // t.ex. ['area', 'complexity'] eller ['jobType']
+  
   // Universella dimensioner (OBLIGATORISKA)
   unitType: 'kvm' | 'lm' | 'st' | 'tim';
   
@@ -169,6 +172,7 @@ export const JOB_REGISTRY: JobDefinition[] = [
   {
     jobType: 'badrum',
     category: 'rot',
+    requiredInput: ['area', 'complexity'],
     unitType: 'kvm',
     timePerUnit: { simple: 35, normal: 50, complex: 70 },
     multipliers: {
@@ -249,6 +253,7 @@ export const JOB_REGISTRY: JobDefinition[] = [
   {
     jobType: 'kök',
     category: 'rot',
+    requiredInput: ['area', 'complexity'],
     unitType: 'kvm',
     timePerUnit: { simple: 80, normal: 120, complex: 180 },
     multipliers: {
@@ -332,6 +337,7 @@ export const JOB_REGISTRY: JobDefinition[] = [
   {
     jobType: 'målning',
     category: 'rut',
+    requiredInput: ['area', 'complexity'],
     unitType: 'kvm',
     timePerUnit: { simple: 0.3, normal: 0.4, complex: 0.6 },
     multipliers: {
@@ -1492,6 +1498,7 @@ export const JOB_REGISTRY: JobDefinition[] = [
   {
     jobType: 'ai_driven',
     category: 'none',
+    requiredInput: ['jobType'],
     unitType: 'tim',
     timePerUnit: { simple: 0.8, normal: 1.0, complex: 1.3 },
     multipliers: {
