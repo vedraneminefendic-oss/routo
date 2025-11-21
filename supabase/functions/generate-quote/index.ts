@@ -5195,154 +5195,7 @@ Svara med **1**, **2** eller **3** (eller "granska", "generera", "mer info")`;
     }
 
     // ============================================
-    // ÅTGÄRD 2B: VALIDATE QUOTE SUMMARY
-    // ============================================
-    
-    function validateQuoteSummary(quote: any): { valid: boolean; issues: string[] } {
-      const issues: string[] = [];
-      
-      if (!quote.summary) {
-        issues.push('Quote missing summary object');
-        return { valid: false, issues };
-      }
-      
-      const requiredFields = [
-        'totalBeforeVAT', 'workCost', 'materialCost', 
-        'vatAmount', 'totalWithVAT', 'customerPays'
-      ];
-      
-      const missingFields = requiredFields.filter(field => 
-        quote.summary[field] === undefined || 
-        quote.summary[field] === null
-      );
-      
-      if (missingFields.length > 0) {
-        issues.push(`Summary missing fields: ${missingFields.join(', ')}`);
-      }
-      
-      // Validera att värden är nummer och inte NaN
-      requiredFields.forEach(field => {
-        if (quote.summary[field] !== undefined && 
-            (typeof quote.summary[field] !== 'number' || isNaN(quote.summary[field]))) {
-          issues.push(`Summary field ${field} is not a valid number: ${quote.summary[field]}`);
-        }
-      });
-      
-      return { valid: issues.length === 0, issues };
-    }
-
-    const summaryValidation = validateQuoteSummary(quote);
-    
-    if (!summaryValidation.valid) {
-      console.error('❌ Quote summary validation failed:', summaryValidation.issues);
-      console.error('Current summary:', quote.summary);
-      
-      // Fallback: Beräkna värden från items
-      console.log('⚠️ Attempting to rebuild summary from items...');
-      
-      const totalWork = quote.workItems?.reduce((sum: number, item: any) => 
-        sum + (item.subtotal || 0), 0
-      ) || 0;
-      
-      const totalMaterial = quote.materials?.reduce((sum: number, item: any) => 
-        sum + (item.subtotal || 0), 0
-      ) || 0;
-      
-      const totalEquipment = quote.equipment?.reduce((sum: number, item: any) => 
-        sum + (item.subtotal || 0), 0
-      ) || 0;
-      
-      const totalBeforeVAT = totalWork + totalMaterial + totalEquipment;
-      const vatAmount = totalBeforeVAT * 0.25;
-      const totalWithVAT = totalBeforeVAT * 1.25;
-      
-      quote.summary = {
-        workCost: totalWork,
-        materialCost: totalMaterial,
-        equipmentCost: totalEquipment,
-        totalBeforeVAT: totalBeforeVAT,
-        vatAmount: vatAmount,
-        totalWithVAT: totalWithVAT,
-        customerPays: totalWithVAT
-      };
-      
-      console.log('✅ Summary rebuilt:', quote.summary);
-    }
-
-    // ============================================
-    // FAS 1: IMPROVED VALIDATION ORDER - Project intent & conversation validation FIRST
-    // ============================================
-    
-    console.log('🔍 Validating quote for hallucinations...');
-    const mentionedItems = extractMentionedItems(conversation_history);
-    const hallucinationCheck = validateGeneratedQuote(quote, mentionedItems, conversation_history);
-    
-    if (hallucinationCheck.warnings.length > 0) {
-      console.log('⚠️ Hallucination warnings:', hallucinationCheck.warnings);
-    }
-    
-    // FAS 5: Detect project intent first
-    const projectIntent = detectProjectIntent(completeDescription, conversation_history.map(m => m.content));
-    
-    // FAS 6: Log project intent analysis
-    console.log('🧠 PROJECT INTENT ANALYSIS', {
-      scope: projectIntent.scope,
-      quality: projectIntent.quality,
-      urgency: projectIntent.urgency,
-      explicitInclusions: projectIntent.explicitInclusions,
-      explicitExclusions: projectIntent.explicitExclusions
-    });
-    
-    // FAS 5: Smart project detection with fallback hierarchy
-    const conversationContext = conversation_history.map(m => m.content);
-    const detectionResult = detectProjectTypeAdvanced(completeDescription, conversationContext);
-    
-    console.log(`🎯 FAS 5: Project Detection Result:`, {
-      level: detectionResult.level,
-      projectType: detectionResult.projectType,
-      category: detectionResult.category,
-      confidence: `${(detectionResult.confidence * 100).toFixed(0)}%`,
-      matchedKeywords: detectionResult.matchedKeywords,
-      suggestedMoments: detectionResult.suggestedMoments
-    });
-    
-    // FAS 1 & 5: Validate quote against conversation with project type and intent
-    const detectedProjectForValidation = detectProjectType(completeDescription);
-    
-    console.log('🔍 Validating quote against conversation with AI learning...');
-    const conversationValidation = await validateQuoteAgainstConversation(
-      quote,
-      conversation_history,
-      description,
-      detectedProjectForValidation?.projectType || null,
-      user_id,
-      LOVABLE_API_KEY,
-      supabaseClient
-    );
-    
-    // FAS 6: Log protected items
-    if (detectedProjectForValidation) {
-      const protectedItems = getProtectedItemsForProjectType(detectedProjectForValidation.projectType);
-      console.log('🔒 PROTECTED ITEMS', {
-        projectType: detectedProjectForValidation.projectType,
-        protectedByStandard: protectedItems,
-        protectedByExplicitMention: projectIntent.explicitInclusions,
-        totalProtected: [...protectedItems, ...projectIntent.explicitInclusions]
-      });
-    }
-    
-    if (!conversationValidation.isValid) {
-      console.log(`⚠️ Removed ${conversationValidation.unmentionedItems.length} unmentioned items:`);
-      conversationValidation.unmentionedItems.forEach(item => console.log(`  - ${item}`));
-    }
-    
-    // FAS 1 & 6: Log warnings for protected items
-    if (conversationValidation.warnings.length > 0) {
-      console.log('⚠️ Validation warnings:', conversationValidation.warnings);
-    }
-
-    // ============================================
-    // STEP 6.5: CALCULATE CONFIDENCE SCORE (FÖRBÄTTRING #5)
+    // CALCULATE CONFIDENCE SCORE
     // ============================================
     
     console.log('📊 Calculating confidence score...');
@@ -5361,609 +5214,30 @@ Svara med **1**, **2** eller **3** (eller "granska", "generera", "mer info")`;
     }
 
     // ============================================
-    // STEP 6.6: VALIDATE REALISM (FÖRBÄTTRING #9)
+    // FAS 6B: CLEAN POST-PIPELINE LOGIC
     // ============================================
+    // Pipeline Orchestrator has already done:
+    // - Merge Engine (slår ihop dubbletter)
+    // - Formula Engine (beräknar allt korrekt)
+    // - Domain Validation (validerar mot jobbtyps-regler)
+    // - Math Guard (verifierar matematik)
+    // - ROT/RUT calculations
     
-    // ============================================
-    // PROPOSAL 1: VALIDATE TIME ESTIMATES AGAINST INDUSTRY STANDARDS
-    // ============================================
-    
-    console.log('⏱️ Validating time estimates against industry standards...');
-    
-    // Enhanced measurement extraction (supporting multiple formats including m², m^2, kvadrat m)
-    const allTextForValidation = (completeDescription + ' ' + actualConversationHistory.map((m: any) => m.content).join(' ')).toLowerCase();
-    
-    console.log('🔍 Parsing measurements from context');
-    
-    // Area extraction with multiple patterns (including m², m^2, kvadrat m, kvm2)
-    const areaPattern = /(\d+(?:[.,]\d+)?)\s*(?:kvm|kvadratmeter|kvadrat\s*m?|m2|m²|m\^2|kvm2)\b/i;
-    const areaMatch = allTextForValidation.match(areaPattern);
-    const area = areaMatch ? parseFloat(areaMatch[1].replace(',', '.')) : undefined;
-    if (areaMatch) {
-      console.log('✅ Area extracted:', area, 'kvm (matched:', areaMatch[0], ')');
-    }
-    
-    // Length extraction (including lm, lpm, löpm)
-    const lengthPattern = /(\d+(?:[.,]\d+)?)\s*(?:meter|lm|lpm|löpm|m)\b/i;
-    const lengthMatch = allTextForValidation.match(lengthPattern);
-    const length = (lengthMatch && !areaMatch) ? parseFloat(lengthMatch[1].replace(',', '.')) : undefined;
-    if (lengthMatch && !areaMatch) {
-      console.log('✅ Length extracted:', length, 'meter (matched:', lengthMatch[0], ')');
-    }
-    
-    const quantityMatchValidation = allTextForValidation.match(/(\d+)\s*(?:st|styck|stycken|träd)/i);
-    const roomsMatchValidation = allTextForValidation.match(/(\d+)\s*(?:rum|sovrum)/i);
-    
-    const measurementsForValidation = {
-      area,
-      length,
-      quantity: quantityMatchValidation ? parseInt(quantityMatchValidation[1]) : undefined,
-      rooms: roomsMatchValidation ? parseInt(roomsMatchValidation[1]) : undefined
-    };
-    
-    console.log('📐 Final measurements for validation:', measurementsForValidation);
+    console.log('✅ FAS 6B: Pipeline complete - applying final post-processing');
     
     // ============================================
-    // FIX-HOURS-V4: SPLIT COMBINED ITEMS (e.g., "Kakel och klinker")
-    // ============================================
-    
-    console.log('✂️ Splitting combined items (e.g., "Kakel och klinker")...');
-    const { splitCombinedItems } = await import('./helpers/splitCombinedItems.ts');
-    quote = splitCombinedItems(quote, measurementsForValidation, detectionResult.projectType);
-    
-    // ============================================
-    // FAS 2: NORMALIZE AND MERGE DUPLICATE WORK ITEMS
-    // ============================================
-    
-    console.log('🔍 Normalizing and merging duplicate work items...');
-    console.log('🎯 Using project type from advanced detection:', detectionResult.projectType);
-    const { normalizeAndMergeDuplicates } = await import('./helpers/duplicateManager.ts');
-    quote = normalizeAndMergeDuplicates(quote, measurementsForValidation, detectionResult.projectType);
-    
-    // ============================================
-    // FIX-HOURS-V5: OVERLAP ADJUSTMENTS (e.g., el-installation - golvvärme)
-    // ============================================
-    
-    console.log('🔗 Checking for overlap adjustments (e.g., el vs golvvärme)...');
-    const { applyOverlapAdjustments } = await import('./helpers/relations.ts');
-    quote = applyOverlapAdjustments(quote, measurementsForValidation, detectionResult.projectType);
-    
-    // Recalculate totals using Formula Engine
-    console.log('💰 Recalculating totals with Formula Engine...');
-    const { quote: totalizedQuote1 } = computeQuoteTotals(quote, hourlyRates || [], equipmentRates || []);
-    quote = totalizedQuote1;
-    
-    const timeValidation = validateQuoteTimeEstimates(quote, measurementsForValidation, detectionResult.projectType);
-    
-    if (!timeValidation.isValid) {
-      console.warn('⚠️ Time estimate validation warnings:');
-      timeValidation.warnings.forEach(w => console.warn(`   - ${w}`));
-      
-      // Auto-correct if corrections are suggested
-      if (timeValidation.corrections.length > 0) {
-        console.log('🔧 Auto-correcting time estimates...');
-        
-        const correctionResult = autoCorrectTimeEstimates(quote, measurementsForValidation, true, detectionResult.projectType);
-        
-        if (correctionResult.corrected) {
-          console.log(`✅ Corrected ${correctionResult.corrections.length} work items:`);
-          correctionResult.corrections.forEach(c => {
-            console.log(`   - ${c.workItem}: ${c.before.toFixed(1)}h → ${c.after.toFixed(1)}h`);
-          });
-          
-          // Re-calculate totals with Formula Engine
-          const { quote: totalizedQuote2 } = computeQuoteTotals(quote, hourlyRates || [], equipmentRates || []);
-          quote = totalizedQuote2;
-          console.log('💰 Totals recalculated after time corrections');
-        }
-      }
-    } else {
-      console.log('✅ All time estimates are within industry standards');
-    }
-    
-    // ============================================
-    // FAS 2.2: KRITISK MINIMUM-VALIDERING FÖR BADRUM (context-aware)
-    // ============================================
-    
-    const isBathroom = detectionResult.projectType === 'badrum' || completeDescription.toLowerCase().includes('badrum');
-    
-    if (isBathroom) {
-      const totalHours = quote.workItems?.reduce((sum: number, item: any) => 
-        sum + (parseFloat(item.hours) || 0), 0) || 0;
-      
-      console.log(`🛁 Badrumsoffert totalt: ${totalHours.toFixed(1)}h`);
-      
-      if (totalHours < 50) {
-        console.error(`🚨 KRITISKT FEL: Badrumsoffert har bara ${totalHours.toFixed(1)}h (minimum 50h krävs för komplett badrumsrenovering)!`);
-        console.error('📋 Arbetsmoment i offerten:');
-        quote.workItems?.forEach((item: any) => {
-          console.error(`   - ${item.name}: ${item.hours}h (${item.hourlyRate} kr/h = ${item.subtotal} kr)`);
-        });
-        
-        // Build detailed breakdown with expected values
-        const breakdown = quote.workItems?.map((item: any) => {
-          const itemName = item.name.toLowerCase();
-          let expected = '';
-          
-          if (itemName.includes('el') || itemName.includes('elinstall')) {
-            expected = ` (förväntat: ~${((area || 4) * 2.5).toFixed(1)}h för ${area || 4} kvm)`;
-          } else if (itemName.includes('kakel') || itemName.includes('klinker')) {
-            expected = ` (förväntat: ~${((area || 4) * 2.2).toFixed(1)}h för ${area || 4} kvm)`;
-          } else if (itemName.includes('vvs') || itemName.includes('rör')) {
-            expected = ` (förväntat: ~${((area || 4) * 2.8).toFixed(1)}h för ${area || 4} kvm)`;
-          } else if (itemName.includes('rivning') || itemName.includes('demonter')) {
-            expected = ` (förväntat: ~${((area || 4) * 2.5).toFixed(1)}h för ${area || 4} kvm)`;
-          }
-          
-          return `  - ${item.name}: ${item.hours}h${expected}`;
-        }).join('\n') || '';
-        
-        return new Response(
-          JSON.stringify({
-            error: 'bathroom_too_short',
-            message: `🚫 En badrumsrenovering (${area || '?'} kvm) kan inte vara under 50 timmar.\n\nAktuell total: ${totalHours.toFixed(1)}h\n\n📋 Arbetsmoment:\n${breakdown}\n\n💡 PROBLEM: AI:n beräknade inte korrekt från kvm-standarder.\nFörväntat totalt för ${area || 4} kvm: ~${((area || 4) * (2.5 + 2.8 + 2.5 + 2.2 + 2.8)).toFixed(0)}h\n\nVänligen försök igen - systemet kommer instruera AI:n att beräkna korrekt.`,
-            details: { 
-              totalHours: totalHours.toFixed(1), 
-              requiredMinimum: 50, 
-              area: area || 4,
-              expectedTotal: ((area || 4) * (2.5 + 2.8 + 2.5 + 2.2 + 2.8)).toFixed(0),
-              workItems: quote.workItems 
-            }
-          }),
-          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
-      } else {
-        console.log(`✅ Badrumsoffert är över minimum 50h: ${totalHours.toFixed(1)}h`);
-      }
-    }
-    
-    // ============================================
-    // P1: PROPORTION CHECK - Validera tidsproportioner för badrum
-    // ============================================
-    
-    if (completeDescription.toLowerCase().includes('badrum')) {
-      console.log('🔍 Running bathroom proportion check...');
-      
-      // KRITISK SANITY CHECK: Inget enskilt moment får vara >60h (sänkt från 100h)
-      console.log('🚨 Running critical sanity check for work items...');
-      let sanityCorrectionsMade = false;
-      
-      for (const workItem of quote.workItems) {
-        if (workItem.hours > 60) {  // Sänkt från 100h - P0-validering hanterar <60h
-          console.error(`🚨 KRITISK FEL: ${workItem.name} har ${workItem.hours}h - EXTREMT ORIMLIGT!`);
-          
-          // Auto-korrigera baserat på moment-typ
-          const lower = workItem.name.toLowerCase();
-          let correctedHours = workItem.hours;
-          let standardName = '';
-          
-          if (lower.includes('rivning') || lower.includes('demonter')) {
-            correctedHours = measurementsForValidation.area ? measurementsForValidation.area * 2.5 : 12.5;
-            standardName = 'rivning_badrum';
-          } else if (lower.includes('vvs') || lower.includes('rör')) {
-            correctedHours = measurementsForValidation.area ? measurementsForValidation.area * 2.8 : 14;
-            standardName = 'vvs_badrum';
-          } else if (lower.includes('el')) {
-            correctedHours = measurementsForValidation.area ? measurementsForValidation.area * 2.5 : 12.5;
-            standardName = 'el_badrum';
-          } else if (lower.includes('kakel') && lower.includes('vägg')) {
-            correctedHours = measurementsForValidation.area ? measurementsForValidation.area * 2.2 : 11;
-            standardName = 'kakel_vagg';
-          } else if (lower.includes('klinker') || lower.includes('golv')) {
-            correctedHours = measurementsForValidation.area ? measurementsForValidation.area * 2.8 : 14;
-            standardName = 'klinker_golv';
-          } else {
-            // Generiskt fall: använd 30% av original (säkerhetsnät)
-            correctedHours = workItem.hours * 0.3;
-            standardName = 'generisk korrigering';
-          }
-          
-          console.log(`✅ Auto-korrigerat ${workItem.name}: ${workItem.hours}h → ${correctedHours.toFixed(1)}h (${standardName} standard)`);
-          
-          // Applicera korrigering
-          const originalHours = workItem.hours;
-          workItem.hours = correctedHours;
-          workItem.subtotal = correctedHours * workItem.hourlyRate;
-          workItem.reasoning = (workItem.reasoning || '') + 
-            ` [AUTO-KORRIGERAD: Ursprunglig ${originalHours.toFixed(1)}h överskred sanity-limit 50h och justerades till ${correctedHours.toFixed(1)}h baserat på ${standardName}]`;
-          
-          sanityCorrectionsMade = true;
-        }
-      }
-      
-      // Om sanity-korrigeringar gjordes, räkna om totaler med Formula Engine
-      if (sanityCorrectionsMade) {
-        console.log('💰 Recalculating totals after sanity corrections...');
-        const { quote: totalizedQuote3 } = computeQuoteTotals(quote, hourlyRates || [], equipmentRates || []);
-        quote = totalizedQuote3;
-      }
-      
-      // ============================================
-      // PROPORTION-CHECKS (jobbtypspecifika)
-      // ============================================
-      
-      const { checkBathroomProportions, checkKitchenProportions, checkPaintingProportions, checkGeneralProportions } = await import('./helpers/proportionCheck.ts');
-      
-      let proportionCheck;
-      
-      if (completeDescription.toLowerCase().includes('badrum')) {
-        console.log('🛁 Running bathroom proportion check...');
-        proportionCheck = checkBathroomProportions(quote);
-      } else if (completeDescription.toLowerCase().includes('kök')) {
-        console.log('🍳 Running kitchen proportion check...');
-        proportionCheck = checkKitchenProportions(quote);
-      } else if (completeDescription.toLowerCase().includes('måla') || completeDescription.toLowerCase().includes('målning')) {
-        console.log('🎨 Running painting proportion check...');
-        proportionCheck = checkPaintingProportions(quote);
-      } else {
-        console.log('📊 Running general proportion check...');
-        proportionCheck = checkGeneralProportions(quote, completeDescription);
-      }
-      
-      if (!proportionCheck.passed) {
-        console.warn('⚠️ Proportion-check failed:');
-        proportionCheck.warnings.forEach(w => console.warn(`   - ${w}`));
-        
-        if (proportionCheck.corrections.length > 0) {
-          console.log('📊 Proportion deviations detected:');
-          proportionCheck.corrections.forEach(c => {
-            console.log(`   - ${c.workItem}: ${c.proportion}% (expected: ${c.expected})`);
-          });
-        }
-      } else {
-        console.log('✅ All proportions are within expected ranges');
-      }
-    }
-
-    
-    // ============================================
-    // P0: FORCED TIME ESTIMATE VALIDATION - INAKTIVERAD (BRUTEN LOGIK)
-    // ============================================
-    
-    // INAKTIVERAD: Denna auto-korrigering gav felaktiga resultat
-    // Exempel: "AUTO-KORRIGERAD: 0.9h → 0.4h (+127% från branschstandard)"
-    // Detta är logiskt inkonsekvent - +127% skulle innebära ÖKNING, inte minskning
-    
-    console.log('⚠️ P0: Auto-korrigering INAKTIVERAD (väntar på fix av logik)');
-    
-    let forcedCorrections = 0;
-    
-    /* TEMPORARILY DISABLED - BROKEN LOGIC
-    for (let i = 0; i < (quote.workItems || []).length; i++) {
-      const workItem = quote.workItems[i];
-      const standard = findStandard(workItem.name, { jobType: completeDescription });
-      
-      if (standard) {
-        console.log(`   📏 ${workItem.name}: Använder standard '${standard.jobType}' (${standard.timePerUnit.typical}h/${standard.timePerUnit.unit})`);
-      } else {
-        console.log(`   ℹ️ ${workItem.name}: No standard found, skipping forced validation`);
-        continue;
-      }
-      
-      // Calculate expected time
-      const unit = standard.timePerUnit.unit;
-      let amount = 1;
-      
-      if (unit === 'kvm' && measurementsForValidation.area) {
-        amount = measurementsForValidation.area;
-      } else if (unit === 'rum' && measurementsForValidation.rooms) {
-        amount = measurementsForValidation.rooms;
-      } else if (unit === 'styck' && measurementsForValidation.quantity) {
-        amount = measurementsForValidation.quantity;
-      } else if (unit === 'meter' && measurementsForValidation.length) {
-        amount = measurementsForValidation.length;
-      }
-      
-      const typicalTime = amount * standard.timePerUnit.typical;
-      
-      // För badrum: använd ±25% (mer realistiskt för naturlig variation)
-      // För andra jobb: behåll ±15%
-      const isBathroom = completeDescription.toLowerCase().includes('badrum');
-      const tolerance = isBathroom ? 0.25 : 0.15;
-      
-      const minAllowed = typicalTime * (1 - tolerance);
-      const maxAllowed = typicalTime * (1 + tolerance);
-      
-      // FORCED CORRECTION if outside ±15%
-      if (workItem.hours < minAllowed || workItem.hours > maxAllowed) {
-        const originalHours = workItem.hours;
-        
-        // Force to typical value
-        quote.workItems[i].hours = typicalTime;
-        quote.workItems[i].subtotal = typicalTime * workItem.hourlyRate;
-        
-        // Add note to reasoning
-        const deviationPercent = Math.round(((originalHours - typicalTime) / typicalTime) * 100);
-        quote.workItems[i].reasoning = (workItem.reasoning || '') + 
-          ` [P0 AUTO-KORRIGERAD: ${originalHours.toFixed(1)}h → ${typicalTime.toFixed(1)}h (${deviationPercent > 0 ? '+' : ''}${deviationPercent}% från branschstandard)]`;
-        
-        console.log(`   🔧 FORCED: ${workItem.name}: ${originalHours.toFixed(1)}h → ${typicalTime.toFixed(1)}h (${deviationPercent > 0 ? '+' : ''}${deviationPercent}% deviation)`);
-        forcedCorrections++;
-      } else {
-        console.log(`   ✅ ${workItem.name}: ${workItem.hours.toFixed(1)}h är inom ±15% av ${typicalTime.toFixed(1)}h`);
-      }
-    }
-    */
-    
-    if (forcedCorrections > 0) {
-      console.log(`✅ P0: Forced ${forcedCorrections} corrections to match industry standards`);
-      
-      // Re-calculate totals with Formula Engine
-      const { quote: totalizedQuote4 } = computeQuoteTotals(quote, hourlyRates || [], equipmentRates || []);
-      quote = totalizedQuote4;
-      console.log('💰 Totals recalculated after P0 forced corrections');
-    } else {
-      console.log('✅ P0: All time estimates are within ±15% of industry standards');
-    }
-
-    console.log('🔬 Validating realism...');
-    const realismWarnings = validateRealism(
-      quote,
-      learningContext?.userPatterns,
-      learningContext?.industryData || []
-    );
-    
-    // SPRINT 1: Combine all warnings
-    const allWarnings = [
-      ...realismWarnings,
-      ...hallucinationCheck.warnings,
-      ...consistencyWarnings // SPRINT 1.5
-    ];
-    
-    if (allWarnings.length > 0) {
-      console.log(`⚠️ Total warnings: ${allWarnings.length}`);
-      allWarnings.forEach(w => console.log(`  - ${w}`));
-    }
-    
-    // ============================================
-    // SPRINT 1: VALIDATE ASSUMPTIONS
-    // ============================================
-    
-    console.log('🧠 Validating assumptions...');
-    const assumptionsValidation = validateAssumptions(quote);
-    
-    if (!assumptionsValidation.valid) {
-      console.warn(assumptionsValidation.warnings.join('\n'));
-    }
-
-    // ============================================
-    // STEP 7: BASIC VALIDATION & MATERIAL RETRY IF NEEDED
-    // ============================================
-
-    const validation = basicValidation(quote);
-    
-    // STEG 3: ALLTID kör material-specifikation om generiska material finns
-    if (validation.issues.some((issue: string) => issue.includes('Generiska material'))) {
-      console.log('⚠️ Generic materials detected, retrying specification...');
-      quote = await retryMaterialSpecification(quote, completeDescription, LOVABLE_API_KEY);
-    }
-    
-    if (!validation.valid) {
-      console.log('⚠️ Validation issues:', validation.issues);
-    }
-
-    // ============================================
-    // FAS 5: PROJECT STANDARDS INTEGRATION WITH SMART DETECTION
-    // ============================================
-    
-    const detectedProject = detectProjectType(completeDescription);
-    if (detectedProject) {
-      console.log(`🎯 Legacy format - Detected project: ${detectedProject.displayName}`);
-      console.log(`📏 Scope: ${projectIntent.scope}`);
-    }
-    
-    // ============================================
-    // FAS 3: DOMAIN-SPECIFIC VALIDATION & AUTO-FIX
-    // ============================================
-    
-    let validationWarnings: any[] = [];
-    
-    // FAS 5: Enhanced reasoning with smart detection
-    let reasoning = {
-      detectionLevel: detectionResult.level, // FAS 5: New field
-      detectedProjectType: detectedProject?.displayName || detectionResult.projectType,
-      category: detectionResult.category, // FAS 5: New field
-      confidence: detectionResult.confidence, // FAS 5: New field
-      scope: projectIntent.scope,
-      quality: projectIntent.quality,
-      appliedStandards: detectedProject ? 'yes' : 'no',
-      priceRange: detectedProject ? `${detectedProject.minCostPerSqm || detectedProject.minCostFlat}-${detectedProject.maxCostPerSqm || detectedProject.maxCostFlat}` : 'n/a',
-      explicitInclusions: projectIntent.explicitInclusions,
-      explicitExclusions: projectIntent.explicitExclusions,
-      suggestedMoments: detectionResult.suggestedMoments // FAS 5: New field
-    };
-    
-    // FAS 1: Validation now handled by globalValidator + jobRegistry
-
-    // ============================================
-    // NEW: GENERATE ASSUMPTIONS FROM HISTORY
-    // ============================================
-    console.log('🧠 Generating assumptions from conversation and history...');
-    
-    const historicalPattern = await getHistoricalPatterns(
-      supabaseClient,
-      user_id,
-      detectedProject?.displayName || 'unknown',
-      conversationSummary?.measurements?.area || 1
-    );
-    
-    const assumptions = generateAssumptions(
-      conversationSummary || conversationFeedback,
-      historicalPattern,
-      detectedProject?.displayName || 'unknown'
-    );
-    
-    console.log(`✅ Generated ${assumptions.length} assumptions`);
-    assumptions.forEach(a => console.log(`   - ${a.text} (${a.confidence}% confidence)`));
-    
-    // Add assumptions to quote
-    quote.assumptions = assumptions;
-    
-    // FAS 1: Customer responsibilities now handled by conversation flow
-    
-    // ============================================
-    // NEW: CLASSIFY ROT/RUT PER WORK ITEM
-    // ============================================
-    console.log('🔍 Classifying ROT/RUT eligibility per work item...');
-    
-    for (const workItem of quote.workItems || []) {
-      // Simple classification based on work type
-      const workName = workItem.name.toLowerCase();
-      
-      // ROT-eligible work
-      const rotKeywords = ['rivning', 'vvs', 'el-', 'elektr', 'kakel', 'målning', 'golvläggning', 
-                          'tätskikt', 'ventilation', 'fönster', 'renovering', 'montering'];
-      
-      // RUT-eligible work
-      const rutKeywords = ['städ', 'trädgård', 'gräsklipp', 'beskär', 'sn öröj'];
-      
-      const isROT = rotKeywords.some(kw => workName.includes(kw));
-      const isRUT = rutKeywords.some(kw => workName.includes(kw));
-      
-      if (isROT || isRUT) {
-        workItem.rotEligible = true;
-        workItem.rotAmount = workItem.subtotal; // Full work cost is eligible
-        workItem.sourceOfTruth = 'ROT-lista (Skatteverket)';
-        console.log(`   ✅ ${workItem.name}: ROT/RUT-berättigad (${workItem.subtotal} kr)`);
-      } else {
-        workItem.rotEligible = false;
-        console.log(`   ❌ ${workItem.name}: Ej ROT/RUT-berättigad`);
-      }
-    }
-    
-    // ============================================
-    // FAS 1: ALWAYS CALCULATE ROT/RUT DEDUCTION
-    // ============================================
-    console.log(`💰 Calculating ${finalDeductionType.toUpperCase()} deduction...`);
-    
-    // Always call calculateROTRUT if deduction type is rot or rut
-    if (finalDeductionType === 'rot' || finalDeductionType === 'rut') {
-      const numberOfRecipients = 1; // Default to 1 recipient (can be expanded later)
-      await calculateROTRUT(
-        supabaseClient,
-        quote,
-        finalDeductionType,
-        numberOfRecipients,
-        new Date()
-      );
-      console.log(`✅ ${finalDeductionType.toUpperCase()}-avdrag beräknat: ${quote.summary.deduction?.deductionAmount || 0} kr`);
-      console.log(`   Kunden betalar: ${quote.summary.customerPays} kr (efter avdrag)`);
-    } else {
-      // No deduction - customer pays total with VAT
-      quote.summary.customerPays = quote.summary.totalWithVAT;
-      console.log(`   Kunden betalar: ${quote.summary.customerPays} kr (inget avdrag)`);
-    }
-    
-    // ============================================
-    // PUNKT 4: TOTAL-GUARD - Validate total price against industry benchmarks
-    // ============================================
-    
-    console.log('🛡️ PUNKT 4: Validating total price with Total-Guard...');
-    
-    if (jobDef && jobDef.jobType !== 'ai_driven') {
-      const areaMatch = allText.match(/(\d+(?:[.,]\d+)?)\s*(?:kvm|kvadratmeter|m2)/i);
-      const lengthMatch = allText.match(/(\d+(?:[.,]\d+)?)\s*(?:meter|löpmeter|m)/i);
-      const quantityMatch = allText.match(/(\d+)\s*(?:st|styck|stycken)/i);
-      
-      const unitQty = (() => {
-        if (jobDef.unitType === 'kvm' && areaMatch) return parseFloat(areaMatch[1].replace(',', '.'));
-        if (jobDef.unitType === 'lm' && lengthMatch) return parseFloat(lengthMatch[1].replace(',', '.'));
-        if (jobDef.unitType === 'st' && quantityMatch) return parseInt(quantityMatch[1]);
-        return 1;
-      })();
-      
-      if (unitQty > 0) {
-        const totalPrice = quote.summary?.totalBeforeVAT || 0;
-        
-        const totalGuardResult = await validateTotalPrice(
-          totalPrice,
-          unitQty,
-          jobDef.unitType,
-          jobDef.jobType,
-          supabaseClient
-        );
-        
-        if (!totalGuardResult.passed && totalGuardResult.warning) {
-          console.warn(`⚠️ TOTAL-GUARD WARNING: ${totalGuardResult.warning.message}`);
-          console.warn(`   Price per unit: ${Math.round(totalGuardResult.pricePerUnit)} kr/${jobDef.unitType}`);
-          console.warn(`   Median: ${Math.round(totalGuardResult.medianPricePerUnit)} kr/${jobDef.unitType}`);
-          console.warn(`   Deviation: ${totalGuardResult.deviation.toFixed(1)}%`);
-          console.warn(`   Suggested action: ${totalGuardResult.warning.suggestedAction}`);
-          
-          // Add warning to quote
-          quote.totalGuardWarning = {
-            type: totalGuardResult.warning.type,
-            message: totalGuardResult.warning.message,
-            deviation: Math.round(totalGuardResult.deviation),
-            pricePerUnit: Math.round(totalGuardResult.pricePerUnit),
-            medianPricePerUnit: Math.round(totalGuardResult.medianPricePerUnit),
-            suggestedAction: totalGuardResult.warning.suggestedAction
-          };
-        } else {
-          console.log(`✅ TOTAL-GUARD: Price within acceptable range (${totalGuardResult.deviation.toFixed(1)}% from median)`);
-        }
-      }
-    }
-    
-    // ============================================
-    // FAS 2-4: DELTA ENGINE - DETERMINISTIC CHANGES + VALIDATION
+    // DELTA ENGINE VALIDATION (if delta mode)
     // ============================================
     let deltaWarnings: string[] = [];
     
     if (isDeltaMode && previousQuote && previousQuoteTotal > 0) {
-      console.log('🔄 FAS 2: Applying Delta Engine (deterministic + validation)...');
+      console.log('🔄 Applying Delta Engine validation...');
       
       const lastUserMsg = actualConversationHistory.filter(m => m.role === 'user').slice(-1)[0];
       const userMessage = lastUserMsg?.content || description;
       
-      console.log(`📝 FAS 4: User message: "${userMessage}"`);
-      console.log(`📊 FAS 4: Previous quote total: ${previousQuoteTotal.toLocaleString('sv-SE')} kr`);
-      console.log(`📊 FAS 4: Previous quote workItems (${previousQuote.workItems?.length || 0}):`, 
-        previousQuote.workItems?.map((w: any) => `${w.name} (${w.subtotal} kr)`) || []);
-      
-      // FAS 2: Detect what changes were requested
       const deltaChanges = detectDeltaChanges(userMessage, previousQuote);
-      console.log(`🔍 FAS 4: Detected ${deltaChanges.length} delta changes:`, deltaChanges);
-      
-      // FAS 2: Apply deterministic changes if simple removal
-      if (deltaChanges.length > 0 && deltaChanges.every(c => c.type === 'remove')) {
-        console.log('🎯 FAS 2: Simple removal detected, applying deterministic changes...');
-        
-        // Apply changes to get deterministic quote
-        const deterministicQuote = applyDeltaChanges(previousQuote, deltaChanges);
-        
-        // Recalculate totals
-        const workCost = deterministicQuote.workItems?.reduce((sum: number, w: any) => sum + (w.subtotal || 0), 0) || 0;
-        const materialCost = deterministicQuote.materials?.reduce((sum: number, m: any) => sum + (m.subtotal || 0), 0) || 0;
-        const totalBeforeVAT = workCost + materialCost;
-        const vatAmount = Math.round(totalBeforeVAT * 0.25);
-        const totalWithVAT = totalBeforeVAT + vatAmount;
-        
-        deterministicQuote.summary = {
-          ...deterministicQuote.summary,
-          workCost,
-          materialCost,
-          totalBeforeVAT,
-          vat: vatAmount,
-          vatAmount,
-          totalWithVAT,
-          customerPays: totalWithVAT
-        };
-        
-        console.log(`✅ FAS 2: Deterministic quote generated - new total: ${totalWithVAT.toLocaleString('sv-SE')} kr`);
-        console.log(`   Price change: ${(totalWithVAT - previousQuoteTotal).toLocaleString('sv-SE')} kr`);
-        
-        // Use deterministic quote instead of AI-generated one
-        quote.workItems = deterministicQuote.workItems;
-        quote.materials = deterministicQuote.materials;
-        quote.summary = deterministicQuote.summary;
-      }
-      
-      // FAS 3-4: Validate that price delta makes sense
-      const newQuoteTotal = quote.summary?.customerPays || quote.summary?.totalWithVAT || 0;
-      console.log(`📊 FAS 4: New quote total: ${newQuoteTotal.toLocaleString('sv-SE')} kr`);
-      console.log(`📊 FAS 4: New quote workItems (${quote.workItems?.length || 0}):`, 
-        quote.workItems?.map((w: any) => `${w.name} (${w.subtotal} kr)`) || []);
+      console.log(`🔍 Detected ${deltaChanges.length} delta changes:`, deltaChanges);
       
       const deltaValidation = validatePriceDelta(
         previousQuote,
@@ -5973,73 +5247,17 @@ Svara med **1**, **2** eller **3** (eller "granska", "generera", "mer info")`;
       );
       
       if (!deltaValidation.valid) {
-        console.error('⚠️ FAS 4: DELTA VALIDATION WARNINGS:', deltaValidation.warnings);
+        console.error('⚠️ DELTA VALIDATION WARNINGS:', deltaValidation.warnings);
         deltaWarnings = deltaValidation.warnings;
-        
-        // FAS 4: Log detailed comparison for debugging
-        console.log(`🔍 FAS 4: DETAILED COMPARISON:`);
-        console.log(`   Previous workItems:`, previousQuote.workItems?.map((w: any) => w.name));
-        console.log(`   New workItems:`, quote.workItems?.map((w: any) => w.name));
-        console.log(`   Price delta: ${deltaValidation.priceChange.toLocaleString('sv-SE')} kr (${deltaValidation.priceChangePercent.toFixed(1)}%)`);
       } else {
-        console.log(`✅ FAS 4: Delta validation passed - price change: ${deltaValidation.priceChange > 0 ? '+' : ''}${deltaValidation.priceChange.toLocaleString('sv-SE')} kr (${deltaValidation.priceChangePercent.toFixed(1)}%)`);
+        console.log(`✅ Delta validation passed - price change: ${deltaValidation.priceChange > 0 ? '+' : ''}${deltaValidation.priceChange.toLocaleString('sv-SE')} kr`);
       }
     }
     
-    // FAS 1: Kitchen validation now handled by globalValidator + jobRegistry
-    
-    // FAS 1: Painting validation now handled by globalValidator + jobRegistry
-    
-    // FAS 1: Cleaning validation now handled by globalValidator + jobRegistry
-    
-    // FAS 1: Gardening validation now handled by globalValidator + jobRegistry
-    
-    // FAS 1: Electrical validation now handled by globalValidator + jobRegistry
-    
     // ============================================
-    // GENERIC FALLBACK VALIDATION
+    // RISK MARGIN (Optional for large projects)
     // ============================================
-    let genericValidationWarnings: string[] = [];
-    
-    // Applicera generisk validering för jobbtyper utan dedikerad validering
-    if (needsGenericValidation(quote.projectType || 'övrigt', description)) {
-      console.log('🔍 Applicerar GENERISK validering...');
-      
-      const genericValidation = validateGenericQuote(quote, quote.projectType || 'övrigt', description);
-      
-      if (!genericValidation.passed) {
-        console.error('❌ KRITISK: Offerten uppfyller inte grundläggande rimlighetskrav!');
-        console.error('Fel:', genericValidation.errors);
-        
-        const validationSummary = generateGenericValidationSummary(genericValidation);
-        
-        return new Response(
-          JSON.stringify({
-            error: 'Offerten kunde inte genereras - uppfyller inte grundläggande rimlighetskrav',
-            details: genericValidation.errors,
-            summary: validationSummary,
-            validation: genericValidation.details,
-            suggestion: 'Kontrollera timpris, total kostnad och arbetsmoment.',
-          }),
-          {
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-            status: 400,
-          }
-        );
-      } else if (genericValidation.warnings.length > 0) {
-        console.warn('⚠️ Generisk validering OK men med varningar:', genericValidation.warnings);
-        genericValidationWarnings = genericValidation.warnings;
-      } else {
-        console.log('✅ Generisk validering: Alla krav uppfyllda');
-      }
-    } else {
-      console.log('ℹ️ Dedikerad validering används - skippar generisk validering');
-    }
-    
-    // ============================================
-    // NEW: CALCULATE RISK MARGIN (Optional - Only for large uncertain projects)
-    // ============================================
-    const lowConfidenceAssumptions = assumptions.filter(a => a.confidence < 60).length;
+    const lowConfidenceAssumptions = (quote.assumptions || []).filter((a: any) => a.confidence < 60).length;
     const projectValue = quote.summary?.totalWithVAT || 0;
     
     if (projectValue > 100000 && lowConfidenceAssumptions > 3) {
@@ -6053,9 +5271,8 @@ Svara med **1**, **2** eller **3** (eller "granska", "generera", "mer info")`;
         applied: true
       };
       
-      // Apply risk margin to totals
       quote.summary.totalWithVAT += riskMarginAmount;
-      quote.summary.customerPays = quote.summary.totalWithVAT - (quote.summary.rotRutDeduction?.actualDeduction || 0);
+      quote.summary.customerPays = quote.summary.totalWithVAT - (quote.summary.rotRutDeduction?.actualDeduction || quote.summary.deductionAmount || 0);
     } else {
       quote.riskMargin = {
         amount: 0,
@@ -6068,7 +5285,7 @@ Svara med **1**, **2** eller **3** (eller "granska", "generera", "mer info")`;
     }
 
     // ============================================
-    // STEP 15: SAVE OR UPDATE QUOTE
+    // SAVE OR UPDATE QUOTE
     // ============================================
 
     console.log('💾 Saving quote to database...');
@@ -6126,7 +5343,7 @@ Svara med **1**, **2** eller **3** (eller "granska", "generera", "mer info")`;
     }
 
     // ============================================
-    // STEG 4: TIDSMÄTNING - Uppdatera session med completion time
+    // UPDATE SESSION AND CALCULATE TIME SAVED
     // ============================================
     
     let timeSaved = null;
@@ -6165,136 +5382,33 @@ Svara med **1**, **2** eller **3** (eller "granska", "generera", "mer info")`;
     }
 
     // ============================================
-    // FAS 1: FILTER CUSTOMER-PROVIDED MATERIALS
-    // ============================================
-    
-    if (detectedFlags.customerProvidesMaterial && detectedFlags.customerProvidesDetails) {
-      console.log('🧹 FAS 1: Filtering customer-provided materials...');
-      
-      const originalMaterialsCount = quote.materials?.length || 0;
-      
-      quote.materials = filterCustomerProvidedMaterials(
-        quote.materials || [],
-        detectedFlags.customerProvidesDetails.materials
-      );
-      
-      const filteredCount = originalMaterialsCount - (quote.materials?.length || 0);
-      
-      if (filteredCount > 0) {
-        console.log(`✅ Filtered ${filteredCount} customer-provided materials`);
-        
-        // Lägg till kundansvar i quote
-        quote.customerResponsibilities = quote.customerResponsibilities || [];
-        quote.customerResponsibilities.push(
-          `Kund tillhandahåller ${detectedFlags.customerProvidesDetails.materials.join(' och ')}`
-        );
-        
-        // Lägg till assumption
-        quote.assumptions = quote.assumptions || [];
-        quote.assumptions.push({
-          text: `Material som kunden tillhandahåller är inte inkluderade i priset: ${detectedFlags.customerProvidesDetails.materials.join(', ')}`,
-          confidence: 95,
-          source: 'conversation'
-        });
-      }
-    }
-    
-    // ============================================
-    // FAS 1: ADD NO-COMPLEXITY ASSUMPTION
-    // ============================================
-    
-    if (detectedFlags.noComplexity) {
-      console.log('✅ FAS 1: Adding no-complexity assumption...');
-      
-      quote.assumptions = quote.assumptions || [];
-      quote.assumptions.push({
-        text: 'Inga särskilda hinder eller komplexitet bekräftat av kund',
-        confidence: 90,
-        source: 'conversation'
-      });
-      
-      // Sätt specialRequirements till tom array om den finns
-      if (quote.conversationSummary) {
-        quote.conversationSummary.specialRequirements = [];
-      }
-    }
-
-    // ============================================
-    // FAS 1: MATH GUARD - Final validation & auto-correction
-    // ============================================
-    
-    console.log('🛡️ Running Math Guard - final validation...');
-    
-    const mathGuardResult = enforceWorkItemMath(quote);
-    quote = mathGuardResult.correctedQuote;
-    
-    if (mathGuardResult.totalCorrections > 0) {
-      console.log(`✅ Math Guard applied ${mathGuardResult.totalCorrections} corrections`);
-    } else {
-      console.log('✅ Math Guard: No corrections needed - all math is correct');
-    }
-    
-    // Log detailed quote report
-    logQuoteReport(quote);
-
-    // ============================================
-    // STEP 9: RETURN QUOTE
+    // RETURN QUOTE
     // ============================================
 
     console.log('✅ Quote generation complete');
-
-    // ============================================
-    // BUILD DEBUG INFO (FÖRBÄTTRING #10)
-    // ============================================
-    
-    const debugInfo = {
-      conversation_summary: completeDescription,
-      structured_context: extractStructuredContext(conversation_history, description),
-      detected_measurements: (completeDescription.match(/(\d+(?:[.,]\d+)?)\s*(kvm|m2|m²|meter|m|st|träd|granar|rum)/gi) || []).join(', '),
-      similar_quotes_used: similarQuotes.length,
-      similar_quotes_titles: similarQuotes.map((q: any) => q.title).join(', '),
-      hourly_rates_used: (hourlyRates?.length || 0) > 0,
-      equipment_used: (equipmentRates?.length || 0) > 0,
-      deduction_type: finalDeductionType,
-      ai_reasoning: `Baserat på: ${completeDescription.length > 0 ? 'beskrivning' : ''}${conversation_history.length > 0 ? ' + konversation' : ''}${similarQuotes.length > 0 ? ` + ${similarQuotes.length} liknande offerter` : ''}${(hourlyRates?.length || 0) > 0 ? ' + användarens timpriser' : ' + standardpriser'}${learningContext?.userPatterns ? ' + användarmönster' : ''}${learningContext?.industryData && learningContext.industryData.length > 0 ? ' + branschdata' : ''}`,
-      validation: {
-        conversation_validation: !conversationValidation.isValid ? {
-          removed_items: conversationValidation.unmentionedItems,
-          removed_value: Math.round(conversationValidation.removedValue)
-        } : null,
-        basic_validation: validation.issues.length > 0 ? validation.issues : null,
-        realism_warnings: realismWarnings.length > 0 ? realismWarnings : null,
-        hallucination_warnings: hallucinationCheck.warnings.length > 0 ? hallucinationCheck.warnings : null
-      }
-    };
 
     return new Response(
       JSON.stringify({
         type: 'complete_quote',
         quote,
         deductionType: finalDeductionType,
-        projectType: conversationFeedback?.understood?.project_type || detectedProject?.projectType || 'övrigt',
+        projectType: conversationFeedback?.understood?.project_type || quote.projectType || 'övrigt',
         confidence: confidenceScore,
         conversationFeedback,
         readiness,
-        realismWarnings: allWarnings.length > 0 ? allWarnings : undefined,
-        needsReview: hallucinationCheck.needsReview || allWarnings.length > 0,
         assumptions: quote.assumptions || [],
-        deltaWarnings: deltaWarnings.length > 0 ? deltaWarnings : undefined, // FAS 3: Return delta warnings
-        validation: validation.issues.length > 0 ? {
-          warnings: validation.issues
-        } : undefined,
-        genericValidation: genericValidationWarnings.length > 0 ? genericValidationWarnings : undefined,
-        conversationValidation: !conversationValidation.isValid || conversationValidation.warnings.length > 0 ? {
-          removedItems: conversationValidation.unmentionedItems,
-          removedValue: Math.round(conversationValidation.removedValue),
-          warnings: conversationValidation.warnings // FAS 1: Include warnings
-        } : undefined,
-        projectIntent: reasoning, // FAS 5: Include project intent in response
+        deltaWarnings: deltaWarnings.length > 0 ? deltaWarnings : undefined,
+        consistencyWarnings: consistencyWarnings.length > 0 ? consistencyWarnings : undefined,
         timeSaved: timeSaved,
-        is_delta_mode: isDeltaMode, // SPRINT 1.5
-        previous_quote_total: previousQuoteTotal || undefined, // SPRINT 1.5
-        debug: debugInfo,
+        is_delta_mode: isDeltaMode,
+        previous_quote_total: previousQuoteTotal || undefined,
+        pipelineResult: {
+          jobDefinition: pipelineResult.jobDefinition?.jobType,
+          flags: pipelineResult.flags,
+          corrections: pipelineResult.corrections,
+          appliedFallbacks: pipelineResult.appliedFallbacks,
+          domainValidation: pipelineResult.domainValidation
+        }
       }),
       {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
