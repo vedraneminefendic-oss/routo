@@ -6,12 +6,12 @@ export interface JobDefinition {
   jobType: string;
   category: 'rot' | 'rut' | 'none';
   
-  // Obligatorisk input för att generera offert (optional för bakåtkompatibilitet)
-  requiredInput?: string[];  // t.ex. ['area', 'complexity'] eller ['jobType']
-  
   // Universella dimensioner (OBLIGATORISKA)
   unitType: 'kvm' | 'lm' | 'st' | 'tim';
   
+  // Kritiska fält som MÅSTE finnas för att ge offert (Handoff-logic)
+  requiredInput?: string[]; 
+
   // Tidsberäkning med tre nivåer
   timePerUnit: {
     simple: number;    // Enkel (inga hinder)
@@ -116,11 +116,16 @@ export interface JobDefinition {
 // ============================================================================
 
 export const JOB_REGISTRY: JobDefinition[] = [
+  // ==========================================
+  // RUT-TJÄNSTER (50% avdrag)
+  // ==========================================
+
   // STÄDNING
   {
     jobType: 'flyttstadning',
     category: 'rut',
     unitType: 'kvm',
+    requiredInput: ['area'],
     timePerUnit: { simple: 0.15, normal: 0.18, complex: 0.25 },
     multipliers: {
       accessibility: { easy: 1.0, normal: 1.1, hard: 1.3 },
@@ -167,13 +172,182 @@ export const JOB_REGISTRY: JobDefinition[] = [
     source: 'Webben (Hemfrid, Byggfakta 2025)',
     lastUpdated: '2025-11-04'
   },
+  
+  // FLYTTHJÄLP (NY)
+  {
+    jobType: 'flytthjalp',
+    category: 'rut',
+    unitType: 'tim', // Ofta timdebitering
+    requiredInput: ['area'], // Area ger en bra uppskattning av volym
+    timePerUnit: { simple: 0.2, normal: 0.3, complex: 0.5 }, // Timmar per kvm boyta (schablon)
+    multipliers: {
+      accessibility: { easy: 0.8, normal: 1.0, hard: 1.5 }, // Hiss/trappor
+      quality: { budget: 0.9, standard: 1.0, premium: 1.2 },
+      complexity: { simple: 0.8, normal: 1.0, complex: 1.3 }
+    },
+    hourlyRateRange: { min: 400, typical: 600, max: 900 }, // Ofta 2 gubbar
+    materialRatio: 0.0,
+    materialBuckets: {
+      budget: { priceMultiplier: 1.0, examples: ['Inga kartonger'] },
+      standard: { priceMultiplier: 1.0, examples: ['Lån av kartonger'] },
+      premium: { priceMultiplier: 1.0, examples: ['Köpa kartonger'] }
+    },
+    priceBounds: { minPerUnit: 100, maxPerUnit: 400, totalMin: 3000, totalMax: 30000 },
+    standardWorkItems: [
+      { name: 'Bärhjälp och lastning', mandatory: true, typicalHours: 0.2, perUnit: true }, // 0.2h per kvm (för 2 pers)
+      { name: 'Packning', mandatory: false, typicalHours: 0.15, perUnit: true }
+    ],
+    materialCalculations: [
+      {
+        name: 'Flyttkartonger (Hyra/Köp)',
+        unit: 'st',
+        formula: 'unitQty * 0.5', // ca 0.5 kartong per kvm
+        roundUp: true,
+        pricePerUnit: { budget: 0, standard: 20, premium: 40 }
+      }
+    ],
+    applicableDeduction: 'rut',
+    deductionPercentage: 50,
+    serviceVehicle: { threshold: 1, autoInclude: true, unit: 'dag' }, // Flyttbil (EJ RUT på bilkostnad, men debiteras ofta)
+    questionTemplates: {
+      unitQty: 'Hur stor är bostaden som ska flyttas (kvm)?',
+      complexity: 'Många tunga möbler eller piano?',
+      accessibility: 'Hiss eller trappor på in/utflytt?',
+      qualityLevel: 'Bara flytt eller även packning?'
+    },
+    regionSensitive: true,
+    seasonSensitive: true, // Dyrare vid månadsskiften
+    source: 'Flyttbranschen 2025',
+    lastUpdated: '2025-11-21'
+  },
+
+  // IT-TJÄNSTER (NY)
+  {
+    jobType: 'it_support',
+    category: 'rut',
+    unitType: 'tim',
+    requiredInput: ['complexity'],
+    timePerUnit: { simple: 1, normal: 2, complex: 4 },
+    multipliers: {
+      accessibility: { easy: 1.0, normal: 1.0, hard: 1.0 },
+      quality: { budget: 1.0, standard: 1.0, premium: 1.2 },
+      complexity: { simple: 1.0, normal: 1.5, complex: 2.5 }
+    },
+    hourlyRateRange: { min: 600, typical: 900, max: 1200 },
+    materialRatio: 0.05,
+    materialBuckets: {
+      budget: { priceMultiplier: 1.0, examples: [] },
+      standard: { priceMultiplier: 1.0, examples: [] },
+      premium: { priceMultiplier: 1.0, examples: [] }
+    },
+    priceBounds: { minPerUnit: 600, maxPerUnit: 5000, totalMin: 600, totalMax: 10000 },
+    standardWorkItems: [
+      { name: 'Felsökning och installation', mandatory: true, typicalHours: 1.0, perUnit: false },
+      { name: 'Konfiguration', mandatory: false, typicalHours: 1.0, perUnit: false }
+    ],
+    applicableDeduction: 'rut',
+    deductionPercentage: 50,
+    serviceVehicle: { threshold: 99, autoInclude: false, unit: 'dag' }, // Sällan bilkostnad specat
+    questionTemplates: {
+      unitQty: 'Uppskattad tid eller antal enheter?',
+      complexity: 'Enkel installation eller nätverksproblem?',
+      accessibility: 'På plats eller distans? (RUT kräver på plats)',
+      qualityLevel: 'Standard'
+    },
+    regionSensitive: false,
+    seasonSensitive: false,
+    source: 'Skatteverket RUT IT',
+    lastUpdated: '2025-11-21'
+  },
+
+  // REPARATION AV VITVAROR (NY)
+  {
+    jobType: 'reparation_vitvaror',
+    category: 'rut',
+    unitType: 'st',
+    requiredInput: ['jobType'], // Egentligen "vilken maskin"
+    timePerUnit: { simple: 1, normal: 2, complex: 4 },
+    multipliers: {
+      accessibility: { easy: 1.0, normal: 1.0, hard: 1.3 }, // Inbyggda maskiner svårare
+      quality: { budget: 1.0, standard: 1.0, premium: 1.0 },
+      complexity: { simple: 1.0, normal: 1.5, complex: 2.0 }
+    },
+    hourlyRateRange: { min: 800, typical: 1100, max: 1500 },
+    materialRatio: 0.4,
+    materialBuckets: {
+      budget: { priceMultiplier: 1.0, examples: ['Reservdelar'] },
+      standard: { priceMultiplier: 1.0, examples: ['Reservdelar'] },
+      premium: { priceMultiplier: 1.0, examples: ['Reservdelar'] }
+    },
+    priceBounds: { minPerUnit: 1000, maxPerUnit: 6000, totalMin: 1000, totalMax: 10000 },
+    standardWorkItems: [
+      { name: 'Felsökning', mandatory: true, typicalHours: 0.5, perUnit: false },
+      { name: 'Reparation', mandatory: true, typicalHours: 1.5, perUnit: true }
+    ],
+    applicableDeduction: 'rut',
+    deductionPercentage: 50,
+    serviceVehicle: { threshold: 0, autoInclude: true, unit: 'dag' }, // Servicebil debiteras ofta
+    questionTemplates: {
+      unitQty: 'Hur många maskiner?',
+      complexity: 'Vet du vad felet är?',
+      accessibility: 'Är maskinen inbyggd?',
+      qualityLevel: 'Standard'
+    },
+    regionSensitive: false,
+    seasonSensitive: false,
+    source: 'Skatteverket RUT',
+    lastUpdated: '2025-11-21'
+  },
+
+  // MÖBELMONTERING (NY)
+  {
+    jobType: 'mobelmontering',
+    category: 'rut',
+    unitType: 'st',
+    requiredInput: ['quantity'],
+    timePerUnit: { simple: 0.5, normal: 1.5, complex: 3.0 },
+    multipliers: {
+      accessibility: { easy: 1.0, normal: 1.0, hard: 1.0 },
+      quality: { budget: 1.0, standard: 1.0, premium: 1.0 },
+      complexity: { simple: 0.5, normal: 1.0, complex: 2.0 }
+    },
+    hourlyRateRange: { min: 400, typical: 550, max: 750 },
+    materialRatio: 0.0,
+    materialBuckets: {
+      budget: { priceMultiplier: 1.0, examples: [] },
+      standard: { priceMultiplier: 1.0, examples: [] },
+      premium: { priceMultiplier: 1.0, examples: [] }
+    },
+    priceBounds: { minPerUnit: 300, maxPerUnit: 3000, totalMin: 500, totalMax: 10000 },
+    standardWorkItems: [
+      { name: 'Montering', mandatory: true, typicalHours: 1.5, perUnit: true },
+      { name: 'Väggfästning', mandatory: false, typicalHours: 0.3, perUnit: true }
+    ],
+    applicableDeduction: 'rut',
+    deductionPercentage: 50,
+    serviceVehicle: { threshold: 4, autoInclude: true, unit: 'dag' },
+    questionTemplates: {
+      unitQty: 'Hur många möbler ska monteras?',
+      complexity: 'Småbord eller stora garderober?',
+      accessibility: 'Finns plats att montera?',
+      qualityLevel: 'Standard'
+    },
+    regionSensitive: false,
+    seasonSensitive: false,
+    source: 'Webben',
+    lastUpdated: '2025-11-21'
+  },
+
+  // ==========================================
+  // ROT-TJÄNSTER (30% avdrag)
+  // ==========================================
 
   // BADRUMSRENOVERING
   {
     jobType: 'badrum',
     category: 'rot',
-    requiredInput: ['area', 'complexity'],
     unitType: 'kvm',
+    requiredInput: ['area', 'complexity'],
     timePerUnit: { simple: 35, normal: 50, complex: 70 },
     multipliers: {
       accessibility: { easy: 1.0, normal: 1.15, hard: 1.35 },
@@ -253,8 +427,8 @@ export const JOB_REGISTRY: JobDefinition[] = [
   {
     jobType: 'kök',
     category: 'rot',
-    requiredInput: ['area', 'complexity'],
     unitType: 'kvm',
+    requiredInput: ['area'],
     timePerUnit: { simple: 80, normal: 120, complex: 180 },
     multipliers: {
       accessibility: { easy: 1.0, normal: 1.1, hard: 1.25 },
@@ -333,12 +507,12 @@ export const JOB_REGISTRY: JobDefinition[] = [
     lastUpdated: '2025-11-04'
   },
 
-  // MÅLNING
+  // MÅLNING (KORRIGERAD)
   {
     jobType: 'målning',
-    category: 'rut',
-    requiredInput: ['area', 'complexity'],
+    category: 'rot', // KORRIGERAT: ROT
     unitType: 'kvm',
+    requiredInput: ['area', 'complexity'],
     timePerUnit: { simple: 0.3, normal: 0.4, complex: 0.6 },
     multipliers: {
       accessibility: { easy: 1.0, normal: 1.15, hard: 1.35 },
@@ -394,8 +568,8 @@ export const JOB_REGISTRY: JobDefinition[] = [
         pricePerUnit: { budget: 120, standard: 200, premium: 350 }
       }
     ],
-    applicableDeduction: 'rut',
-    deductionPercentage: 50,
+    applicableDeduction: 'rot', // KORRIGERAT: ROT
+    deductionPercentage: 30,    // KORRIGERAT: 30%
     serviceVehicle: {
       threshold: 4,
       autoInclude: true,
@@ -419,6 +593,176 @@ export const JOB_REGISTRY: JobDefinition[] = [
     seasonSensitive: false,
     source: 'Webben (Målarföretagen, Byggfakta 2025)',
     lastUpdated: '2025-11-04'
+  },
+
+  // SNICKERI (ALLMÄN) (NY)
+  {
+    jobType: 'snickeri_allman',
+    category: 'rot',
+    unitType: 'tim',
+    requiredInput: ['complexity'], // Svårt att kvantifiera utan specifik uppgift
+    timePerUnit: { simple: 1, normal: 1, complex: 1 }, // Timdebitering
+    multipliers: {
+      accessibility: { easy: 1.0, normal: 1.0, hard: 1.2 },
+      quality: { budget: 1.0, standard: 1.0, premium: 1.2 },
+      complexity: { simple: 0.8, normal: 1.0, complex: 1.5 }
+    },
+    hourlyRateRange: { min: 550, typical: 700, max: 900 },
+    materialRatio: 0.3,
+    materialBuckets: {
+      budget: { priceMultiplier: 1.0, examples: [] },
+      standard: { priceMultiplier: 1.0, examples: [] },
+      premium: { priceMultiplier: 1.0, examples: [] }
+    },
+    priceBounds: { minPerUnit: 500, maxPerUnit: 1500, totalMin: 2000, totalMax: 500000 },
+    standardWorkItems: [
+      { name: 'Snickeriarbete', mandatory: true, typicalHours: 1.0, perUnit: true } // 1h per "enhet" (timme)
+    ],
+    applicableDeduction: 'rot',
+    deductionPercentage: 30,
+    serviceVehicle: { threshold: 4, autoInclude: true, unit: 'dag' },
+    questionTemplates: {
+      unitQty: 'Uppskattad tid (timmar)?',
+      complexity: 'Enkelt montage eller platsbyggt?',
+      accessibility: 'Inne eller ute?',
+      qualityLevel: 'Standard'
+    },
+    regionSensitive: true,
+    seasonSensitive: false,
+    source: 'Webben',
+    lastUpdated: '2025-11-21'
+  },
+
+  // ALTANBYGGE (NY)
+  {
+    jobType: 'altan_bygg',
+    category: 'rot',
+    unitType: 'kvm',
+    requiredInput: ['area'],
+    timePerUnit: { simple: 2.5, normal: 4.0, complex: 6.0 },
+    multipliers: {
+      accessibility: { easy: 0.9, normal: 1.0, hard: 1.3 }, // Markförhållanden
+      quality: { budget: 0.8, standard: 1.0, premium: 1.4 }, // Materialval (tryckimpreg vs ädelträ)
+      complexity: { simple: 0.8, normal: 1.0, complex: 1.5 } // Räcke, trappor
+    },
+    hourlyRateRange: { min: 600, typical: 750, max: 950 },
+    materialRatio: 0.6,
+    materialBuckets: {
+      budget: { priceMultiplier: 0.7, examples: ['Tryckimpregnerat'] },
+      standard: { priceMultiplier: 1.0, examples: ['Bättre trallvirke'] },
+      premium: { priceMultiplier: 2.5, examples: ['Komposit, Lärk, Ädelträ'] }
+    },
+    priceBounds: { minPerUnit: 1500, maxPerUnit: 5000, totalMin: 10000, totalMax: 300000 },
+    standardWorkItems: [
+      { name: 'Plintar och bärlinor', mandatory: true, typicalHours: 1.5, perUnit: true },
+      { name: 'Tralläggning', mandatory: true, typicalHours: 1.5, perUnit: true },
+      { name: 'Räcke och detaljer', mandatory: false, typicalHours: 1.0, perUnit: true }
+    ],
+    materialCalculations: [
+      {
+        name: 'Virke (Trall & Regel)',
+        unit: 'kvm',
+        formula: 'unitQty * 1.1', // Spill
+        roundUp: false,
+        pricePerUnit: { budget: 400, standard: 800, premium: 2000 }
+      },
+      {
+        name: 'Skruv och beslag',
+        unit: 'pkt',
+        formula: 'Math.ceil(unitQty / 10)',
+        roundUp: true,
+        pricePerUnit: { budget: 300, standard: 500, premium: 800 }
+      }
+    ],
+    applicableDeduction: 'rot',
+    deductionPercentage: 30,
+    serviceVehicle: { threshold: 4, autoInclude: true, unit: 'dag' },
+    questionTemplates: {
+      unitQty: 'Hur stor altan (kvm)?',
+      complexity: 'Marknivå eller upphöjd? Räcke?',
+      accessibility: 'Behövs markarbete?',
+      qualityLevel: 'Tryckimpregnerat, komposit eller ädelträ?'
+    },
+    regionSensitive: true,
+    seasonSensitive: true,
+    source: 'Webben (Svenskt Trä)',
+    lastUpdated: '2025-11-21'
+  },
+
+  // MURNING & PUTSNING (NY)
+  {
+    jobType: 'murning',
+    category: 'rot',
+    unitType: 'kvm', // Eller löpmeter för mur
+    requiredInput: ['area'],
+    timePerUnit: { simple: 2.0, normal: 3.5, complex: 5.0 },
+    multipliers: {
+      accessibility: { easy: 1.0, normal: 1.1, hard: 1.4 },
+      quality: { budget: 1.0, standard: 1.0, premium: 1.2 },
+      complexity: { simple: 0.8, normal: 1.0, complex: 1.5 }
+    },
+    hourlyRateRange: { min: 650, typical: 800, max: 1000 },
+    materialRatio: 0.4,
+    materialBuckets: {
+      budget: { priceMultiplier: 0.8, examples: ['Leca'] },
+      standard: { priceMultiplier: 1.0, examples: ['Tegel'] },
+      premium: { priceMultiplier: 1.5, examples: ['Natursten'] }
+    },
+    priceBounds: { minPerUnit: 1000, maxPerUnit: 6000, totalMin: 5000, totalMax: 200000 },
+    standardWorkItems: [
+      { name: 'Murning', mandatory: true, typicalHours: 3.5, perUnit: true }
+    ],
+    applicableDeduction: 'rot',
+    deductionPercentage: 30,
+    serviceVehicle: { threshold: 4, autoInclude: true, unit: 'dag' },
+    questionTemplates: {
+      unitQty: 'Hur stor yta (kvm)?',
+      complexity: 'Rak mur eller hörn/detaljer?',
+      accessibility: 'Markförhållanden?',
+      qualityLevel: 'Leca, tegel eller sten?'
+    },
+    regionSensitive: true,
+    seasonSensitive: true,
+    source: 'Webben',
+    lastUpdated: '2025-11-21'
+  },
+
+  // TILLÄGGSISOLERING (NY)
+  {
+    jobType: 'tillagsisolering',
+    category: 'rot',
+    unitType: 'kvm',
+    requiredInput: ['area'],
+    timePerUnit: { simple: 0.5, normal: 0.8, complex: 1.2 },
+    multipliers: {
+      accessibility: { easy: 0.8, normal: 1.0, hard: 1.5 }, // Vind vs vägg
+      quality: { budget: 0.9, standard: 1.0, premium: 1.3 },
+      complexity: { simple: 0.8, normal: 1.0, complex: 1.4 }
+    },
+    hourlyRateRange: { min: 550, typical: 700, max: 900 },
+    materialRatio: 0.5,
+    materialBuckets: {
+      budget: { priceMultiplier: 0.8, examples: ['Glasull'] },
+      standard: { priceMultiplier: 1.0, examples: ['Stenull'] },
+      premium: { priceMultiplier: 1.5, examples: ['Miljöisolering'] }
+    },
+    priceBounds: { minPerUnit: 300, maxPerUnit: 1500, totalMin: 5000, totalMax: 100000 },
+    standardWorkItems: [
+      { name: 'Isolering', mandatory: true, typicalHours: 0.8, perUnit: true }
+    ],
+    applicableDeduction: 'rot',
+    deductionPercentage: 30,
+    serviceVehicle: { threshold: 4, autoInclude: true, unit: 'dag' },
+    questionTemplates: {
+      unitQty: 'Hur många kvm ska isoleras?',
+      complexity: 'Vind (lösull) eller vägg (skivor)?',
+      accessibility: 'Trångt utrymme?',
+      qualityLevel: 'Standard'
+    },
+    regionSensitive: true,
+    seasonSensitive: true,
+    source: 'Webben',
+    lastUpdated: '2025-11-21'
   },
 
   // TRÄDGÅRD
@@ -509,7 +853,7 @@ export const JOB_REGISTRY: JobDefinition[] = [
   },
   {
     jobType: 'spackling_väggar',
-    category: 'rut',
+    category: 'rot', // Även spackling är ROT (renovering)
     unitType: 'kvm',
     timePerUnit: { simple: 0.2, normal: 0.3, complex: 0.5 },
     multipliers: {
@@ -529,8 +873,8 @@ export const JOB_REGISTRY: JobDefinition[] = [
       { name: 'Slipning', mandatory: true, typicalHours: 0.1 },
       { name: 'Spackling', mandatory: true, typicalHours: 0.2 }
     ],
-    applicableDeduction: 'rut',
-    deductionPercentage: 50,
+    applicableDeduction: 'rot',
+    deductionPercentage: 30,
     questionTemplates: {
       unitQty: 'Hur många kvm vägg ska spacklas?',
       complexity: 'Små sprickor eller större skador?',
@@ -546,6 +890,7 @@ export const JOB_REGISTRY: JobDefinition[] = [
     jobType: 'fasadmålning',
     category: 'rot',
     unitType: 'kvm',
+    requiredInput: ['area'],
     timePerUnit: { simple: 0.4, normal: 0.6, complex: 0.9 },
     multipliers: {
       accessibility: { easy: 1.0, normal: 1.25, hard: 1.6 },
@@ -594,6 +939,7 @@ export const JOB_REGISTRY: JobDefinition[] = [
     jobType: 'parkettläggning',
     category: 'rot',
     unitType: 'kvm',
+    requiredInput: ['area'],
     timePerUnit: { simple: 1.0, normal: 1.5, complex: 2.5 },
     multipliers: {
       accessibility: { easy: 1.0, normal: 1.1, hard: 1.3 },
@@ -667,7 +1013,7 @@ export const JOB_REGISTRY: JobDefinition[] = [
   },
   {
     jobType: 'mattläggning',
-    category: 'rut',
+    category: 'rot', // Även detta är oftast ROT
     unitType: 'kvm',
     timePerUnit: { simple: 0.4, normal: 0.6, complex: 0.9 },
     multipliers: {
@@ -687,8 +1033,8 @@ export const JOB_REGISTRY: JobDefinition[] = [
       { name: 'Förberedelse underlag', mandatory: true, typicalHours: 0.2 },
       { name: 'Läggning matta', mandatory: true, typicalHours: 0.4 }
     ],
-    applicableDeduction: 'rut',
-    deductionPercentage: 50,
+    applicableDeduction: 'rot',
+    deductionPercentage: 30,
     questionTemplates: {
       unitQty: 'Hur många kvm matta ska läggas?',
       complexity: 'Raka rum eller trappor/komplicerad layout?',
@@ -702,7 +1048,7 @@ export const JOB_REGISTRY: JobDefinition[] = [
   },
   {
     jobType: 'vinylgolv',
-    category: 'rut',
+    category: 'rot',
     unitType: 'kvm',
     timePerUnit: { simple: 0.6, normal: 0.9, complex: 1.3 },
     multipliers: {
@@ -722,8 +1068,8 @@ export const JOB_REGISTRY: JobDefinition[] = [
       { name: 'Förberedelse underlag', mandatory: true, typicalHours: 0.3 },
       { name: 'Läggning vinyl', mandatory: true, typicalHours: 0.6 }
     ],
-    applicableDeduction: 'rut',
-    deductionPercentage: 50,
+    applicableDeduction: 'rot',
+    deductionPercentage: 30,
     questionTemplates: {
       unitQty: 'Hur många kvm vinylgolv ska läggas?',
       complexity: 'Raka rum eller komplicerad layout?',
@@ -737,7 +1083,7 @@ export const JOB_REGISTRY: JobDefinition[] = [
   },
   {
     jobType: 'laminatgolv',
-    category: 'rut',
+    category: 'rot',
     unitType: 'kvm',
     timePerUnit: { simple: 0.5, normal: 0.7, complex: 1.0 },
     multipliers: {
@@ -757,8 +1103,8 @@ export const JOB_REGISTRY: JobDefinition[] = [
       { name: 'Förberedelse underlag', mandatory: true, typicalHours: 0.2 },
       { name: 'Läggning laminat', mandatory: true, typicalHours: 0.5 }
     ],
-    applicableDeduction: 'rut',
-    deductionPercentage: 50,
+    applicableDeduction: 'rot',
+    deductionPercentage: 30,
     questionTemplates: {
       unitQty: 'Hur många kvm laminat ska läggas?',
       complexity: 'Raka rum eller komplicerad layout?',
@@ -772,7 +1118,7 @@ export const JOB_REGISTRY: JobDefinition[] = [
   },
   {
     jobType: 'slipning_parkettgolv',
-    category: 'rut',
+    category: 'rot',
     unitType: 'kvm',
     timePerUnit: { simple: 0.4, normal: 0.6, complex: 0.9 },
     multipliers: {
@@ -792,8 +1138,8 @@ export const JOB_REGISTRY: JobDefinition[] = [
       { name: 'Slipning', mandatory: true, typicalHours: 0.4 },
       { name: 'Lackning', mandatory: true, typicalHours: 0.2 }
     ],
-    applicableDeduction: 'rut',
-    deductionPercentage: 50,
+    applicableDeduction: 'rot',
+    deductionPercentage: 30,
     questionTemplates: {
       unitQty: 'Hur många kvm parkettgolv ska slipas?',
       complexity: 'Lätt slitage eller djupa repor?',
@@ -1175,7 +1521,7 @@ export const JOB_REGISTRY: JobDefinition[] = [
   },
   {
     jobType: 'byte_dörr_invändig',
-    category: 'rut',
+    category: 'rot', // Även invändiga dörrar är ROT (renovering)
     unitType: 'st',
     timePerUnit: { simple: 1.5, normal: 2.5, complex: 4.0 },
     multipliers: {
@@ -1196,8 +1542,8 @@ export const JOB_REGISTRY: JobDefinition[] = [
       { name: 'Installation ny dörr', mandatory: true, typicalHours: 1.5 },
       { name: 'Justering', mandatory: true, typicalHours: 0.3 }
     ],
-    applicableDeduction: 'rut',
-    deductionPercentage: 50,
+    applicableDeduction: 'rot',
+    deductionPercentage: 30,
     questionTemplates: {
       unitQty: 'Hur många invändiga dörrar ska bytas?',
       complexity: 'Standard eller specialstorlek?',
@@ -1215,6 +1561,7 @@ export const JOB_REGISTRY: JobDefinition[] = [
     jobType: 'takläggning_plåt',
     category: 'rot',
     unitType: 'kvm',
+    requiredInput: ['area'],
     timePerUnit: { simple: 1.5, normal: 2.5, complex: 4.0 },
     multipliers: {
       accessibility: { easy: 1.0, normal: 1.25, hard: 1.6 },
@@ -1251,6 +1598,7 @@ export const JOB_REGISTRY: JobDefinition[] = [
     jobType: 'takläggning_tegel',
     category: 'rot',
     unitType: 'kvm',
+    requiredInput: ['area'],
     timePerUnit: { simple: 2.5, normal: 4.0, complex: 6.0 },
     multipliers: {
       accessibility: { easy: 1.0, normal: 1.25, hard: 1.6 },
@@ -1357,6 +1705,7 @@ export const JOB_REGISTRY: JobDefinition[] = [
     jobType: 'trädfällning',
     category: 'rut',
     unitType: 'st',
+    requiredInput: ['quantity'],
     timePerUnit: { simple: 2, normal: 4, complex: 8 },
     multipliers: {
       accessibility: { easy: 1.0, normal: 1.3, hard: 1.7 },
@@ -1498,8 +1847,8 @@ export const JOB_REGISTRY: JobDefinition[] = [
   {
     jobType: 'ai_driven',
     category: 'none',
-    requiredInput: ['jobType'],
     unitType: 'tim',
+    requiredInput: ['jobType'],
     timePerUnit: { simple: 0.8, normal: 1.0, complex: 1.3 },
     multipliers: {
       accessibility: { easy: 1.0, normal: 1.1, hard: 1.25 },
