@@ -20,6 +20,7 @@ interface UserInterpretation {
   inclusions: string[];
   assumptions: string[];
   clarificationsNeeded: string[];
+  missingCriticalInfo: boolean;
   startMonth?: number;
   location?: string;
 }
@@ -36,7 +37,8 @@ interface ConversationMessage {
 export async function interpretUserInput(
   description: string,
   conversationHistory: ConversationMessage[],
-  apiKey: string
+  apiKey: string,
+  requiredFields: string[] = []
 ): Promise<UserInterpretation> {
   
   console.log('🧠 FAS 6: Interpreting user input with AI...');
@@ -45,11 +47,21 @@ export async function interpretUserInput(
     .map(m => `${m.role === 'user' ? 'Kund' : 'Assistent'}: ${m.content}`)
     .join('\n');
   
+  const requiredFieldsText = requiredFields.length > 0 
+    ? `\n**OBLIGATORISKA FÄLT FÖR DENNA JOBBTYP:** ${requiredFields.join(', ')}`
+    : '';
+
   const promptText = `
 Du är en AI som TOLKAR användarbehov för offertgenerering.
 
 **DIN UPPGIFT:**
 Extrahera strukturerad data från konversationen. Returnera ENDAST tolkad information.
+${requiredFieldsText}
+
+**VIKTIG REGEL OM OBLIGATORISKA FÄLT:**
+- Om något av de obligatoriska fälten saknas: sätt "missingCriticalInfo": true och lägg till en relevant fråga i "clarificationsNeeded"
+- Om användaren explicit ber om en uppskattning (t.ex. "mellan tummen och pekfingret", "ungefärligt", "bara en snabb kalkyl"), IGNORERA detta och sätt "missingCriticalInfo": false ENDAST om de obligatoriska fälten finns
+- Obligatoriska fält kan INTE approximeras - de måste finnas explicit
 
 **KONVERSATION:**
 ${conversationText}
@@ -74,6 +86,7 @@ ${description}
   "inclusions": ["moment som explicit inkluderats"],
   "assumptions": ["antaganden du behöver göra"],
   "clarificationsNeeded": ["frågor som behöver besvaras"],
+  "missingCriticalInfo": <true om något obligatoriskt fält saknas>,
   "startMonth": <1-12 om nämnt, annars null>,
   "location": "<stad om nämnd, annars null>"
 }
@@ -167,7 +180,8 @@ Kund: "Renovera badrum, vi har redan köpt kakel och golvvärme"
       exclusions: [],
       inclusions: [],
       assumptions: ['AI-tolkning misslyckades - använder standardvärden'],
-      clarificationsNeeded: []
+      clarificationsNeeded: [],
+      missingCriticalInfo: true
     };
   }
   
