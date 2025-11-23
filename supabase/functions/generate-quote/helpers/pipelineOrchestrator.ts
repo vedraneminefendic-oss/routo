@@ -1,20 +1,6 @@
 /**
  * PIPELINE ORCHESTRATOR - FAS 5: Full Integration
- * * Denna modul orkestrerar hela quote-genererings-pipelinen i rätt ordning:
- * 1. Hämta JobDefinition från registry
- * 2. Applicera fallbacks (area, complexity)
- * 3. Detektera flags (customerProvidesMaterial, noComplexity)
- * 4. Formula Engine: Generate WorkItems & Materials från jobDef
- * 5. Merge pass 1 (normalisera dubbletter)
- * 6. Formula Engine: Recalculate efter merge
- * 7. Domain validation (jobbtyps-specifika regler med auto-fix)
- * 8. Merge pass 2 (efter auto-fix)
- * 9. Formula Engine: Final recalculation
- * 10. Filtrera kund-material
- * 11. Calculate totals (workCost, materialCost, VAT, ROT/RUT)
- * 12. FINAL MATH GUARD (obligatoriskt)
- * 13. Log report
- * * VIKTIGT: Denna pipeline ska användas för ALLA jobbtyper - ingen hårdkodad logik.
+ * Denna modul orkestrerar hela quote-genererings-pipelinen.
  */
 
 import { enforceWorkItemMath, logQuoteReport } from './mathGuard.ts';
@@ -60,8 +46,8 @@ interface PipelineResult {
   domainValidation: DomainValidationResult;
   jobDefinition: JobDefinition;
   appliedFallbacks: string[];
-  summary: any; // Added to interface
-  traceLog: string[]; // Added for debugging
+  summary: any;
+  traceLog: string[];
 }
 
 /**
@@ -340,7 +326,6 @@ export async function runQuotePipeline(
   // ============================================
   
   // ✅ SÄKERHETSFIX: Hämta procentsats strikt från definitionen
-  // Prioritera definitionens kategori över params om möjligt för att undvika gamla fel
   const deductionType = jobDef.applicableDeduction || params.deductionType || 'none';
   
   // Grundinställning från registry
@@ -349,10 +334,9 @@ export async function runQuotePipeline(
     : (deductionType === 'rot' ? 0.30 : (deductionType === 'rut' ? 0.50 : 0));
 
   // 🕒 TIDSSTYRD LOGIK: ROT 50% till årsskiftet 2024/2025
-  // Vi kontrollerar om vi är inom tidsramen för det förhöjda avdraget
   if (deductionType === 'rot') {
     const today = new Date();
-    const endOfTemporaryIncrease = new Date('2024-12-31'); // Justera om lagstiftningen förlängs
+    const endOfTemporaryIncrease = new Date('2024-12-31');
     
     if (today <= endOfTemporaryIncrease) {
       deductionPercentage = 0.50; // Tillfälligt 50%
@@ -373,7 +357,6 @@ export async function runQuotePipeline(
   const rutDeduction = deductionType === 'rut' ? deductionAmount : 0;
   
   const customerPays = finalSummary.customerPays || 0;
-  // Recalculate customer pays to be absolutely sure it matches the deduction
   const totalBeforeDeduction = (finalSummary.totalWithVAT || 0);
   const customerPaysAfterDeduction = totalBeforeDeduction - deductionAmount;
   
@@ -420,8 +403,8 @@ export async function runQuotePipeline(
       area: projectParams.unitQty
     },
     hourlyRate: workItemsResult.hourlyRate,
-    deductionType: deductionType, // Critical for frontend
-    projectType: jobDef.jobType   // Critical for frontend
+    deductionType: deductionType, 
+    projectType: jobDef.jobType
   };
   
   // Add customer material responsibilities
@@ -438,8 +421,6 @@ export async function runQuotePipeline(
   
   log('🛡️ STEG 13: Final Math Guard...');
   
-  // Math guard kan ibland återställa customerPays om den räknar annorlunda
-  // Så vi säkerställer att vår deduction logic behålls
   const mathGuardResult = enforceWorkItemMath(quote);
   
   // Säkerställ att deductionType är korrekt även efter Math Guard
