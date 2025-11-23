@@ -23,6 +23,17 @@ interface ChatInterfaceProps {
   initialMessage?: string;
 }
 
+// Felsäker UUID-generator (fungerar i alla webbläsare)
+function generateUUID() {
+  if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+    return crypto.randomUUID();
+  }
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+    var r = Math.random() * 16 | 0, v = c == 'x' ? r : (r & 0x3 | 0x8);
+    return v.toString(16);
+  });
+}
+
 export function ChatInterface({ onQuoteGenerated, initialMessage }: ChatInterfaceProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -34,44 +45,21 @@ export function ChatInterface({ onQuoteGenerated, initialMessage }: ChatInterfac
   const scrollRef = useRef<HTMLDivElement>(null);
   const { toast } = useToast();
 
-  // Starta konversation tyst i bakgrunden
+  // Initiera konversation ID
   useEffect(() => {
-    const initConversation = async () => {
-      try {
-        const { data: { user } } = await supabase.auth.getUser();
-        // Vi genererar alltid ett ID, även om vi inte är inloggade än, för att API:et kräver det
-        if (!conversationId) {
-            const tempId = crypto.randomUUID();
-            setConversationId(tempId);
-            
-            if (user) {
-                // Spara sessionen i DB om användaren finns
-                await supabase
-                  .from('conversation_sessions')
-                  .insert({
-                    id: tempId, // Använd samma ID
-                    user_id: user.id,
-                    status: 'active',
-                    metadata: { source: 'chat_interface' }
-                  });
-            }
-        }
-      } catch (e) {
-        console.warn("Kunde inte spara session, använder lokalt ID.", e);
-        if (!conversationId) setConversationId(crypto.randomUUID());
-      }
-    };
-    initConversation();
+    if (!conversationId) {
+      const newId = generateUUID();
+      setConversationId(newId);
+      console.log("Session ID initialized:", newId);
+    }
   }, []);
 
-  // Hantera startmeddelande
   useEffect(() => {
     if (initialMessage && messages.length === 0) {
       handleSendMessage(initialMessage);
     }
   }, [initialMessage]);
 
-  // Hjälpfunktion för ActionRequest
   const getQuestionType = (text: string) => {
     const t = (text || '').toLowerCase();
     if (t.includes('yta') || t.includes('kvm')) return 'area';
@@ -90,17 +78,18 @@ export function ChatInterface({ onQuoteGenerated, initialMessage }: ChatInterfac
     try {
       const { data: { user } } = await supabase.auth.getUser();
       
-      // GARANTERA att vi har ett sessionId (backend kraschar annars)
-      const currentSessionId = conversationId || crypto.randomUUID();
-      if (!conversationId) setConversationId(currentSessionId);
+      // VIKTIGT: Använd alltid ett giltigt ID (skapa nytt om det saknas)
+      const activeSessionId = conversationId || generateUUID();
+      if (!conversationId) setConversationId(activeSessionId);
 
-      // Anropa Edge Function med EXAKT den struktur backend förväntar sig
+      console.log("Sending message with session ID:", activeSessionId);
+
       const { data, error } = await supabase.functions.invoke('generate-quote', {
         body: { 
           message: content,
-          description: content, // VIKTIGT: Backend validerar detta fält
+          description: content, // Backend kräver detta fält
           userId: user?.id,
-          sessionId: currentSessionId, // VIKTIGT: Måste vara en sträng, får ej vara null
+          sessionId: activeSessionId, // Backend kräver detta fält (string)
           previousContext: previousContext,
           conversationHistory: newMessages.map(m => ({ role: m.role, content: m.content })).slice(-6)
         }
@@ -108,7 +97,6 @@ export function ChatInterface({ onQuoteGenerated, initialMessage }: ChatInterfac
 
       if (error) throw error;
 
-      // Hantera svaret
       if (data?.type === 'clarification_request') {
         setMessages(prev => [...prev, { 
           role: 'assistant', 
@@ -130,14 +118,21 @@ export function ChatInterface({ onQuoteGenerated, initialMessage }: ChatInterfac
         setMessages(prev => [...prev, { role: 'assistant', content: "Jag förstod inte riktigt. Kan du omformulera?" }]);
       }
 
-    } catch (error) {
-      console.error('Chat Error:', error);
+    } catch (error: any) {
+      console.error('Chat Error Details:', error);
+      
+      // Visa ett vänligare felmeddelande
+      let errorMessage = "Kunde inte nå AI-tjänsten.";
+      if (error.message && error.message.includes("sessionId")) {
+        errorMessage = "Sessionsfel: Försök ladda om sidan.";
+      }
+
       toast({
-        title: "Ett tekniskt fel uppstod",
-        description: "Kunde inte nå AI-tjänsten. Försök igen om en liten stund.",
+        title: "Ett fel uppstod",
+        description: errorMessage,
         variant: "destructive",
       });
-      setMessages(prev => [...prev, { role: 'assistant', content: "Ursäkta, något gick fel i kommunikationen. Försök skicka meddelandet igen." }]);
+      setMessages(prev => [...prev, { role: 'assistant', content: "Något gick fel. Försök igen eller ladda om sidan." }]);
     } finally {
       setIsLoading(false);
     }
@@ -146,7 +141,6 @@ export function ChatInterface({ onQuoteGenerated, initialMessage }: ChatInterfac
   return (
     <div className="flex flex-col h-[600px] w-full max-w-4xl mx-auto bg-white rounded-xl border shadow-sm overflow-hidden relative">
       
-      {/* Chatt-område */}
       <div className="flex-1 overflow-hidden relative bg-slate-50/50">
         <SmartScroll scrollRef={scrollRef} className="p-4">
           {messages.length === 0 ? (
@@ -155,7 +149,6 @@ export function ChatInterface({ onQuoteGenerated, initialMessage }: ChatInterfac
             </div>
           ) : (
             <div className="space-y-6 pb-4">
-              {/* Status Badge */}
               {previousContext?.jobType && !quoteData && (
                 <div className="w-full flex justify-center mb-4">
                    <div className="bg-blue-50 text-blue-700 px-3 py-1 rounded-full text-xs font-medium flex items-center gap-2 border border-blue-100 animate-in fade-in">
@@ -165,7 +158,6 @@ export function ChatInterface({ onQuoteGenerated, initialMessage }: ChatInterfac
                 </div>
               )}
 
-              {/* Meddelanden */}
               {messages.map((message, index) => (
                 <div key={index} className={`flex flex-col ${message.role === 'user' ? 'items-end' : 'items-start'} gap-2`}>
                   <MessageBubble 
@@ -175,7 +167,6 @@ export function ChatInterface({ onQuoteGenerated, initialMessage }: ChatInterfac
                     className={message.isClarification ? "border-l-4 border-l-amber-400 bg-amber-50" : ""}
                   />
                   
-                  {/* Action Cards (Slider/Knappar) */}
                   {message.isClarification && index === messages.length - 1 && (
                     <ActionRequest 
                       type={getQuestionType(message.content)}
@@ -184,21 +175,19 @@ export function ChatInterface({ onQuoteGenerated, initialMessage }: ChatInterfac
                     />
                   )}
 
-                  {/* Offert-knapp */}
                   {message.role === 'assistant' && message.data?.quote && (
                     <div className="ml-2 mt-1">
                        <button 
                          onClick={() => { setQuoteData(message.data.quote); setIsQuoteOpen(true); }}
                          className="text-xs bg-primary/10 hover:bg-primary/20 text-primary px-3 py-1.5 rounded-full font-medium transition-colors flex items-center gap-1.5"
                        >
-                         📄 Visa offert
+                         📄 Visa detaljerad offert
                        </button>
                     </div>
                   )}
                 </div>
               ))}
               
-              {/* Tänker-indikator */}
               {isLoading && (
                 <div className="flex justify-start w-full">
                   <AgentThinking />
@@ -209,7 +198,6 @@ export function ChatInterface({ onQuoteGenerated, initialMessage }: ChatInterfac
         </SmartScroll>
       </div>
 
-      {/* Footer Input */}
       <div className="border-t bg-white p-4 space-y-3 z-10">
         {!isLoading && messages.length > 0 && !messages[messages.length-1]?.isClarification && (
           <QuickReplies onSelect={handleSendMessage} />
