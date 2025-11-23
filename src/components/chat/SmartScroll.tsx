@@ -1,4 +1,4 @@
-import { useEffect, ReactNode } from "react";
+import { useEffect, useRef, ReactNode } from "react";
 import { cn } from "@/lib/utils";
 
 interface SmartScrollProps {
@@ -8,36 +8,48 @@ interface SmartScrollProps {
 }
 
 export function SmartScroll({ children, className, scrollRef }: SmartScrollProps) {
-  
-  // Denna effekt körs varje gång 'children' ändras (dvs nytt meddelande)
+  const isFirstRender = useRef(true);
+
   useEffect(() => {
     const viewport = scrollRef.current;
     if (!viewport) return;
 
-    // Spara nuvarande scroll-position innan vi gör något
-    const isAtBottom = viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight < 100;
-
-    // Funktion för att scrolla till botten
-    const scrollToBottom = () => {
-      viewport.scrollTo({
-        top: viewport.scrollHeight,
-        behavior: "smooth",
-      });
+    const scrollToBottom = (behavior: ScrollBehavior = "smooth") => {
+      if (viewport) {
+        viewport.scrollTo({
+          top: viewport.scrollHeight,
+          behavior: behavior,
+        });
+      }
     };
 
-    // Scrolla alltid till botten om det är nytt innehåll, eller om användaren redan var längst ner
-    // Vi använder en liten timeout för att låta DOM:en uppdateras klart först
-    const timeoutId = setTimeout(() => {
-      scrollToBottom();
-    }, 100);
+    // Scrolla direkt vid första laddning
+    if (isFirstRender.current) {
+      scrollToBottom("auto");
+      isFirstRender.current = false;
+      return;
+    }
 
-    return () => clearTimeout(timeoutId);
-  }, [children, scrollRef]); // Triggar när children (meddelanden) ändras
+    // Smart scroll: Scrolla bara om vi är nära botten ELLER om det är nytt innehåll
+    const isAtBottom = 
+      viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight < 150;
+
+    if (isAtBottom) {
+      const timeoutId = setTimeout(() => {
+        scrollToBottom("smooth");
+      }, 100);
+      return () => clearTimeout(timeoutId);
+    }
+  }, [children, scrollRef]); 
 
   return (
     <div 
       ref={scrollRef} 
-      className={cn("overflow-y-auto custom-scrollbar scroll-smooth", className)}
+      className={cn(
+        "flex-1 overflow-y-auto pr-4 pl-4", // Standard padding och scroll
+        "scrollbar-thin scrollbar-thumb-slate-200 scrollbar-track-transparent", // Försök till snygg scrollbar via Tailwind
+        className
+      )}
     >
       {children}
     </div>
