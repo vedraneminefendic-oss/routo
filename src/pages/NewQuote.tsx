@@ -3,13 +3,15 @@ import { ChatInterface } from "@/components/chat/ChatInterface";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft } from "lucide-react";
 import { useNavigate, useLocation } from "react-router-dom";
-import { ErrorBoundary } from "@/components/ErrorBoundary";
+
+// Vi tog bort ErrorBoundary för att lösa kraschen. 
+// ChatInterface hanterar nu fel internt.
 
 export default function NewQuote() {
   const navigate = useNavigate();
   const location = useLocation();
   
-  // Hämta eventuellt startmeddelande från navigation state (t.ex. från en mall)
+  // Hämta eventuellt startmeddelande från navigation state
   const initialMessage = location.state?.initialMessage;
 
   return (
@@ -34,16 +36,13 @@ export default function NewQuote() {
         </div>
 
         <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden min-h-[600px]">
-          {/* ErrorBoundary fångar krascher i ChatInterface så vi kan se vad som är fel */}
-          <ErrorBoundary>
-            <ChatInterface 
-              onQuoteGenerated={(quote) => {
-                console.log("Quote generated:", quote);
-                // Här kan vi t.ex. navigera till en redigeringsvy eller visa en framgångs-toast
-              }} 
-              initialMessage={initialMessage}
-            />
-          </ErrorBoundary>
+          <ChatInterface 
+            onQuoteGenerated={(quote) => {
+              console.log("Quote generated:", quote);
+              // Här kan vi lägga till logik för vad som händer när offerten är klar
+            }} 
+            initialMessage={initialMessage}
+          />
         </div>
       </main>
     </div>
