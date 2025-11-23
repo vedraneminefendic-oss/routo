@@ -8,11 +8,11 @@ import {
 
 interface ROTSummaryProps {
   summary: {
-    workCost: number;
-    materialCost: number;
-    rotRutDeduction: number;
-    totalWithVAT: number;
-    customerPays: number;
+    workCost?: number;
+    materialCost?: number;
+    rotRutDeduction?: number;
+    totalWithVAT?: number;
+    customerPays?: number;
   };
   deductionType: 'rot' | 'rut' | 'none';
 }
@@ -20,9 +20,13 @@ interface ROTSummaryProps {
 export function ROTSummary({ summary, deductionType }: ROTSummaryProps) {
   if (deductionType === 'none') return null;
 
+  const rotRutDeduction = summary.rotRutDeduction || 0;
+  const totalWithVAT = summary.totalWithVAT || 0;
+  const customerPays = summary.customerPays || 0;
+
   const percentage = deductionType === 'rot' ? 30 : 50; // OBS: Backend styr detta, detta är bara label
   const label = deductionType === 'rot' ? 'ROT-avdrag' : 'RUT-avdrag';
-  const colorClass = deductionType === 'rot' ? 'blue' : 'green'; 
+  const colorClass = deductionType === 'rot' ? 'blue' : 'green';
   // Tailwind safe-list för dynamiska klasser: 
   // bg-blue-50 bg-green-50 border-blue-100 border-green-100 text-blue-900 text-green-900 ...
 
@@ -70,7 +74,7 @@ export function ROTSummary({ summary, deductionType }: ROTSummaryProps) {
         <div className="flex items-center justify-between mb-2 text-sm">
           <span className="text-slate-500">Pris före avdrag</span>
           <span className="text-slate-400 line-through decoration-red-400 decoration-2">
-            {Math.round(summary.totalWithVAT).toLocaleString()} kr
+            {Math.round(totalWithVAT).toLocaleString()} kr
           </span>
         </div>
 
@@ -79,14 +83,14 @@ export function ROTSummary({ summary, deductionType }: ROTSummaryProps) {
             <Check className="w-3 h-3" /> {label}
           </span>
           <span className={`font-bold ${theme.textMed}`}>
-            -{Math.round(summary.rotRutDeduction).toLocaleString()} kr
+            -{Math.round(rotRutDeduction).toLocaleString()} kr
           </span>
         </div>
 
         <div className="flex items-end justify-between border-t border-slate-100 pt-4">
           <div className="text-xs text-slate-500 font-medium uppercase tracking-wider">Att betala</div>
           <div className="text-3xl font-bold text-slate-900">
-            {Math.round(summary.customerPays).toLocaleString()} <span className="text-sm font-normal text-slate-500">kr</span>
+            {Math.round(customerPays).toLocaleString()} <span className="text-sm font-normal text-slate-500">kr</span>
           </div>
         </div>
       </div>

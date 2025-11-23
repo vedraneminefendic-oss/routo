@@ -1051,11 +1051,8 @@ const QuoteDisplay = ({
         {deductionAmount > 0 && quote.deductionType && quote.deductionType !== 'none' && (
           <div className="my-6">
             <ROTSummary
-              workCost={quote.summary.workCost}
-              materialCost={quote.summary.materialCost}
-              rotEligibleAmount={quote.summary.workCost}
+              summary={quote.summary}
               deductionType={quote.deductionType}
-              totalWithVAT={quote.summary.totalWithVAT}
             />
           </div>
         )}

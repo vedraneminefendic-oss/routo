@@ -131,7 +131,14 @@ export async function runQuotePipeline(
   
   // 5. Merge Engine
   const mergeResult = mergeWorkItems(workItems, jobDef);
-  workItems = mergeResult.mergedWorkItems;
+  workItems = mergeResult.mergedWorkItems.map(wi => ({
+    name: wi.name,
+    hours: wi.estimatedHours || 0,
+    hourlyRate: wi.hourlyRate || 0,
+    subtotal: wi.subtotal || (wi.estimatedHours * wi.hourlyRate) || 0,
+    estimatedHours: wi.estimatedHours || 0,
+    reasoning: wi.description || ''
+  }));
 
   // 7. Domain Validation
   const domainValidation = await validateQuoteDomain({ workItems }, jobDef, { autoFix: false });
@@ -170,7 +177,7 @@ export async function runQuotePipeline(
   }
 
   // Beräkna avdrag
-  const workCostInclVat = finalSummary.workCost * 1.25; 
+  const workCostInclVat = (finalSummary.workCost || 0) * 1.25; 
   const potentialDeduction = Math.round(workCostInclVat * deductionPercentage);
   
   const maxDeduction = deductionType === 'rot' ? 50000 : 75000;
@@ -179,7 +186,7 @@ export async function runQuotePipeline(
   const rotDeduction = deductionType === 'rot' ? deductionAmount : 0;
   const rutDeduction = deductionType === 'rut' ? deductionAmount : 0;
   
-  const totalBeforeDeduction = finalSummary.totalWithVAT;
+  const totalBeforeDeduction = finalSummary.totalWithVAT || 0;
   const customerPays = Math.max(0, totalBeforeDeduction - deductionAmount);
   
   log(`💰 Deduction: ${deductionType.toUpperCase()} (${deductionPercentage*100}%) = -${deductionAmount} kr`);
@@ -207,8 +214,6 @@ export async function runQuotePipeline(
   // Återställ ROT/RUT-värden efter Math Guard
   mathGuardResult.correctedQuote.deductionType = deductionType;
   mathGuardResult.correctedQuote.summary.rotRutDeduction = deductionAmount;
-  mathGuardResult.correctedQuote.summary.rotDeduction = rotDeduction;
-  mathGuardResult.correctedQuote.summary.rutDeduction = rutDeduction;
   mathGuardResult.correctedQuote.summary.customerPays = customerPays;
 
   return {
