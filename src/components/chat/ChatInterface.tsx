@@ -39,21 +39,26 @@ export function ChatInterface({ onQuoteGenerated, initialMessage }: ChatInterfac
     const initConversation = async () => {
       try {
         const { data: { user } } = await supabase.auth.getUser();
-        if (user) {
-          const { data } = await supabase
-            .from('conversation_sessions')
-            .insert({
-              user_id: user.id,
-              status: 'active',
-              metadata: { source: 'chat_interface' }
-            })
-            .select()
-            .single();
-          
-          if (data) setConversationId(data.id);
+        // Vi genererar alltid ett ID, även om vi inte är inloggade än, för att API:et kräver det
+        if (!conversationId) {
+            const tempId = crypto.randomUUID();
+            setConversationId(tempId);
+            
+            if (user) {
+                // Spara sessionen i DB om användaren finns
+                await supabase
+                  .from('conversation_sessions')
+                  .insert({
+                    id: tempId, // Använd samma ID
+                    user_id: user.id,
+                    status: 'active',
+                    metadata: { source: 'chat_interface' }
+                  });
+            }
         }
       } catch (e) {
-        console.warn("Kunde inte spara session, fortsätter ändå.", e);
+        console.warn("Kunde inte spara session, använder lokalt ID.", e);
+        if (!conversationId) setConversationId(crypto.randomUUID());
       }
     };
     initConversation();
@@ -85,12 +90,17 @@ export function ChatInterface({ onQuoteGenerated, initialMessage }: ChatInterfac
     try {
       const { data: { user } } = await supabase.auth.getUser();
       
-      // Anropa Edge Function
+      // GARANTERA att vi har ett sessionId (backend kraschar annars)
+      const currentSessionId = conversationId || crypto.randomUUID();
+      if (!conversationId) setConversationId(currentSessionId);
+
+      // Anropa Edge Function med EXAKT den struktur backend förväntar sig
       const { data, error } = await supabase.functions.invoke('generate-quote', {
         body: { 
           message: content,
+          description: content, // VIKTIGT: Backend validerar detta fält
           userId: user?.id,
-          sessionId: conversationId,
+          sessionId: currentSessionId, // VIKTIGT: Måste vara en sträng, får ej vara null
           previousContext: previousContext,
           conversationHistory: newMessages.map(m => ({ role: m.role, content: m.content })).slice(-6)
         }
@@ -123,11 +133,11 @@ export function ChatInterface({ onQuoteGenerated, initialMessage }: ChatInterfac
     } catch (error) {
       console.error('Chat Error:', error);
       toast({
-        title: "Ett fel uppstod",
-        description: "Kunde inte nå AI-tjänsten. Försök igen.",
+        title: "Ett tekniskt fel uppstod",
+        description: "Kunde inte nå AI-tjänsten. Försök igen om en liten stund.",
         variant: "destructive",
       });
-      setMessages(prev => [...prev, { role: 'assistant', content: "Något gick fel. Försök igen." }]);
+      setMessages(prev => [...prev, { role: 'assistant', content: "Ursäkta, något gick fel i kommunikationen. Försök skicka meddelandet igen." }]);
     } finally {
       setIsLoading(false);
     }
