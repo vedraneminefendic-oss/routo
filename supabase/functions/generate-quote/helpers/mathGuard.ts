@@ -1,14 +1,11 @@
 /**
  * MATH GUARD - Final Math Validation & Auto-Correction
- * 
- * FAS 3: Använder Formula Engine för alla beräkningar
- * 
- * KRITISKT: Denna modul säkerställer att:
+ * * FAS 3: Använder Formula Engine för alla beräkningar
+ * * KRITISKT: Denna modul säkerställer att:
  * 1. Varje workItem: subtotal = hours × hourlyRate (avrundad till heltal)
  * 2. Alla totals (workCost, materialCost, equipmentCost, VAT, ROT/RUT) räknas om korrekt
  * 3. Alla avvikelser >10% loggas och korrigeras
- * 
- * Ska ALLTID köras innan offert returneras eller sparas.
+ * * Ska ALLTID köras innan offert returneras eller sparas.
  */
 
 import { calculateQuoteTotals, QuoteStructure, CalculationReport } from './formulaEngine.ts';
@@ -31,6 +28,7 @@ interface Equipment {
   subtotal: number;
 }
 
+// FIX: Lade till rotDeduction och rutDeduction för att matcha Pipeline Orchestrator
 interface Summary {
   workCost: number;
   materialCost: number;
@@ -39,6 +37,8 @@ interface Summary {
   vatAmount: number;
   totalWithVAT: number;
   deductionAmount?: number;
+  rotDeduction?: number; // NY: Måste finnas för att matcha pipeline
+  rutDeduction?: number; // NY: Måste finnas för att matcha pipeline
   rotRutDeduction?: number;
   customerPays: number;
 }
@@ -72,8 +72,7 @@ interface MathGuardResult {
 
 /**
  * FAS 3: Huvudfunktion - Använder Formula Engine för alla beräkningar
- * 
- * Korrigerar alla subtotals och totals genom att använda den centrala Formula Engine
+ * * Korrigerar alla subtotals och totals genom att använda den centrala Formula Engine
  */
 export function enforceWorkItemMath(quote: Quote): MathGuardResult {
   console.log('\n🛡️ ===== MATH GUARD: Starting validation (using Formula Engine) =====');
@@ -169,6 +168,9 @@ export function enforceWorkItemMath(quote: Quote): MathGuardResult {
       vatAmount: correctedStructure.summary!.vat!,
       totalWithVAT: correctedStructure.summary!.totalWithVAT!,
       deductionAmount: (correctedStructure.summary!.rotDeduction || 0) + (correctedStructure.summary!.rutDeduction || 0),
+      // FIX: Se till att dessa fält följer med och matchar interfacet
+      rotDeduction: correctedStructure.summary!.rotDeduction || 0,
+      rutDeduction: correctedStructure.summary!.rutDeduction || 0,
       rotRutDeduction: (correctedStructure.summary!.rotDeduction || 0) + (correctedStructure.summary!.rutDeduction || 0),
       customerPays: correctedStructure.summary!.customerPays!
     }
