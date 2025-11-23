@@ -45,10 +45,9 @@ export function ChatInterface({ onQuoteGenerated, initialMessage }: ChatInterfac
   const scrollRef = useRef<HTMLDivElement>(null);
   const { toast } = useToast();
 
-  // Initiera session ID säkert vid start
   useEffect(() => {
-    const id = generateUUID();
-    setConversationId(id);
+    // Sätt ett ID direkt vid mount
+    setConversationId(generateUUID());
   }, []);
 
   useEffect(() => {
@@ -75,23 +74,33 @@ export function ChatInterface({ onQuoteGenerated, initialMessage }: ChatInterfac
     try {
       const { data: { user } } = await supabase.auth.getUser();
       
-      // Säkerställ att vi ALLTID har ett giltigt ID
+      // SKAPA ETT ID OM DET SAKNAS (HÄR FÅR DET ALDRIG VARA NULL)
       const activeSessionId = conversationId || generateUUID();
+      if (!conversationId) setConversationId(activeSessionId);
 
-      console.log("Sending request...", { sessionId: activeSessionId, hasUser: !!user });
+      // BYGG PAYLOAD MANUELLT FÖR ATT GARANTERA TYPER
+      const payload = {
+        message: content || "Ingen text",
+        description: content || "Ingen text", // Dubblera för säkerhets skull
+        userId: user?.id || "anonymous",
+        sessionId: activeSessionId, // Garanterad sträng
+        previousContext: previousContext || {}, // Aldrig null
+        conversationHistory: newMessages.slice(-6).map(m => ({ 
+          role: m.role, 
+          content: m.content || "" 
+        }))
+      };
+
+      console.log("Sending payload to backend:", payload);
 
       const { data, error } = await supabase.functions.invoke('generate-quote', {
-        body: { 
-          message: content,
-          description: content, // Skicka både message och description för säkerhets skull
-          userId: user?.id,
-          sessionId: activeSessionId,
-          previousContext: previousContext,
-          conversationHistory: newMessages.slice(-6).map(m => ({ role: m.role, content: m.content }))
-        }
+        body: payload
       });
 
-      if (error) throw error;
+      if (error) {
+        console.error("Supabase Function Error:", error);
+        throw error;
+      }
 
       if (data?.type === 'clarification_request') {
         setMessages(prev => [...prev, { 
@@ -111,17 +120,24 @@ export function ChatInterface({ onQuoteGenerated, initialMessage }: ChatInterfac
         if (!quoteData) setIsQuoteOpen(true);
         setPreviousContext(null); 
       } else {
-        setMessages(prev => [...prev, { role: 'assistant', content: "Jag förstod inte riktigt. Kan du förtydliga?" }]);
+        // Fallback om svaret är tomt eller konstigt
+        setMessages(prev => [...prev, { role: 'assistant', content: "Jag kunde inte tolka svaret. Kan du försöka igen?" }]);
       }
 
-    } catch (error) {
-      console.error('Chat Error:', error);
+    } catch (error: any) {
+      console.error('Critical Chat Error:', error);
+      
+      let userMessage = "Ett tekniskt fel uppstod vid kontakt med servern.";
+      if (error.message && error.message.includes("500")) {
+        userMessage = "Serverfel (500). Backend kunde inte hantera förfrågan.";
+      }
+
       toast({
-        title: "Ett fel uppstod",
-        description: "Kunde inte kommunicera med servern. Försök igen.",
+        title: "Något gick fel",
+        description: userMessage,
         variant: "destructive",
       });
-      setMessages(prev => [...prev, { role: 'assistant', content: "Ett tekniskt fel uppstod. Försök igen." }]);
+      setMessages(prev => [...prev, { role: 'assistant', content: "Ett fel uppstod. Försök ladda om sidan." }]);
     } finally {
       setIsLoading(false);
     }
@@ -170,7 +186,7 @@ export function ChatInterface({ onQuoteGenerated, initialMessage }: ChatInterfac
                          onClick={() => { setQuoteData(message.data.quote); setIsQuoteOpen(true); }}
                          className="text-xs bg-primary/10 hover:bg-primary/20 text-primary px-3 py-1.5 rounded-full font-medium transition-colors flex items-center gap-1.5"
                        >
-                         📄 Visa offert
+                         📄 Visa detaljerad offert
                        </button>
                     </div>
                   )}
