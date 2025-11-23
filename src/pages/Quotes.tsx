@@ -344,29 +344,9 @@ const Quotes = () => {
                   </CardHeader>
                   <div className="px-6 pb-6">
                     <ChatInterface
-                      existingQuoteId={viewingQuote.id}
                       onQuoteGenerated={(updatedQuote) => {
                         setCurrentQuote(updatedQuote);
                         setIsGeneratingQuote(false);
-                      }}
-                      isGenerating={isGeneratingQuote}
-                      onQuoteUpdated={async () => {
-                        await loadQuotes();
-                        const updated = await supabase
-                          .from('quotes')
-                          .select('*')
-                          .eq('id', viewingQuote.id)
-                          .single();
-                        if (updated.data) {
-                          const updatedQuoteData = updated.data.edited_quote || updated.data.generated_quote;
-                          if (updatedQuoteData && typeof updatedQuoteData === 'object') {
-                            setCurrentQuote({
-                              ...(updatedQuoteData as any),
-                              deductionType: updated.data.deduction_type || (updatedQuoteData as any).deductionType || 'none'
-                            });
-                            setViewingQuote(updated.data);
-                          }
-                        }
                       }}
                     />
                   </div>

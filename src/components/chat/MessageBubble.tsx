@@ -1,7 +1,6 @@
 import { cn } from "@/lib/utils";
 import { Bot, User, Info } from "lucide-react";
-import { Message } from "./ChatInterface";
-import { QuickReplies } from "./QuickReplies";
+import { type Message } from "./ChatInterface";
 import { ContextualHelp } from "@/components/ContextualHelp";
 import { MessageReactions } from "./MessageReactions";
 
@@ -39,29 +38,6 @@ export const MessageBubble = ({ message, onSendMessage, isTyping, onFeedback }: 
   };
   
   const contextHelp = !isUser ? getContextualHelp(message.content) : null;
-  
-  const handleQuickReplySelect = (action: string, label: string) => {
-    if (!onSendMessage) return;
-    
-    // Map action till faktiskt svar - undvik "Jag..." för att inte trigga bekräftelse-regex
-    const responseMap: Record<string, string> = {
-      'confirm': 'Ja, generera offert',
-      'edit': 'Ändra något',
-      'add_info': 'Lägg till mer information',
-      'review': 'Granska sammanfattning',
-      'generate': 'Generera direkt',
-      'more_info': 'Lägg till mer info',
-      'edit_measurements': 'Jag vill ändra mått och storlek',
-      'edit_scope': 'Jag vill ändra omfattningen',
-      'edit_materials': 'Jag vill ändra materialkvaliteten',
-      'edit_inclusions': 'Jag vill ändra vad som ingår',
-      'edit_exclusions': 'Jag vill ändra vad som inte ingår',
-      'edit_budget': 'Jag vill ändra budgeten'
-    };
-    
-    const response = responseMap[action] || label;
-    onSendMessage(response, undefined, action); // Skicka action som intent
-  };
   
   return (
     <div className={cn(
@@ -133,13 +109,6 @@ export const MessageBubble = ({ message, onSendMessage, isTyping, onFeedback }: 
             />
           )}
         </div>
-        {!isUser && message.quickReplies && message.quickReplies.length > 0 && (
-          <QuickReplies
-            replies={message.quickReplies}
-            onSelect={handleQuickReplySelect}
-            disabled={isTyping}
-          />
-        )}
       </div>
     </div>
   );

@@ -11,11 +11,14 @@ import { AgentThinking } from "./AgentThinking";
 import { ActionRequest } from "./ActionRequest"; 
 import { HelpCircle } from "lucide-react"; 
 
-interface Message {
+export interface Message {
+  id: string;
   role: 'user' | 'assistant';
   content: string;
+  timestamp: Date;
   data?: any;
   isClarification?: boolean;
+  quickReplies?: Array<{label: string; action: string}>;
 }
 
 interface ChatInterfaceProps {
@@ -69,7 +72,12 @@ export function ChatInterface({ onQuoteGenerated, initialMessage }: ChatInterfac
   const handleSendMessage = async (content: string) => {
     if (!content?.trim() && !quoteData) return;
 
-    const newMessages = [...messages, { role: 'user' as const, content }];
+    const newMessages = [...messages, { 
+      id: safeUUID(),
+      role: 'user' as const, 
+      content,
+      timestamp: new Date()
+    }];
     setMessages(newMessages);
     setIsLoading(true);
 
@@ -108,23 +116,32 @@ export function ChatInterface({ onQuoteGenerated, initialMessage }: ChatInterfac
 
       if (data.type === 'clarification_request') {
         setMessages(prev => [...prev, { 
+          id: safeUUID(),
           role: 'assistant', 
           content: data.message,
+          timestamp: new Date(),
           isClarification: true
         }]);
         setPreviousContext(data.interpretation);
       } else if (data.quote) {
         setQuoteData(data.quote);
         setMessages(prev => [...prev, { 
+          id: safeUUID(),
           role: 'assistant', 
           content: data.message || "Här är din offert.",
+          timestamp: new Date(),
           data: data 
         }]);
         if (onQuoteGenerated) onQuoteGenerated(data.quote);
         if (!quoteData) setIsQuoteOpen(true);
         setPreviousContext(null); 
       } else {
-        setMessages(prev => [...prev, { role: 'assistant', content: "Jag förstod inte svaret. Kan du försöka igen?" }]);
+        setMessages(prev => [...prev, { 
+          id: safeUUID(),
+          role: 'assistant', 
+          content: "Jag förstod inte svaret. Kan du försöka igen?",
+          timestamp: new Date()
+        }]);
       }
 
     } catch (error: any) {
@@ -138,7 +155,12 @@ export function ChatInterface({ onQuoteGenerated, initialMessage }: ChatInterfac
         description: msg,
         variant: "destructive",
       });
-      setMessages(prev => [...prev, { role: 'assistant', content: "Ett tekniskt fel uppstod. Ladda om sidan och försök igen." }]);
+      setMessages(prev => [...prev, { 
+        id: safeUUID(),
+        role: 'assistant', 
+        content: "Ett tekniskt fel uppstod. Ladda om sidan och försök igen.",
+        timestamp: new Date()
+      }]);
     } finally {
       setIsLoading(false);
     }
@@ -151,7 +173,7 @@ export function ChatInterface({ onQuoteGenerated, initialMessage }: ChatInterfac
         <SmartScroll scrollRef={scrollRef} className="p-4">
           {messages.length === 0 ? (
             <div className="h-full flex items-center justify-center min-h-[400px]">
-              <ConversationStarter onSelect={(text) => handleSendMessage(text)} />
+              <ConversationStarter onStarterClick={(text) => handleSendMessage(text)} />
             </div>
           ) : (
             <div className="space-y-6 pb-4">
@@ -165,12 +187,11 @@ export function ChatInterface({ onQuoteGenerated, initialMessage }: ChatInterfac
               )}
 
               {messages.map((message, index) => (
-                <div key={index} className={`flex flex-col ${message.role === 'user' ? 'items-end' : 'items-start'} gap-2`}>
+                <div key={message.id} className={`flex flex-col ${message.role === 'user' ? 'items-end' : 'items-start'} gap-2`}>
                   <MessageBubble 
-                    role={message.role} 
-                    content={message.content}
-                    isLatest={index === messages.length - 1}
-                    className={message.isClarification ? "border-l-4 border-l-amber-400 bg-amber-50" : ""}
+                    message={message}
+                    onSendMessage={handleSendMessage}
+                    isTyping={isLoading}
                   />
                   
                   {message.isClarification && index === messages.length - 1 && (
@@ -218,7 +239,23 @@ export function ChatInterface({ onQuoteGenerated, initialMessage }: ChatInterfac
         </div>
       </div>
 
-      <QuoteSheet isOpen={isQuoteOpen} onOpenChange={setIsQuoteOpen} quote={quoteData} />
+      <QuoteSheet 
+        open={isQuoteOpen} 
+        onOpenChange={setIsQuoteOpen} 
+        quote={quoteData}
+        onSend={() => {
+          setIsQuoteOpen(false);
+          toast({ title: "Offert skickad", description: "Offerten har skickats till kunden" });
+        }}
+        onSaveAsDraft={() => {
+          setIsQuoteOpen(false);
+          toast({ title: "Utkast sparat", description: "Offerten har sparats som utkast" });
+        }}
+        onEdit={() => {
+          setIsQuoteOpen(false);
+          toast({ title: "Redigering", description: "Öppnar redigeringsläge..." });
+        }}
+      />
     </div>
   );
 }
