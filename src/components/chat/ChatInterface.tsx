@@ -23,12 +23,15 @@ interface ChatInterfaceProps {
   initialMessage?: string;
 }
 
-// Helper to generate ID if crypto is missing (unlikely but safe)
+// Robust ID-generator
 function safeUUID() {
   if (typeof crypto !== 'undefined' && crypto.randomUUID) {
     return crypto.randomUUID();
   }
-  return Date.now().toString(36) + Math.random().toString(36).substr(2);
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+    var r = Math.random() * 16 | 0, v = c == 'x' ? r : (r & 0x3 | 0x8);
+    return v.toString(16);
+  });
 }
 
 export function ChatInterface({ onQuoteGenerated, initialMessage }: ChatInterfaceProps) {
@@ -42,11 +45,11 @@ export function ChatInterface({ onQuoteGenerated, initialMessage }: ChatInterfac
   const scrollRef = useRef<HTMLDivElement>(null);
   const { toast } = useToast();
 
-  // Initiera ID direkt
+  // Initiera sessions-ID direkt när komponenten laddas
   useEffect(() => {
     const id = safeUUID();
     setConversationId(id);
-    console.log("Chat initialized with Session ID:", id);
+    console.log("Chat session initialized:", id);
   }, []);
 
   useEffect(() => {
@@ -64,7 +67,6 @@ export function ChatInterface({ onQuoteGenerated, initialMessage }: ChatInterfac
   };
 
   const handleSendMessage = async (content: string) => {
-    // Säkerhetskontroll: Skicka inte tomma meddelanden om vi inte har en offert att visa
     if (!content?.trim() && !quoteData) return;
 
     const newMessages = [...messages, { role: 'user' as const, content }];
@@ -74,14 +76,14 @@ export function ChatInterface({ onQuoteGenerated, initialMessage }: ChatInterfac
     try {
       const { data: { user } } = await supabase.auth.getUser();
       
-      // VIKTIGT: Använd state-variabeln ELLER generera ett nytt ID om den är tom
+      // SÄKERHET: Garantera att vi har ett ID
       const currentSessionId = conversationId || safeUUID();
       if (!conversationId) setConversationId(currentSessionId);
 
-      // Konstruera payload exakt som backend vill ha den
-      const requestBody = {
+      // Konstruera payloaden noggrant
+      const payload = {
         message: content,
-        description: content, // Fallback för att backend ska vara nöjd
+        description: content, // Skicka med beskrivning som fallback
         userId: user?.id || "anonymous",
         sessionId: currentSessionId,
         previousContext: previousContext || {},
@@ -91,20 +93,19 @@ export function ChatInterface({ onQuoteGenerated, initialMessage }: ChatInterfac
         }))
       };
 
-      console.log("Sending request:", requestBody);
+      console.log("Sending to backend:", payload);
 
       const { data, error } = await supabase.functions.invoke('generate-quote', {
-        body: requestBody
+        body: payload
       });
 
       if (error) {
-        console.error("Supabase Invoke Error:", error);
-        throw new Error(error.message || "Kunde inte nå servern");
+        console.error("Supabase Function Error:", error);
+        throw new Error(error.message || "Kunde inte nå servern.");
       }
 
-      if (!data) throw new Error("Inget svar från servern");
+      if (!data) throw new Error("Tomt svar från servern.");
 
-      // Hantera olika svarstyper
       if (data.type === 'clarification_request') {
         setMessages(prev => [...prev, { 
           role: 'assistant', 
@@ -120,24 +121,24 @@ export function ChatInterface({ onQuoteGenerated, initialMessage }: ChatInterfac
           data: data 
         }]);
         if (onQuoteGenerated) onQuoteGenerated(data.quote);
-        if (!quoteData) setIsQuoteOpen(true); // Öppna bara automatiskt första gången
+        if (!quoteData) setIsQuoteOpen(true);
         setPreviousContext(null); 
       } else {
         setMessages(prev => [...prev, { role: 'assistant', content: "Jag förstod inte svaret. Kan du försöka igen?" }]);
       }
 
     } catch (error: any) {
-      console.error('Chat Error:', error);
+      console.error('Chat Error Details:', error);
       
-      let userMsg = "Ett fel uppstod. Försök igen.";
-      if (error.message?.includes("500")) userMsg = "Serverfel. Vi jobbar på det.";
+      let msg = "Ett fel uppstod. Försök igen.";
+      if (error.message?.includes("500")) msg = "Serverfel (500). Backend kunde inte hantera förfrågan.";
       
       toast({
-        title: "Ett fel uppstod",
-        description: userMsg,
+        title: "Något gick fel",
+        description: msg,
         variant: "destructive",
       });
-      setMessages(prev => [...prev, { role: 'assistant', content: "Ursäkta, något gick fel. Försök ladda om sidan." }]);
+      setMessages(prev => [...prev, { role: 'assistant', content: "Ett tekniskt fel uppstod. Ladda om sidan och försök igen." }]);
     } finally {
       setIsLoading(false);
     }
@@ -146,12 +147,10 @@ export function ChatInterface({ onQuoteGenerated, initialMessage }: ChatInterfac
   return (
     <div className="flex flex-col h-[600px] w-full max-w-4xl mx-auto bg-white rounded-xl border shadow-sm overflow-hidden relative">
       
-      {/* Chat Area */}
       <div className="flex-1 overflow-hidden relative bg-slate-50/50">
         <SmartScroll scrollRef={scrollRef} className="p-4">
           {messages.length === 0 ? (
             <div className="h-full flex items-center justify-center min-h-[400px]">
-              {/* Passa vidare handleSendMessage till conversation starter */}
               <ConversationStarter onSelect={(text) => handleSendMessage(text)} />
             </div>
           ) : (
@@ -205,10 +204,8 @@ export function ChatInterface({ onQuoteGenerated, initialMessage }: ChatInterfac
         </SmartScroll>
       </div>
 
-      {/* Footer Input */}
       <div className="border-t bg-white p-4 space-y-3 z-10">
         {!isLoading && messages.length > 0 && !messages[messages.length-1]?.isClarification && (
-          // Passa vidare handleSendMessage till QuickReplies
           <QuickReplies onSelect={(text) => handleSendMessage(text)} />
         )}
         
