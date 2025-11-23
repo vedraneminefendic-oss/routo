@@ -1,61 +1,45 @@
-import { useEffect, useRef, useState } from "react";
-import { Button } from "@/components/ui/button";
-import { ArrowDown } from "lucide-react";
+import { useEffect, ReactNode } from "react";
+import { cn } from "@/lib/utils";
 
 interface SmartScrollProps {
-  messages: any[];
-  isTyping: boolean;
-  containerRef: React.RefObject<HTMLDivElement>;
+  children: ReactNode;
+  className?: string;
+  scrollRef: React.RefObject<HTMLDivElement>;
 }
 
-export const SmartScroll = ({ messages, isTyping, containerRef }: SmartScrollProps) => {
-  const [showScrollButton, setShowScrollButton] = useState(false);
-  const [isNearBottom, setIsNearBottom] = useState(true);
-
+export function SmartScroll({ children, className, scrollRef }: SmartScrollProps) {
+  
+  // Denna effekt körs varje gång 'children' ändras (dvs nytt meddelande)
   useEffect(() => {
-    const container = containerRef.current;
-    if (!container) return;
+    const viewport = scrollRef.current;
+    if (!viewport) return;
 
-    const handleScroll = () => {
-      const { scrollTop, scrollHeight, clientHeight } = container;
-      const distanceFromBottom = scrollHeight - scrollTop - clientHeight;
-      const near = distanceFromBottom < 100;
-      
-      setIsNearBottom(near);
-      setShowScrollButton(!near && messages.length > 3);
-    };
+    // Spara nuvarande scroll-position innan vi gör något
+    const isAtBottom = viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight < 100;
 
-    container.addEventListener("scroll", handleScroll);
-    return () => container.removeEventListener("scroll", handleScroll);
-  }, [containerRef, messages.length]);
-
-  useEffect(() => {
-    // Auto-scroll only if user is near bottom or if it's a new AI message
-    if (isNearBottom && containerRef.current) {
-      containerRef.current.scrollTo({
-        top: containerRef.current.scrollHeight,
+    // Funktion för att scrolla till botten
+    const scrollToBottom = () => {
+      viewport.scrollTo({
+        top: viewport.scrollHeight,
         behavior: "smooth",
       });
-    }
-  }, [messages, isTyping, isNearBottom, containerRef]);
+    };
 
-  const scrollToBottom = () => {
-    containerRef.current?.scrollTo({
-      top: containerRef.current.scrollHeight,
-      behavior: "smooth",
-    });
-  };
+    // Scrolla alltid till botten om det är nytt innehåll, eller om användaren redan var längst ner
+    // Vi använder en liten timeout för att låta DOM:en uppdateras klart först
+    const timeoutId = setTimeout(() => {
+      scrollToBottom();
+    }, 100);
 
-  if (!showScrollButton) return null;
+    return () => clearTimeout(timeoutId);
+  }, [children, scrollRef]); // Triggar när children (meddelanden) ändras
 
   return (
-    <Button
-      onClick={scrollToBottom}
-      size="icon"
-      className="fixed bottom-24 right-8 rounded-full shadow-lg z-20 animate-in fade-in-0 slide-in-from-bottom-2 duration-300"
-      variant="secondary"
+    <div 
+      ref={scrollRef} 
+      className={cn("overflow-y-auto custom-scrollbar scroll-smooth", className)}
     >
-      <ArrowDown className="h-5 w-5" />
-    </Button>
+      {children}
+    </div>
   );
-};
+}
