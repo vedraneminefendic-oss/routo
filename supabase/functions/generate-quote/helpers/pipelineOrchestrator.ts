@@ -1,7 +1,7 @@
 /**
  * PIPELINE ORCHESTRATOR - FAS 5: Full Integration
- * * Denna modul orkestrerar hela quote-genererings-pipelinen.
- * Nu med STRIKT ROT/RUT-logik.
+ * Denna modul orkestrerar hela quote-genererings-pipelinen.
+ * FIX: Korrigerad material-mappning och ROT-logik.
  */
 
 import { enforceWorkItemMath, logQuoteReport } from './mathGuard.ts';
@@ -34,8 +34,15 @@ interface QuoteContext {
 
 interface PipelineResult {
   quote: any;
-  flags: any;
-  corrections: any;
+  flags: {
+    customerProvidesMaterial: boolean;
+    noComplexity: boolean;
+  };
+  corrections: {
+    totalCorrections: number;
+    workItemsCorrected: number;
+    totalsCorrected: boolean;
+  };
   mergeResult: MergeResult;
   domainValidation: DomainValidationResult;
   jobDefinition: JobDefinition;
@@ -110,12 +117,15 @@ export async function runQuotePipeline(
       qualityLevel: projectParams.qualityLevel
     }, jobDef);
   
+  // FIX 1: Mappa materialpriser korrekt för både frontend och backend
   let materials = generatedMaterials.map(m => ({
     name: m.name,
     quantity: m.quantity,
     unit: m.unit,
-    unitPrice: m.pricePerUnit,
+    unitPrice: m.pricePerUnit,     // Används av vissa system
+    pricePerUnit: m.pricePerUnit,  // Används av frontend (fixar 0 kr felet)
     subtotal: m.estimatedCost,
+    estimatedCost: m.estimatedCost,
     reasoning: m.reasoning
   }));
   
@@ -123,7 +133,7 @@ export async function runQuotePipeline(
   const mergeResult = mergeWorkItems(workItems, jobDef);
   workItems = mergeResult.mergedWorkItems;
 
-  // 7. Domain Validation (simplified)
+  // 7. Domain Validation
   const domainValidation = await validateQuoteDomain({ workItems }, jobDef, { autoFix: false });
   
   // 11. Calculate Totals
@@ -141,26 +151,28 @@ export async function runQuotePipeline(
   const deductionType = jobDef.applicableDeduction; 
   
   // Hämta procent. Default 30% för ROT, 50% för RUT.
-  // OBS: Om vi vill ha tidsstyrd 50% ROT kan vi lägga in datumkoll här.
   let deductionPercentage = jobDef.deductionPercentage / 100;
   
-  // Säkerhetsspärr för orimliga värden
-  if (deductionType === 'rot' && deductionPercentage > 0.30) {
-    // Om datumet är 2024 kan 50% vara ok, annars tvinga 30%
-    // För enkelhetens skull sätter vi standard 30% här om inget annat anges
-    // deductionPercentage = 0.30; 
+  // Säkerhetsspärr: Om registry säger ROT men procent är 50%, tvinga ner till 30%
+  // (Om vi inte är i 2024-perioden för höjt ROT)
+  const today = new Date();
+  const tempRotPeriod = today <= new Date('2024-12-31');
+  
+  if (deductionType === 'rot') {
+    if (tempRotPeriod && deductionPercentage === 0.5) {
+        log('💰 SPECIAL: Tillfälligt förhöjt ROT (50%) aktivt');
+    } else {
+        deductionPercentage = 0.30; // Standard ROT
+        log('💰 STANDARD: ROT justerat till 30%');
+    }
+  } else if (deductionType === 'rut') {
+      deductionPercentage = 0.50; // Standard RUT
   }
 
-  const workCostInclVat = finalSummary.workCost * 1.25; // ROT/RUT baseras på inkl moms mot privatperson
-  // Men formeln i formulaEngine brukar räkna avdraget direkt på workCost (exkl moms) om det är B2B, 
-  // eller så har vi en flagga 'isPrivate'. 
-  // Enklast: Vi räknar avdraget som: (Arbetskostnad_inkl_moms * procent).
-  
-  // I denna implementation drar vi avdraget från TOTALEN inkl moms.
-  // Skatteverket ger avdrag på 30% av arbetskostnaden INKLUSIVE moms.
+  // Beräkna avdrag
+  const workCostInclVat = finalSummary.workCost * 1.25; 
   const potentialDeduction = Math.round(workCostInclVat * deductionPercentage);
   
-  // Applicera maxgräns (50k/75k per person) - här antar vi 1 person
   const maxDeduction = deductionType === 'rot' ? 50000 : 75000;
   const deductionAmount = Math.min(potentialDeduction, maxDeduction);
   
@@ -185,16 +197,18 @@ export async function runQuotePipeline(
       rotRutDeduction: deductionAmount,
       customerPays
     },
-    deductionType: deductionType, // VIKTIGT FÖR FRONTEND
+    deductionType: deductionType, 
     projectType: jobDef.jobType
   };
 
   // 13. Math Guard
   const mathGuardResult = enforceWorkItemMath(quote);
   
-  // Tvinga tillbaka våra korrekta ROT/RUT-värden om MathGuard nollställde dem
+  // Återställ ROT/RUT-värden efter Math Guard
   mathGuardResult.correctedQuote.deductionType = deductionType;
   mathGuardResult.correctedQuote.summary.rotRutDeduction = deductionAmount;
+  mathGuardResult.correctedQuote.summary.rotDeduction = rotDeduction;
+  mathGuardResult.correctedQuote.summary.rutDeduction = rutDeduction;
   mathGuardResult.correctedQuote.summary.customerPays = customerPays;
 
   return {
