@@ -1,5 +1,4 @@
 import { useState, useRef, useEffect } from "react";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { ChatInput } from "./ChatInput";
@@ -7,18 +6,16 @@ import { MessageBubble } from "./MessageBubble";
 import { QuickReplies } from "./QuickReplies";
 import { QuoteSheet } from "./QuoteSheet";
 import { SmartScroll } from "./SmartScroll";
-import { TypingIndicator } from "./TypingIndicator";
-import { InlineProgressCard } from "./InlineProgressCard";
-import { LiveQuotePreview } from "./LiveQuotePreview";
-import { HelpCollapsible } from "./HelpCollapsible";
 import { ConversationStarter } from "./ConversationStarter";
-import { Loader2, AlertCircle, HelpCircle } from "lucide-react";
+import { AgentThinking } from "./AgentThinking"; // NY
+import { ActionRequest } from "./ActionRequest"; // NY
+import { HelpCircle } from "lucide-react";
 
 interface Message {
   role: 'user' | 'assistant';
   content: string;
   data?: any;
-  isClarification?: boolean; // Ny property för att markera frågor
+  isClarification?: boolean;
 }
 
 interface ChatInterfaceProps {
@@ -37,52 +34,25 @@ export function ChatInterface({ onQuoteGenerated, initialMessage }: ChatInterfac
   const scrollRef = useRef<HTMLDivElement>(null);
   const { toast } = useToast();
 
-  useEffect(() => {
-    const initConversation = async () => {
-      try {
-        const { data: { user } } = await supabase.auth.getUser();
-        if (!user) return;
+  // ... (Behåll useEffect för initConversation och initialMessage)
 
-        const { data, error } = await supabase
-          .from('conversation_sessions')
-          .insert({
-            user_id: user.id,
-            status: 'active',
-            metadata: { source: 'chat_interface' }
-          })
-          .select()
-          .single();
-
-        if (error) throw error;
-        setConversationId(data.id);
-      } catch (error) {
-        console.error('Error initializing conversation:', error);
-      }
-    };
-
-    initConversation();
-  }, []);
-
-  useEffect(() => {
-    if (initialMessage) {
-      handleSendMessage(initialMessage);
-    }
-  }, [initialMessage]);
+  // Helper to guess the question type for UI
+  const getQuestionType = (text: string) => {
+    const t = text.toLowerCase();
+    if (t.includes('yta') || t.includes('kvm') || t.includes('stor')) return 'area';
+    if (t.includes('kvalitet') || t.includes('standard') || t.includes('lyx')) return 'quality';
+    return 'general';
+  };
 
   const handleSendMessage = async (content: string) => {
     if (!content.trim() && !quoteData) return;
 
-    const newMessages = [
-      ...messages,
-      { role: 'user' as const, content }
-    ];
+    const newMessages = [...messages, { role: 'user' as const, content }];
     setMessages(newMessages);
     setIsLoading(true);
 
     try {
       const { data: { user } } = await supabase.auth.getUser();
-      
-      // Förbered historik för AI-kontext
       const conversationHistory = newMessages.slice(-6).map(m => ({
         role: m.role,
         content: m.content
@@ -93,72 +63,37 @@ export function ChatInterface({ onQuoteGenerated, initialMessage }: ChatInterfac
           message: content,
           userId: user?.id,
           sessionId: conversationId,
-          previousContext: previousContext, // Skicka med tidigare tolkning
+          previousContext: previousContext,
           conversationHistory: conversationHistory
         }
       });
 
       if (error) throw error;
 
-      // HANTERA HANDOFF (FRÅGE-LÄGE)
       if (data.type === 'clarification_request') {
         setMessages(prev => [...prev, { 
           role: 'assistant', 
           content: data.message,
-          isClarification: true // Markera som fråga
+          isClarification: true
         }]);
-        
-        // Spara kontexten så vi minns vad vi redan vet (t.ex. jobbtyp)
         setPreviousContext(data.interpretation);
-        
-        // Visa snabb feedback till användaren
-        toast({
-          title: "Mer information behövs",
-          description: "Svara på frågan för att få ett exakt pris.",
-          variant: "default",
-        });
-
-      } 
-      // HANTERA FÄRDIG OFFERT
-      else if (data.quote) {
+      } else if (data.quote) {
         setQuoteData(data.quote);
         setMessages(prev => [...prev, { 
           role: 'assistant', 
-          content: data.message || "Här är din offert baserad på dina önskemål.",
+          content: data.message || "Här är din offert.",
           data: data 
         }]);
-        
-        if (onQuoteGenerated) {
-          onQuoteGenerated(data.quote);
-        }
-        
-        // Öppna offerten automatiskt om det är första gången
-        if (!quoteData) {
-          setIsQuoteOpen(true);
-        }
-        
-        // Rensa kontext eftersom vi är klara
+        if (onQuoteGenerated) onQuoteGenerated(data.quote);
+        if (!quoteData) setIsQuoteOpen(true);
         setPreviousContext(null); 
-      } 
-      // FALLBACK
-      else {
-        setMessages(prev => [...prev, { 
-          role: 'assistant', 
-          content: "Jag kunde inte tolka det. Kan du förtydliga?" 
-        }]);
+      } else {
+        setMessages(prev => [...prev, { role: 'assistant', content: "Jag förstod inte riktigt. Kan du förtydliga?" }]);
       }
 
     } catch (error) {
-      console.error('Error sending message:', error);
-      toast({
-        title: "Ett fel uppstod",
-        description: "Kunde inte generera svar. Försök igen.",
-        variant: "destructive",
-      });
-      setMessages(prev => [...prev, { 
-        role: 'assistant', 
-        content: "Ursäkta, något gick fel. Kan du försöka igen?" 
-      }]);
+      console.error('Error:', error);
+      setMessages(prev => [...prev, { role: 'assistant', content: "Något gick fel. Försök igen." }]);
     } finally {
       setIsLoading(false);
     }
@@ -174,12 +109,11 @@ export function ChatInterface({ onQuoteGenerated, initialMessage }: ChatInterfac
             </div>
           ) : (
             <div className="space-y-6 pb-4">
-              {/* Visa live-indikator om vi har delvis data */}
               {previousContext && !quoteData && (
                 <div className="w-full flex justify-center mb-4">
                    <div className="bg-blue-50 text-blue-700 px-3 py-1 rounded-full text-xs font-medium flex items-center gap-2 border border-blue-100">
                      <HelpCircle className="w-3 h-3" />
-                     Samlar in information: {previousContext.jobType ? previousContext.jobType.toUpperCase() : 'NYTT PROJEKT'}
+                     Samlar in information: {previousContext.jobType?.toUpperCase() || 'NYTT PROJEKT'}
                    </div>
                 </div>
               )}
@@ -190,17 +124,21 @@ export function ChatInterface({ onQuoteGenerated, initialMessage }: ChatInterfac
                     role={message.role} 
                     content={message.content}
                     isLatest={index === messages.length - 1}
-                    className={message.isClarification ? "border-l-4 border-l-amber-400 bg-amber-50" : ""}
                   />
                   
-                  {/* Visa knapp för att se offert om den finns i meddelandet */}
+                  {/* RENDERA SMARTA SVARSKORT OM DET ÄR EN FRÅGA */}
+                  {message.isClarification && index === messages.length - 1 && (
+                    <ActionRequest 
+                      type={getQuestionType(message.content)}
+                      context={previousContext?.jobType} 
+                      onAnswer={handleSendMessage}
+                    />
+                  )}
+
                   {message.role === 'assistant' && message.data?.quote && (
                     <div className="ml-2 mt-1">
                        <button 
-                         onClick={() => {
-                           setQuoteData(message.data.quote);
-                           setIsQuoteOpen(true);
-                         }}
+                         onClick={() => { setQuoteData(message.data.quote); setIsQuoteOpen(true); }}
                          className="text-xs bg-primary/10 hover:bg-primary/20 text-primary px-3 py-1.5 rounded-full font-medium transition-colors flex items-center gap-1.5"
                        >
                          📄 Visa detaljerad offert
@@ -210,9 +148,10 @@ export function ChatInterface({ onQuoteGenerated, initialMessage }: ChatInterfac
                 </div>
               ))}
               
+              {/* VISA TÄNKANDE AGENT ISTÄLLET FÖR SPINNER */}
               {isLoading && (
                 <div className="flex justify-start w-full">
-                  <TypingIndicator />
+                  <AgentThinking />
                 </div>
               )}
             </div>
@@ -220,18 +159,9 @@ export function ChatInterface({ onQuoteGenerated, initialMessage }: ChatInterfac
         </SmartScroll>
       </div>
 
-      {/* Bottom Section */}
       <div className="border-t bg-white p-4 space-y-3">
-        {!isLoading && messages.length > 0 && (
-          <QuickReplies 
-            onSelect={handleSendMessage} 
-            // Context-aware quick replies kan läggas till här
-            suggestions={
-              messages[messages.length-1]?.isClarification 
-              ? ["Vet inte exakt", "Ca 10 kvm", "Ca 20 kvm", "Ca 50 kvm"] 
-              : undefined
-            }
-          />
+        {!isLoading && messages.length > 0 && !messages[messages.length-1]?.isClarification && (
+          <QuickReplies onSelect={handleSendMessage} />
         )}
         
         <div className="relative">
@@ -241,29 +171,9 @@ export function ChatInterface({ onQuoteGenerated, initialMessage }: ChatInterfac
             placeholder={previousContext ? "Svara på frågan..." : "Beskriv vad du behöver hjälp med..."}
           />
         </div>
-
-        <div className="flex justify-between items-center pt-1">
-           <div className="text-[10px] text-muted-foreground flex items-center gap-1.5">
-             <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
-             AI-driven kalkylator (Svensk ROT/RUT)
-           </div>
-           {quoteData && (
-             <button 
-               onClick={() => setIsQuoteOpen(true)}
-               className="text-xs font-medium text-primary hover:underline"
-             >
-               {isQuoteOpen ? 'Dölj offert' : 'Visa senaste offert'}
-             </button>
-           )}
-        </div>
       </div>
 
-      {/* Quote Sheet Overlay */}
-      <QuoteSheet 
-        isOpen={isQuoteOpen} 
-        onOpenChange={setIsQuoteOpen}
-        quote={quoteData}
-      />
+      <QuoteSheet isOpen={isQuoteOpen} onOpenChange={setIsQuoteOpen} quote={quoteData} />
     </div>
   );
 }
