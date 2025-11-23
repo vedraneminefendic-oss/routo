@@ -4,14 +4,10 @@ import { Button } from "@/components/ui/button";
 import { ArrowLeft } from "lucide-react";
 import { useNavigate, useLocation } from "react-router-dom";
 
-// Vi tog bort ErrorBoundary för att lösa kraschen. 
-// ChatInterface hanterar nu fel internt.
-
 export default function NewQuote() {
   const navigate = useNavigate();
   const location = useLocation();
   
-  // Hämta eventuellt startmeddelande från navigation state
   const initialMessage = location.state?.initialMessage;
 
   return (
@@ -24,7 +20,7 @@ export default function NewQuote() {
             variant="ghost" 
             size="sm" 
             onClick={() => navigate("/dashboard")}
-            className="gap-2"
+            className="gap-2 hover:bg-white/50"
           >
             <ArrowLeft className="w-4 h-4" />
             Tillbaka till översikt
@@ -35,12 +31,10 @@ export default function NewQuote() {
           </div>
         </div>
 
+        {/* Huvudcontainer för chatten */}
         <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden min-h-[600px]">
           <ChatInterface 
-            onQuoteGenerated={(quote) => {
-              console.log("Quote generated:", quote);
-              // Här kan vi lägga till logik för vad som händer när offerten är klar
-            }} 
+            onQuoteGenerated={(quote) => console.log("Quote generated:", quote)} 
             initialMessage={initialMessage}
           />
         </div>
