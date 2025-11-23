@@ -23,15 +23,12 @@ interface ChatInterfaceProps {
   initialMessage?: string;
 }
 
-// Robust UUID-generator
-function generateUUID() {
+// Helper to generate ID if crypto is missing (unlikely but safe)
+function safeUUID() {
   if (typeof crypto !== 'undefined' && crypto.randomUUID) {
     return crypto.randomUUID();
   }
-  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
-    var r = Math.random() * 16 | 0, v = c == 'x' ? r : (r & 0x3 | 0x8);
-    return v.toString(16);
-  });
+  return Date.now().toString(36) + Math.random().toString(36).substr(2);
 }
 
 export function ChatInterface({ onQuoteGenerated, initialMessage }: ChatInterfaceProps) {
@@ -39,15 +36,17 @@ export function ChatInterface({ onQuoteGenerated, initialMessage }: ChatInterfac
   const [isLoading, setIsLoading] = useState(false);
   const [quoteData, setQuoteData] = useState<any>(null);
   const [isQuoteOpen, setIsQuoteOpen] = useState(false);
-  const [conversationId, setConversationId] = useState<string | null>(null);
+  const [conversationId, setConversationId] = useState<string>("");
   const [previousContext, setPreviousContext] = useState<any>(null);
   
   const scrollRef = useRef<HTMLDivElement>(null);
   const { toast } = useToast();
 
+  // Initiera ID direkt
   useEffect(() => {
-    // Sätt ett ID direkt vid mount
-    setConversationId(generateUUID());
+    const id = safeUUID();
+    setConversationId(id);
+    console.log("Chat initialized with Session ID:", id);
   }, []);
 
   useEffect(() => {
@@ -65,6 +64,7 @@ export function ChatInterface({ onQuoteGenerated, initialMessage }: ChatInterfac
   };
 
   const handleSendMessage = async (content: string) => {
+    // Säkerhetskontroll: Skicka inte tomma meddelanden om vi inte har en offert att visa
     if (!content?.trim() && !quoteData) return;
 
     const newMessages = [...messages, { role: 'user' as const, content }];
@@ -74,42 +74,45 @@ export function ChatInterface({ onQuoteGenerated, initialMessage }: ChatInterfac
     try {
       const { data: { user } } = await supabase.auth.getUser();
       
-      // SKAPA ETT ID OM DET SAKNAS (HÄR FÅR DET ALDRIG VARA NULL)
-      const activeSessionId = conversationId || generateUUID();
-      if (!conversationId) setConversationId(activeSessionId);
+      // VIKTIGT: Använd state-variabeln ELLER generera ett nytt ID om den är tom
+      const currentSessionId = conversationId || safeUUID();
+      if (!conversationId) setConversationId(currentSessionId);
 
-      // BYGG PAYLOAD MANUELLT FÖR ATT GARANTERA TYPER
-      const payload = {
-        message: content || "Ingen text",
-        description: content || "Ingen text", // Dubblera för säkerhets skull
+      // Konstruera payload exakt som backend vill ha den
+      const requestBody = {
+        message: content,
+        description: content, // Fallback för att backend ska vara nöjd
         userId: user?.id || "anonymous",
-        sessionId: activeSessionId, // Garanterad sträng
-        previousContext: previousContext || {}, // Aldrig null
-        conversationHistory: newMessages.slice(-6).map(m => ({ 
-          role: m.role, 
-          content: m.content || "" 
+        sessionId: currentSessionId,
+        previousContext: previousContext || {},
+        conversationHistory: newMessages.slice(-6).map(m => ({
+          role: m.role,
+          content: m.content || ""
         }))
       };
 
-      console.log("Sending payload to backend:", payload);
+      console.log("Sending request:", requestBody);
 
       const { data, error } = await supabase.functions.invoke('generate-quote', {
-        body: payload
+        body: requestBody
       });
 
       if (error) {
-        console.error("Supabase Function Error:", error);
-        throw error;
+        console.error("Supabase Invoke Error:", error);
+        throw new Error(error.message || "Kunde inte nå servern");
       }
 
-      if (data?.type === 'clarification_request') {
+      if (!data) throw new Error("Inget svar från servern");
+
+      // Hantera olika svarstyper
+      if (data.type === 'clarification_request') {
         setMessages(prev => [...prev, { 
           role: 'assistant', 
           content: data.message,
           isClarification: true
         }]);
         setPreviousContext(data.interpretation);
-      } else if (data?.quote) {
+      } else if (data.quote) {
         setQuoteData(data.quote);
         setMessages(prev => [...prev, { 
           role: 'assistant', 
@@ -117,27 +120,24 @@ export function ChatInterface({ onQuoteGenerated, initialMessage }: ChatInterfac
           data: data 
         }]);
         if (onQuoteGenerated) onQuoteGenerated(data.quote);
-        if (!quoteData) setIsQuoteOpen(true);
+        if (!quoteData) setIsQuoteOpen(true); // Öppna bara automatiskt första gången
         setPreviousContext(null); 
       } else {
-        // Fallback om svaret är tomt eller konstigt
-        setMessages(prev => [...prev, { role: 'assistant', content: "Jag kunde inte tolka svaret. Kan du försöka igen?" }]);
+        setMessages(prev => [...prev, { role: 'assistant', content: "Jag förstod inte svaret. Kan du försöka igen?" }]);
       }
 
     } catch (error: any) {
-      console.error('Critical Chat Error:', error);
+      console.error('Chat Error:', error);
       
-      let userMessage = "Ett tekniskt fel uppstod vid kontakt med servern.";
-      if (error.message && error.message.includes("500")) {
-        userMessage = "Serverfel (500). Backend kunde inte hantera förfrågan.";
-      }
-
+      let userMsg = "Ett fel uppstod. Försök igen.";
+      if (error.message?.includes("500")) userMsg = "Serverfel. Vi jobbar på det.";
+      
       toast({
-        title: "Något gick fel",
-        description: userMessage,
+        title: "Ett fel uppstod",
+        description: userMsg,
         variant: "destructive",
       });
-      setMessages(prev => [...prev, { role: 'assistant', content: "Ett fel uppstod. Försök ladda om sidan." }]);
+      setMessages(prev => [...prev, { role: 'assistant', content: "Ursäkta, något gick fel. Försök ladda om sidan." }]);
     } finally {
       setIsLoading(false);
     }
@@ -146,11 +146,13 @@ export function ChatInterface({ onQuoteGenerated, initialMessage }: ChatInterfac
   return (
     <div className="flex flex-col h-[600px] w-full max-w-4xl mx-auto bg-white rounded-xl border shadow-sm overflow-hidden relative">
       
+      {/* Chat Area */}
       <div className="flex-1 overflow-hidden relative bg-slate-50/50">
         <SmartScroll scrollRef={scrollRef} className="p-4">
           {messages.length === 0 ? (
             <div className="h-full flex items-center justify-center min-h-[400px]">
-              <ConversationStarter onSelect={handleSendMessage} />
+              {/* Passa vidare handleSendMessage till conversation starter */}
+              <ConversationStarter onSelect={(text) => handleSendMessage(text)} />
             </div>
           ) : (
             <div className="space-y-6 pb-4">
@@ -176,7 +178,7 @@ export function ChatInterface({ onQuoteGenerated, initialMessage }: ChatInterfac
                     <ActionRequest 
                       type={getQuestionType(message.content)}
                       context={previousContext?.jobType} 
-                      onAnswer={handleSendMessage}
+                      onAnswer={(ans) => handleSendMessage(ans)}
                     />
                   )}
 
@@ -203,14 +205,16 @@ export function ChatInterface({ onQuoteGenerated, initialMessage }: ChatInterfac
         </SmartScroll>
       </div>
 
+      {/* Footer Input */}
       <div className="border-t bg-white p-4 space-y-3 z-10">
         {!isLoading && messages.length > 0 && !messages[messages.length-1]?.isClarification && (
-          <QuickReplies onSelect={handleSendMessage} />
+          // Passa vidare handleSendMessage till QuickReplies
+          <QuickReplies onSelect={(text) => handleSendMessage(text)} />
         )}
         
         <div className="relative">
           <ChatInput 
-            onSend={handleSendMessage} 
+            onSend={(text) => handleSendMessage(text)} 
             isLoading={isLoading}
             placeholder={previousContext ? "Svara på frågan..." : "Beskriv ditt projekt..."}
           />
