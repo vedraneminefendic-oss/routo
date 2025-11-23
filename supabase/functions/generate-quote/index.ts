@@ -1,17 +1,24 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { z } from "https://deno.land/x/zod@v3.22.4/mod.ts";
-import { interpretUserInput } from "./core/interpretUserInput.ts";
-import { runQuotePipeline } from "./core/pipelineOrchestrator.ts";
-import { corsHeaders } from "./utils/cors.ts";
-import { findJobDefinition } from "./data/jobRegistry.ts";
 
-console.log("🚀 Function 'generate-quote' starting (PHASE 6C: MAXIMUM TOLERANCE)");
+// KORRIGERADE SÖKVÄGAR: Allt ligger i 'helpers' enligt din filstruktur
+import { interpretUserInput } from "./helpers/interpretUserInput.ts";
+import { runQuotePipeline } from "./helpers/pipelineOrchestrator.ts";
+import { findJobDefinition } from "./helpers/jobRegistry.ts";
 
-// Relaxed schema to prevent 500 errors
+console.log("🚀 Function 'generate-quote' starting (FIXED PATHS & INLINED CORS)");
+
+// Inline CORS headers för att undvika import-fel
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+};
+
+// Mycket tolerant schema för att förhindra valideringskrascher
 const RequestSchema = z.object({
   message: z.string().optional(),
-  description: z.any().optional(), // Allow any type, handle in code
-  sessionId: z.any().optional(),   // Allow any type
+  description: z.any().optional(),
+  sessionId: z.any().optional(),
   userId: z.any().optional(),
   previousContext: z.any().optional(),
   conversationHistory: z.array(z.any()).optional().default([]),
@@ -19,7 +26,7 @@ const RequestSchema = z.object({
 });
 
 serve(async (req) => {
-  // Handle CORS preflight requests
+  // Hantera CORS preflight
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
   }
@@ -27,27 +34,30 @@ serve(async (req) => {
   try {
     const rawBody = await req.json();
     
-    // Safe parsing
+    // Säker parsing som inte kraschar
     const parseResult = RequestSchema.safeParse(rawBody);
     const data = parseResult.success ? parseResult.data : rawBody;
     
-    // 1. NORMALISERA INPUT (Garantera att vi har strängar)
+    // 1. NORMALISERA INPUT
     const message = typeof data.message === 'string' ? data.message : "";
-    // Om description saknas eller är konstigt, använd message
-    const description = (typeof data.description === 'string' && data.description.length > 0) 
+    // Använd description om det finns, annars fallback till message
+    const description = (data.description && typeof data.description === 'string') 
       ? data.description 
       : message;
 
     // Garantera ett sessionId
     let sessionId = "";
-    if (typeof data.sessionId === 'string') sessionId = data.sessionId;
-    else sessionId = crypto.randomUUID();
+    if (data.sessionId && typeof data.sessionId === 'string') {
+      sessionId = data.sessionId;
+    } else {
+      sessionId = crypto.randomUUID();
+    }
 
     const userId = typeof data.userId === 'string' ? data.userId : 'anonymous';
     const apiKey = Deno.env.get('LOVABLE_AI_API_KEY') || "";
 
-    // 2. VALIDERA ATT VI HAR NÅGOT ATT JOBBA MED
-    if (!description.trim()) {
+    // 2. KONTROLLERA ATT VI HAR MINSTA MÖJLIGA DATA
+    if (!description || !description.trim()) {
       console.log("⚠️ Empty input received");
       return new Response(JSON.stringify({
         error: "Message or description is required"
@@ -57,18 +67,18 @@ serve(async (req) => {
     console.log(`🤖 Processing request for session: ${sessionId}`);
     console.log(`📝 Description: ${description.substring(0, 50)}...`);
 
-    // 3. AI INTERPRETATION
+    // 3. AI TOLKNING
     const interpretation = await interpretUserInput(
       description, 
       data.conversationHistory || [], 
       apiKey
     );
     
-    // 4. HANDOFF / INTERROGATION MODE
+    // 4. FÖRTYDLIGANDE-LÄGE (Interrogation Mode)
     if (interpretation.missingCriticalInfo && interpretation.clarificationsNeeded?.length > 0) {
       console.log("🛑 Missing critical info -> Interrogation Mode");
       
-      // Dubbelkolla mot registry om det verkligen är kritiskt
+      // Kolla om det verkligen är kritiskt enligt jobRegistry
       const jobDef = findJobDefinition(interpretation.jobType);
       const isActuallyCritical = jobDef?.requiredInput?.some(field => !interpretation[field as keyof typeof interpretation]);
       
@@ -85,7 +95,7 @@ serve(async (req) => {
       }
     }
 
-    // 5. PIPELINE ORCHESTRATION
+    // 5. KÖR OFFERT-PIPELINE
     console.log("⚙️ Running calculation pipeline...");
     
     const pipelineInput = {
@@ -97,11 +107,11 @@ serve(async (req) => {
     const pipelineResult = await runQuotePipeline(pipelineInput, {
       userId: userId,
       sessionId: sessionId,
-      supabase: null, // No direct DB access needed in edge function context for now
+      supabase: null, 
       ...data.userSettings
     });
 
-    // 6. RESPONSE
+    // 6. SKAPA SVAR
     const responseData = {
       type: 'complete_quote',
       quote: {
@@ -121,9 +131,10 @@ serve(async (req) => {
     });
 
   } catch (error) {
-    console.error('❌ CRITICAL ERROR:', error);
+    console.error('❌ CRITICAL ERROR IN EDGE FUNCTION:', error);
     return new Response(JSON.stringify({ 
       error: error instanceof Error ? error.message : 'Unknown internal error',
+      details: 'Check function logs for stack trace'
     }), {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
