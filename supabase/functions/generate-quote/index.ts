@@ -7,7 +7,7 @@ import { findJobDefinition } from "./data/jobRegistry.ts";
 
 console.log("🚀 Function 'generate-quote' starting (PHASE 6B: ROBUST INPUT HANDLING)");
 
-// Robust schema som tillåter optional fält
+// Robust schema som tillåter optional fält för att undvika 500 error
 const RequestSchema = z.object({
   message: z.string().optional(),
   description: z.string().optional(),
@@ -26,13 +26,15 @@ serve(async (req) => {
   try {
     // 1. Parse och Validera Input säkert
     const rawBody = await req.json();
+    
+    // Använd safeParse för att undvika att Zod kastar error
     const parseResult = RequestSchema.safeParse(rawBody);
     
     if (!parseResult.success) {
-      console.error("❌ Validation warning:", parseResult.error);
-      // Fortsätt ändå med "bästa försök" istället för att krascha
+      console.error("❌ Validation warning (using raw body fallback):", parseResult.error);
     }
     
+    // Använd validerad data eller fallback till rawBody
     const data = parseResult.success ? parseResult.data : rawBody;
     
     // Normalisera input: Använd message om description saknas
@@ -40,7 +42,8 @@ serve(async (req) => {
     const sessionId = data.sessionId || crypto.randomUUID(); // Skapa ID om det saknas
     const apiKey = Deno.env.get('LOVABLE_AI_API_KEY') || "";
 
-    if (!inputDescription.trim()) {
+    // Grundläggande validering
+    if (!inputDescription || typeof inputDescription !== 'string' || !inputDescription.trim()) {
       return new Response(JSON.stringify({
         error: "Message or description is required"
       }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
@@ -57,12 +60,12 @@ serve(async (req) => {
     
     console.log("✅ Interpretation result:", JSON.stringify(interpretation, null, 2));
 
-    // 3. HANDOFF LOGIC
+    // 3. HANDOFF LOGIC (Interrogation Mode)
     if (interpretation.missingCriticalInfo && interpretation.clarificationsNeeded && interpretation.clarificationsNeeded.length > 0) {
       console.log("🛑 Missing critical info, entering interrogation mode");
       
+      // Dubbelkolla mot jobRegistry
       const jobDef = findJobDefinition(interpretation.jobType);
-      // Dubbelkolla om det verkligen är kritiskt
       const isActuallyCritical = jobDef?.requiredInput?.some(field => !interpretation[field as keyof typeof interpretation]);
       
       if (isActuallyCritical || interpretation.missingCriticalInfo) {
@@ -90,7 +93,7 @@ serve(async (req) => {
     const pipelineResult = await runQuotePipeline(pipelineInput, {
       userId: data.userId || 'anonymous',
       sessionId: sessionId,
-      supabase: null,
+      supabase: null, // Vi skickar ingen supabase-klient här för att undvika anslutningsfel i edge
       ...data.userSettings
     });
 
