@@ -34,44 +34,44 @@ export function ChatInterface({ onQuoteGenerated, initialMessage }: ChatInterfac
   const scrollRef = useRef<HTMLDivElement>(null);
   const { toast } = useToast();
 
+  // Starta konversation tyst i bakgrunden
   useEffect(() => {
     const initConversation = async () => {
       try {
         const { data: { user } } = await supabase.auth.getUser();
-        if (!user) return;
-
-        // Skapa session, men misslyckas tyst om det blir fel för att inte blockera UI
-        const { data, error } = await supabase
-          .from('conversation_sessions')
-          .insert({
-            user_id: user.id,
-            status: 'active',
-            metadata: { source: 'chat_interface' }
-          })
-          .select()
-          .single();
-
-        if (!error && data) {
-          setConversationId(data.id);
+        if (user) {
+          const { data } = await supabase
+            .from('conversation_sessions')
+            .insert({
+              user_id: user.id,
+              status: 'active',
+              metadata: { source: 'chat_interface' }
+            })
+            .select()
+            .single();
+          
+          if (data) setConversationId(data.id);
         }
-      } catch (error) {
-        console.warn('Kunde inte initiera konversation, fortsätter ändå:', error);
+      } catch (e) {
+        console.warn("Kunde inte spara session, fortsätter ändå.", e);
       }
     };
     initConversation();
   }, []);
 
+  // Hantera startmeddelande
   useEffect(() => {
-    if (initialMessage) {
+    if (initialMessage && messages.length === 0) {
       handleSendMessage(initialMessage);
     }
   }, [initialMessage]);
 
+  // Hjälpfunktion för ActionRequest
   const getQuestionType = (text: string) => {
     const t = (text || '').toLowerCase();
-    if (t.includes('yta') || t.includes('kvm') || t.includes('stor')) return 'area';
-    if (t.includes('kvalitet') || t.includes('standard') || t.includes('lyx')) return 'quality';
-    if (t.includes('komplex') || t.includes('svårt') || t.includes('enkelt')) return 'complexity';
+    if (t.includes('yta') || t.includes('kvm')) return 'area';
+    if (t.includes('kvalitet') || t.includes('standard')) return 'quality';
+    if (t.includes('komplex') || t.includes('svårt')) return 'complexity';
     return 'general';
   };
 
@@ -84,23 +84,21 @@ export function ChatInterface({ onQuoteGenerated, initialMessage }: ChatInterfac
 
     try {
       const { data: { user } } = await supabase.auth.getUser();
-      const conversationHistory = newMessages.slice(-6).map(m => ({
-        role: m.role,
-        content: m.content
-      }));
-
+      
+      // Anropa Edge Function
       const { data, error } = await supabase.functions.invoke('generate-quote', {
         body: { 
           message: content,
           userId: user?.id,
           sessionId: conversationId,
           previousContext: previousContext,
-          conversationHistory: conversationHistory
+          conversationHistory: newMessages.map(m => ({ role: m.role, content: m.content })).slice(-6)
         }
       });
 
       if (error) throw error;
 
+      // Hantera svaret
       if (data?.type === 'clarification_request') {
         setMessages(prev => [...prev, { 
           role: 'assistant', 
@@ -115,22 +113,21 @@ export function ChatInterface({ onQuoteGenerated, initialMessage }: ChatInterfac
           content: data.message || "Här är din offert.",
           data: data 
         }]);
-        
         if (onQuoteGenerated) onQuoteGenerated(data.quote);
         if (!quoteData) setIsQuoteOpen(true);
         setPreviousContext(null); 
       } else {
-        setMessages(prev => [...prev, { role: 'assistant', content: "Jag förstod inte riktigt. Kan du förtydliga?" }]);
+        setMessages(prev => [...prev, { role: 'assistant', content: "Jag förstod inte riktigt. Kan du omformulera?" }]);
       }
 
     } catch (error) {
       console.error('Chat Error:', error);
       toast({
         title: "Ett fel uppstod",
-        description: "Kunde inte nå AI-tjänsten. Kontrollera din internetanslutning.",
+        description: "Kunde inte nå AI-tjänsten. Försök igen.",
         variant: "destructive",
       });
-      setMessages(prev => [...prev, { role: 'assistant', content: "Något gick fel vid kommunikationen. Försök igen." }]);
+      setMessages(prev => [...prev, { role: 'assistant', content: "Något gick fel. Försök igen." }]);
     } finally {
       setIsLoading(false);
     }
@@ -139,26 +136,28 @@ export function ChatInterface({ onQuoteGenerated, initialMessage }: ChatInterfac
   return (
     <div className="flex flex-col h-[600px] w-full max-w-4xl mx-auto bg-white rounded-xl border shadow-sm overflow-hidden relative">
       
-      {/* Chat Area */}
+      {/* Chatt-område */}
       <div className="flex-1 overflow-hidden relative bg-slate-50/50">
-        <SmartScroll className="h-full" scrollRef={scrollRef}>
+        <SmartScroll scrollRef={scrollRef} className="p-4">
           {messages.length === 0 ? (
-            <div className="h-full flex items-center justify-center p-4">
-              <ConversationStarter onSelect={(text) => handleSendMessage(text)} />
+            <div className="h-full flex items-center justify-center min-h-[400px]">
+              <ConversationStarter onSelect={handleSendMessage} />
             </div>
           ) : (
-            <div className="space-y-6 py-6">
-              {previousContext && !quoteData && (
-                <div className="w-full flex justify-center mb-4 px-4">
+            <div className="space-y-6 pb-4">
+              {/* Status Badge */}
+              {previousContext?.jobType && !quoteData && (
+                <div className="w-full flex justify-center mb-4">
                    <div className="bg-blue-50 text-blue-700 px-3 py-1 rounded-full text-xs font-medium flex items-center gap-2 border border-blue-100 animate-in fade-in">
                      <HelpCircle className="w-3 h-3" />
-                     <span>Samlar information: {previousContext.jobType?.toUpperCase() || 'PROJEKT'}</span>
+                     <span>Samlar information: {previousContext.jobType.toUpperCase()}</span>
                    </div>
                 </div>
               )}
 
+              {/* Meddelanden */}
               {messages.map((message, index) => (
-                <div key={index} className={`flex flex-col ${message.role === 'user' ? 'items-end' : 'items-start'} gap-2 px-4`}>
+                <div key={index} className={`flex flex-col ${message.role === 'user' ? 'items-end' : 'items-start'} gap-2`}>
                   <MessageBubble 
                     role={message.role} 
                     content={message.content}
@@ -166,6 +165,7 @@ export function ChatInterface({ onQuoteGenerated, initialMessage }: ChatInterfac
                     className={message.isClarification ? "border-l-4 border-l-amber-400 bg-amber-50" : ""}
                   />
                   
+                  {/* Action Cards (Slider/Knappar) */}
                   {message.isClarification && index === messages.length - 1 && (
                     <ActionRequest 
                       type={getQuestionType(message.content)}
@@ -174,21 +174,23 @@ export function ChatInterface({ onQuoteGenerated, initialMessage }: ChatInterfac
                     />
                   )}
 
+                  {/* Offert-knapp */}
                   {message.role === 'assistant' && message.data?.quote && (
                     <div className="ml-2 mt-1">
                        <button 
                          onClick={() => { setQuoteData(message.data.quote); setIsQuoteOpen(true); }}
                          className="text-xs bg-primary/10 hover:bg-primary/20 text-primary px-3 py-1.5 rounded-full font-medium transition-colors flex items-center gap-1.5"
                        >
-                         📄 Visa detaljerad offert
+                         📄 Visa offert
                        </button>
                     </div>
                   )}
                 </div>
               ))}
               
+              {/* Tänker-indikator */}
               {isLoading && (
-                <div className="flex justify-start w-full px-4">
+                <div className="flex justify-start w-full">
                   <AgentThinking />
                 </div>
               )}
@@ -197,8 +199,8 @@ export function ChatInterface({ onQuoteGenerated, initialMessage }: ChatInterfac
         </SmartScroll>
       </div>
 
-      {/* Footer / Input Area */}
-      <div className="border-t bg-white p-4 space-y-3">
+      {/* Footer Input */}
+      <div className="border-t bg-white p-4 space-y-3 z-10">
         {!isLoading && messages.length > 0 && !messages[messages.length-1]?.isClarification && (
           <QuickReplies onSelect={handleSendMessage} />
         )}
@@ -207,23 +209,8 @@ export function ChatInterface({ onQuoteGenerated, initialMessage }: ChatInterfac
           <ChatInput 
             onSend={handleSendMessage} 
             isLoading={isLoading}
-            placeholder={previousContext ? "Svara på frågan..." : "Beskriv vad du behöver hjälp med..."}
+            placeholder={previousContext ? "Svara på frågan..." : "Beskriv ditt projekt..."}
           />
-        </div>
-        
-        <div className="flex justify-between items-center pt-1 px-1">
-           <div className="text-[10px] text-muted-foreground flex items-center gap-1.5">
-             <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
-             AI-driven kalkylator
-           </div>
-           {quoteData && (
-             <button 
-               onClick={() => setIsQuoteOpen(true)}
-               className="text-xs font-medium text-primary hover:underline"
-             >
-               Visa offert
-             </button>
-           )}
         </div>
       </div>
 
