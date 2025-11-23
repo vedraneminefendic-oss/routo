@@ -5,66 +5,70 @@ import { runQuotePipeline } from "./core/pipelineOrchestrator.ts";
 import { corsHeaders } from "./utils/cors.ts";
 import { findJobDefinition } from "./data/jobRegistry.ts";
 
-console.log("🚀 Function 'generate-quote' starting (PHASE 6B: ROBUST INPUT HANDLING)");
+console.log("🚀 Function 'generate-quote' starting (PHASE 6C: MAXIMUM TOLERANCE)");
 
-// Robust schema som tillåter optional fält för att undvika 500 error
+// Relaxed schema to prevent 500 errors
 const RequestSchema = z.object({
   message: z.string().optional(),
-  description: z.string().optional(),
-  sessionId: z.string().optional().nullable(),
-  userId: z.string().optional().nullable(),
+  description: z.any().optional(), // Allow any type, handle in code
+  sessionId: z.any().optional(),   // Allow any type
+  userId: z.any().optional(),
   previousContext: z.any().optional(),
   conversationHistory: z.array(z.any()).optional().default([]),
   userSettings: z.any().optional().default({})
 });
 
 serve(async (req) => {
+  // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
   }
 
   try {
-    // 1. Parse och Validera Input säkert
     const rawBody = await req.json();
     
-    // Använd safeParse för att undvika att Zod kastar error
+    // Safe parsing
     const parseResult = RequestSchema.safeParse(rawBody);
-    
-    if (!parseResult.success) {
-      console.error("❌ Validation warning (using raw body fallback):", parseResult.error);
-    }
-    
-    // Använd validerad data eller fallback till rawBody
     const data = parseResult.success ? parseResult.data : rawBody;
     
-    // Normalisera input: Använd message om description saknas
-    const inputDescription = data.description || data.message || "";
-    const sessionId = data.sessionId || crypto.randomUUID(); // Skapa ID om det saknas
+    // 1. NORMALISERA INPUT (Garantera att vi har strängar)
+    const message = typeof data.message === 'string' ? data.message : "";
+    // Om description saknas eller är konstigt, använd message
+    const description = (typeof data.description === 'string' && data.description.length > 0) 
+      ? data.description 
+      : message;
+
+    // Garantera ett sessionId
+    let sessionId = "";
+    if (typeof data.sessionId === 'string') sessionId = data.sessionId;
+    else sessionId = crypto.randomUUID();
+
+    const userId = typeof data.userId === 'string' ? data.userId : 'anonymous';
     const apiKey = Deno.env.get('LOVABLE_AI_API_KEY') || "";
 
-    // Grundläggande validering
-    if (!inputDescription || typeof inputDescription !== 'string' || !inputDescription.trim()) {
+    // 2. VALIDERA ATT VI HAR NÅGOT ATT JOBBA MED
+    if (!description.trim()) {
+      console.log("⚠️ Empty input received");
       return new Response(JSON.stringify({
         error: "Message or description is required"
       }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
 
-    // 2. AI INTERPRETATION LAYER
-    console.log("🤖 AI interpreting intent for:", inputDescription.substring(0, 50) + "...");
-    
+    console.log(`🤖 Processing request for session: ${sessionId}`);
+    console.log(`📝 Description: ${description.substring(0, 50)}...`);
+
+    // 3. AI INTERPRETATION
     const interpretation = await interpretUserInput(
-      inputDescription, 
+      description, 
       data.conversationHistory || [], 
       apiKey
     );
     
-    console.log("✅ Interpretation result:", JSON.stringify(interpretation, null, 2));
-
-    // 3. HANDOFF LOGIC (Interrogation Mode)
-    if (interpretation.missingCriticalInfo && interpretation.clarificationsNeeded && interpretation.clarificationsNeeded.length > 0) {
-      console.log("🛑 Missing critical info, entering interrogation mode");
+    // 4. HANDOFF / INTERROGATION MODE
+    if (interpretation.missingCriticalInfo && interpretation.clarificationsNeeded?.length > 0) {
+      console.log("🛑 Missing critical info -> Interrogation Mode");
       
-      // Dubbelkolla mot jobRegistry
+      // Dubbelkolla mot registry om det verkligen är kritiskt
       const jobDef = findJobDefinition(interpretation.jobType);
       const isActuallyCritical = jobDef?.requiredInput?.some(field => !interpretation[field as keyof typeof interpretation]);
       
@@ -81,23 +85,23 @@ serve(async (req) => {
       }
     }
 
-    // 4. PIPELINE ORCHESTRATION LAYER
-    console.log("⚙️ Running pipeline...");
+    // 5. PIPELINE ORCHESTRATION
+    console.log("⚙️ Running calculation pipeline...");
     
     const pipelineInput = {
-      description: inputDescription,
+      description: description,
       conversationHistory: data.conversationHistory || [],
       ...interpretation
     };
     
     const pipelineResult = await runQuotePipeline(pipelineInput, {
-      userId: data.userId || 'anonymous',
+      userId: userId,
       sessionId: sessionId,
-      supabase: null, // Vi skickar ingen supabase-klient här för att undvika anslutningsfel i edge
+      supabase: null, // No direct DB access needed in edge function context for now
       ...data.userSettings
     });
 
-    // 5. RESPONSE FORMATTING
+    // 6. RESPONSE
     const responseData = {
       type: 'complete_quote',
       quote: {
@@ -108,10 +112,6 @@ serve(async (req) => {
         deductionAmount: pipelineResult.summary.rotRutDeduction
       },
       interpretation: interpretation,
-      debug: {
-        source: "Phase 6B Pipeline",
-        calculations: pipelineResult.traceLog
-      },
       message: `Här är en offert för ${interpretation.jobType}. \n\n` +
                `Totalt pris: ${Math.round(pipelineResult.summary.customerPays).toLocaleString()} kr efter avdrag.`
     };
@@ -121,10 +121,9 @@ serve(async (req) => {
     });
 
   } catch (error) {
-    console.error('❌ Error in generate-quote:', error);
+    console.error('❌ CRITICAL ERROR:', error);
     return new Response(JSON.stringify({ 
-      error: error instanceof Error ? error.message : 'Unknown error',
-      stack: error instanceof Error ? error.stack : undefined
+      error: error instanceof Error ? error.message : 'Unknown internal error',
     }), {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
