@@ -1,6 +1,4 @@
-import { Info } from "lucide-react";
-import { Card } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
+import { Info, Check } from "lucide-react";
 import {
   Tooltip,
   TooltipContent,
@@ -9,102 +7,76 @@ import {
 } from "@/components/ui/tooltip";
 
 interface ROTSummaryProps {
-  workCost: number;
-  materialCost: number;
-  rotEligibleAmount: number;
+  summary: {
+    workCost: number;
+    materialCost: number;
+    rotRutDeduction: number;
+    totalWithVAT: number;
+    customerPays: number;
+  };
   deductionType: 'rot' | 'rut' | 'none';
-  deductionPercentage?: number;
-  totalWithVAT: number;
 }
 
-export function ROTSummary({
-  workCost,
-  materialCost,
-  rotEligibleAmount,
-  deductionType,
-  deductionPercentage = 50,
-  totalWithVAT,
-}: ROTSummaryProps) {
-  if (deductionType === 'none' || rotEligibleAmount === 0) {
-    return null;
-  }
+export function ROTSummary({ summary, deductionType }: ROTSummaryProps) {
+  if (deductionType === 'none') return null;
 
-  const deductionAmount = Math.round(rotEligibleAmount * (deductionPercentage / 100));
-  const finalPrice = totalWithVAT - deductionAmount;
-  const deductionLabel = deductionType === 'rot' ? 'ROT' : 'RUT';
+  const percentage = deductionType === 'rot' ? 30 : 50;
+  const label = deductionType === 'rot' ? 'ROT-avdrag' : 'RUT-avdrag';
+  const colorClass = deductionType === 'rot' ? 'blue' : 'green'; // ROT blått, RUT grönt
+  const maxAmount = deductionType === 'rot' ? 50000 : 75000;
 
   return (
-    <Card className="p-6 bg-gradient-to-br from-primary/5 via-primary/10 to-primary/5 border-2 border-primary/20">
-      <div className="space-y-4">
+    <div className="relative mt-6 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+      {/* Header Banner */}
+      <div className={`bg-${colorClass}-50 px-4 py-2 border-b border-${colorClass}-100 flex justify-between items-center`}>
         <div className="flex items-center gap-2">
-          <Badge variant="default" className="text-base px-3 py-1">
-            {deductionLabel}-avdrag
-          </Badge>
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger>
-                <Info className="h-4 w-4 text-muted-foreground" />
-              </TooltipTrigger>
-              <TooltipContent className="max-w-sm">
-                <p className="text-sm">
-                  {deductionType === 'rot' 
-                    ? 'ROT-avdrag ges för reparation, ombyggnad och tillbyggnad av permanentbostad. Endast arbetskostnaden är avdragsgill.'
-                    : 'RUT-avdrag ges för hushållsnära tjänster som städning, trädgårdsskötsel och flyttjänster. Endast arbetskostnaden är avdragsgill.'
-                  }
-                </p>
-                <p className="text-xs mt-2 text-muted-foreground">
-                  Källa: Skatteverkets regler för {deductionLabel}-avdrag 2025
-                </p>
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
+           <span className={`flex h-5 w-5 items-center justify-center rounded-full bg-${colorClass}-600 text-[10px] font-bold text-white`}>%</span>
+           <span className={`text-sm font-semibold text-${colorClass}-900`}>Skatteavdrag applicerat</span>
+        </div>
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger>
+              <Info className={`w-4 h-4 text-${colorClass}-600/70`} />
+            </TooltipTrigger>
+            <TooltipContent className="max-w-xs">
+              <p>Dras direkt på fakturan. Gäller endast arbetskostnad. Max {maxAmount.toLocaleString()} kr per person/år.</p>
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+      </div>
+
+      <div className="p-5">
+        {/* Calculation Visualization */}
+        <div className="flex items-center justify-between mb-4 text-sm">
+          <span className="text-slate-500">Ordinarie pris</span>
+          <span className="text-slate-400 line-through decoration-red-400 decoration-2">
+            {Math.round(summary.totalWithVAT).toLocaleString()} kr
+          </span>
         </div>
 
-        <div className="space-y-2">
-          <div className="flex justify-between text-sm">
-            <span className="text-muted-foreground">Arbetskostnad ({deductionLabel}-berättigad):</span>
-            <span className="font-semibold">{rotEligibleAmount.toLocaleString('sv-SE')} kr</span>
-          </div>
-          
-          {materialCost > 0 && (
-            <div className="flex justify-between text-sm">
-              <span className="text-muted-foreground">Materialkostnad (ej avdragsgill):</span>
-              <span className="font-semibold">{materialCost.toLocaleString('sv-SE')} kr</span>
-            </div>
-          )}
-
-          <div className="border-t pt-2 mt-2">
-            <div className="flex justify-between text-base font-bold text-primary">
-              <span>{deductionLabel}-avdrag ({deductionPercentage}%):</span>
-              <span>-{deductionAmount.toLocaleString('sv-SE')} kr</span>
-            </div>
-          </div>
-
-          <div className="border-t-2 border-primary/30 pt-3 mt-3">
-            <div className="flex justify-between items-center">
-              <div>
-                <div className="text-sm text-muted-foreground">Du betalar efter {deductionLabel}-avdrag:</div>
-                <div className="text-xs text-muted-foreground mt-0.5">
-                  (Totalt {totalWithVAT.toLocaleString('sv-SE')} kr - {deductionAmount.toLocaleString('sv-SE')} kr)
-                </div>
-              </div>
-              <div className="text-2xl font-bold text-primary">
-                {finalPrice.toLocaleString('sv-SE')} kr
-              </div>
-            </div>
-          </div>
+        <div className="flex items-center justify-between mb-6 text-sm bg-slate-50 p-2 rounded-lg border border-dashed border-slate-300">
+          <span className={`flex items-center gap-2 font-medium text-${colorClass}-700`}>
+            <Check className="w-3 h-3" /> {label} ({percentage}%)
+          </span>
+          <span className={`font-bold text-${colorClass}-700`}>
+            -{Math.round(summary.rotRutDeduction).toLocaleString()} kr
+          </span>
         </div>
 
-        <div className="text-xs text-muted-foreground mt-4 p-3 bg-muted/30 rounded-lg">
-          <p className="font-semibold mb-1">📋 Viktigt att veta:</p>
-          <ul className="list-disc list-inside space-y-1">
-            <li>Max avdrag: 75 000 kr per person och år</li>
-            <li>Avdraget görs automatiskt via Skatteverket när fakturan betalas</li>
-            <li>Vi rapporterar arbetet elektroniskt till Skatteverket</li>
-            <li>Endast arbetskostnaden är avdragsgill, inte material</li>
-          </ul>
+        <div className="flex items-end justify-between border-t border-slate-100 pt-4">
+          <div className="text-xs text-slate-500 font-medium uppercase tracking-wider">
+            Att betala (inkl. moms)
+          </div>
+          <div className="text-3xl font-bold text-slate-900">
+            {Math.round(summary.customerPays).toLocaleString()} <span className="text-sm font-normal text-slate-500">kr</span>
+          </div>
         </div>
       </div>
-    </Card>
+      
+      {/* Footer Disclaimer */}
+      <div className="bg-slate-50 px-4 py-2 text-[10px] text-center text-slate-400">
+        * Gäller under förutsättning att du har skatteutrymme kvar hos Skatteverket.
+      </div>
+    </div>
   );
 }
