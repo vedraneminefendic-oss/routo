@@ -1,37 +1,32 @@
 import { Button } from "@/components/ui/button";
-
-interface QuickReply {
-  label: string;
-  action: string;
-}
+import { Sparkles } from "lucide-react";
 
 interface QuickRepliesProps {
-  replies: QuickReply[];
-  onSelect: (action: string, label: string) => void;
-  disabled?: boolean;
+  onSelect: (message: string) => void;
 }
 
-export const QuickReplies = ({ replies, onSelect, disabled }: QuickRepliesProps) => {
-  // P0: Prioritize first reply as primary action
-  const getPriority = (index: number) => {
-    if (index === 0) return "default"; // Primary action
-    return "outline"; // Secondary actions
-  };
+export function QuickReplies({ onSelect }: QuickRepliesProps) {
+  const replies = [
+    "Måla om vardagsrummet (25 kvm)",
+    "Renovera badrum (5 kvm)",
+    "Bygga altan (trall)",
+    "Flyttstädning (70 kvm)"
+  ];
 
   return (
-    <div className="flex flex-wrap gap-2 mt-3 max-w-full">
+    <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-none">
       {replies.map((reply, index) => (
         <Button
           key={index}
-          variant={getPriority(index)}
+          variant="outline"
           size="sm"
-          onClick={() => onSelect(reply.action, reply.label)}
-          disabled={disabled}
-          className="text-sm transition-all duration-300 hover:scale-105 shadow-sm hover:shadow-md flex-shrink-0"
+          onClick={() => onSelect(reply)}
+          className="whitespace-nowrap bg-slate-50 hover:bg-slate-100 border-slate-200 text-slate-600 text-xs h-8 rounded-full px-4"
         >
-          <span className="truncate max-w-[200px]">{reply.label}</span>
+          <Sparkles className="w-3 h-3 mr-1.5 text-purple-500" />
+          {reply}
         </Button>
       ))}
     </div>
   );
-};
+}
