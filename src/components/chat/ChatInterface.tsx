@@ -23,7 +23,7 @@ interface ChatInterfaceProps {
   initialMessage?: string;
 }
 
-// Felsäker UUID-generator (fungerar i alla webbläsare)
+// Robust UUID-generator
 function generateUUID() {
   if (typeof crypto !== 'undefined' && crypto.randomUUID) {
     return crypto.randomUUID();
@@ -45,13 +45,10 @@ export function ChatInterface({ onQuoteGenerated, initialMessage }: ChatInterfac
   const scrollRef = useRef<HTMLDivElement>(null);
   const { toast } = useToast();
 
-  // Initiera konversation ID
+  // Initiera session ID säkert vid start
   useEffect(() => {
-    if (!conversationId) {
-      const newId = generateUUID();
-      setConversationId(newId);
-      console.log("Session ID initialized:", newId);
-    }
+    const id = generateUUID();
+    setConversationId(id);
   }, []);
 
   useEffect(() => {
@@ -78,20 +75,19 @@ export function ChatInterface({ onQuoteGenerated, initialMessage }: ChatInterfac
     try {
       const { data: { user } } = await supabase.auth.getUser();
       
-      // VIKTIGT: Använd alltid ett giltigt ID (skapa nytt om det saknas)
+      // Säkerställ att vi ALLTID har ett giltigt ID
       const activeSessionId = conversationId || generateUUID();
-      if (!conversationId) setConversationId(activeSessionId);
 
-      console.log("Sending message with session ID:", activeSessionId);
+      console.log("Sending request...", { sessionId: activeSessionId, hasUser: !!user });
 
       const { data, error } = await supabase.functions.invoke('generate-quote', {
         body: { 
           message: content,
-          description: content, // Backend kräver detta fält
+          description: content, // Skicka både message och description för säkerhets skull
           userId: user?.id,
-          sessionId: activeSessionId, // Backend kräver detta fält (string)
+          sessionId: activeSessionId,
           previousContext: previousContext,
-          conversationHistory: newMessages.map(m => ({ role: m.role, content: m.content })).slice(-6)
+          conversationHistory: newMessages.slice(-6).map(m => ({ role: m.role, content: m.content }))
         }
       });
 
@@ -115,24 +111,17 @@ export function ChatInterface({ onQuoteGenerated, initialMessage }: ChatInterfac
         if (!quoteData) setIsQuoteOpen(true);
         setPreviousContext(null); 
       } else {
-        setMessages(prev => [...prev, { role: 'assistant', content: "Jag förstod inte riktigt. Kan du omformulera?" }]);
+        setMessages(prev => [...prev, { role: 'assistant', content: "Jag förstod inte riktigt. Kan du förtydliga?" }]);
       }
 
-    } catch (error: any) {
-      console.error('Chat Error Details:', error);
-      
-      // Visa ett vänligare felmeddelande
-      let errorMessage = "Kunde inte nå AI-tjänsten.";
-      if (error.message && error.message.includes("sessionId")) {
-        errorMessage = "Sessionsfel: Försök ladda om sidan.";
-      }
-
+    } catch (error) {
+      console.error('Chat Error:', error);
       toast({
         title: "Ett fel uppstod",
-        description: errorMessage,
+        description: "Kunde inte kommunicera med servern. Försök igen.",
         variant: "destructive",
       });
-      setMessages(prev => [...prev, { role: 'assistant', content: "Något gick fel. Försök igen eller ladda om sidan." }]);
+      setMessages(prev => [...prev, { role: 'assistant', content: "Ett tekniskt fel uppstod. Försök igen." }]);
     } finally {
       setIsLoading(false);
     }
@@ -181,7 +170,7 @@ export function ChatInterface({ onQuoteGenerated, initialMessage }: ChatInterfac
                          onClick={() => { setQuoteData(message.data.quote); setIsQuoteOpen(true); }}
                          className="text-xs bg-primary/10 hover:bg-primary/20 text-primary px-3 py-1.5 rounded-full font-medium transition-colors flex items-center gap-1.5"
                        >
-                         📄 Visa detaljerad offert
+                         📄 Visa offert
                        </button>
                     </div>
                   )}
