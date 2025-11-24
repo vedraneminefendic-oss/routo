@@ -55,6 +55,16 @@ serve(async (req) => {
 
     const userId = typeof data.userId === 'string' ? data.userId : 'anonymous';
     const apiKey = Deno.env.get('LOVABLE_API_KEY') || "";
+    
+    // Validate API key
+    if (!apiKey || apiKey.trim() === '') {
+      console.error('❌ CRITICAL: LOVABLE_API_KEY is not set or is empty');
+      return new Response(JSON.stringify({
+        error: "Server configuration error: API key missing"
+      }), { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    }
+    
+    console.log(`🔑 API Key loaded (length: ${apiKey.length})`);
 
     // 2. KONTROLLERA ATT VI HAR MINSTA MÖJLIGA DATA
     if (!description || !description.trim()) {

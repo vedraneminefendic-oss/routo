@@ -42,6 +42,12 @@ export async function interpretUserInput(
 ): Promise<UserInterpretation> {
   
   console.log('🧠 FAS 6: Interpreting user input with AI...');
+  console.log(`🔑 API Key received (length: ${apiKey?.length || 0}, empty: ${!apiKey || apiKey.trim() === ''})`);
+  
+  if (!apiKey || apiKey.trim() === '') {
+    console.error('❌ CRITICAL: API key is empty in interpretUserInput');
+    throw new Error('API key is required for AI interpretation');
+  }
   
   const conversationText = conversationHistory
     .map(m => `${m.role === 'user' ? 'Kund' : 'Assistent'}: ${m.content}`)
@@ -143,8 +149,19 @@ Kund: "Renovera badrum, vi har redan köpt kakel och golvvärme"
 
   if (!response.ok) {
     const errorText = await response.text();
-    console.error('❌ AI interpretation failed:', response.status, errorText);
-    throw new Error(`AI interpretation failed: ${response.status}`);
+    console.error('❌ AI interpretation failed:', {
+      status: response.status,
+      statusText: response.statusText,
+      error: errorText,
+      apiKeyLength: apiKey?.length || 0,
+      apiKeyPresent: !!apiKey && apiKey.trim() !== ''
+    });
+    
+    if (response.status === 401) {
+      throw new Error(`AI interpretation failed: 401 Unauthorized - API key invalid or missing (key length: ${apiKey?.length || 0})`);
+    }
+    
+    throw new Error(`AI interpretation failed: ${response.status} - ${errorText}`);
   }
 
   const data = await response.json();
