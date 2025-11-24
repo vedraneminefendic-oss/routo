@@ -54,7 +54,7 @@ serve(async (req) => {
     }
 
     const userId = typeof data.userId === 'string' ? data.userId : 'anonymous';
-    const apiKey = Deno.env.get('LOVABLE_AI_API_KEY') || "";
+    const apiKey = Deno.env.get('LOVABLE_API_KEY') || "";
 
     // 2. KONTROLLERA ATT VI HAR MINSTA MÖJLIGA DATA
     if (!description || !description.trim()) {
