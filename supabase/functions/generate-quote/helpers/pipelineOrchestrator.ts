@@ -32,6 +32,62 @@ interface QuoteContext {
   [key: string]: any;
 }
 
+interface QuoteDiff {
+  aiInterpretation: {
+    jobType: string;
+    unitQty: number;
+    complexity: string;
+    accessibility: string;
+    qualityLevel: string;
+    specialRequirements: string[];
+    customerProvidesMaterial: boolean;
+  };
+  jobDefinitionUsed: {
+    jobType: string;
+    category: string;
+    unitType: string;
+  };
+  fallbacksApplied: string[];
+  flagsDetected: {
+    customerProvidesMaterial: boolean;
+    noComplexity: boolean;
+  };
+  formulaEngineCalculated: {
+    workItemsGenerated: number;
+    materialsGenerated: number;
+    totalHoursCalculated: number;
+    totalWorkCost: number;
+  };
+  mergeEngineChanges: Array<{
+    operation: string;
+    itemsMerged: string[];
+    result: string;
+    reason: string;
+  }>;
+  domainValidationResults: {
+    passed: boolean;
+    warnings: string[];
+    errors: string[];
+    missingItems: string[];
+  };
+  mathGuardCorrections: Array<{
+    itemName: string;
+    field: string;
+    oldValue: number;
+    newValue: number;
+    diffPercent: number;
+  }>;
+  rotRutCalculation: {
+    deductionType: string;
+    deductionPercentage: number;
+    baseAmount: number;
+    potentialDeduction: number;
+    appliedDeduction: number;
+    maxDeduction: number;
+  };
+  pipelineTrace: string[];
+}
+
 interface PipelineResult {
   quote: any;
   flags: {
@@ -49,6 +105,7 @@ interface PipelineResult {
   appliedFallbacks: string[];
   summary: any;
   traceLog: string[];
+  quoteDiff: QuoteDiff;
 }
 
 function applyFallbacks(input: ParsedInput, jobDef: JobDefinition) {
@@ -216,16 +273,80 @@ export async function runQuotePipeline(
   mathGuardResult.correctedQuote.summary.rotRutDeduction = deductionAmount;
   mathGuardResult.correctedQuote.summary.customerPays = customerPays;
 
+  // 14. BUILD QUOTE DIFF FOR TRANSPARENCY
+  const quoteDiff: QuoteDiff = {
+    aiInterpretation: {
+      jobType: params.jobType || 'unknown',
+      unitQty: projectParams.unitQty,
+      complexity: projectParams.complexity,
+      accessibility: projectParams.accessibility,
+      qualityLevel: projectParams.qualityLevel,
+      specialRequirements: params.specialRequirements || [],
+      customerProvidesMaterial: flags.customerProvidesMaterial
+    },
+    jobDefinitionUsed: {
+      jobType: jobDef.jobType,
+      category: jobDef.category,
+      unitType: jobDef.unitType
+    },
+    fallbacksApplied: appliedFallbacks,
+    flagsDetected: {
+      customerProvidesMaterial: flags.customerProvidesMaterial,
+      noComplexity: flags.noComplexity
+    },
+    formulaEngineCalculated: {
+      workItemsGenerated: workItemsResult.workItems.length,
+      materialsGenerated: generatedMaterials.length,
+      totalHoursCalculated: workItems.reduce((sum, wi) => sum + wi.hours, 0),
+      totalWorkCost: finalSummary.workCost || 0
+    },
+    mergeEngineChanges: mergeResult.mergeOperations.map(op => ({
+      operation: 'merge',
+      itemsMerged: op.originalItems,
+      result: op.mergedInto,
+      reason: op.reason
+    })),
+    domainValidationResults: {
+      passed: domainValidation.passed,
+      warnings: domainValidation.warnings,
+      errors: domainValidation.errors,
+      missingItems: domainValidation.missingItems
+    },
+    mathGuardCorrections: mathGuardResult.corrections.map(corr => ({
+      itemName: corr.itemName,
+      field: corr.field,
+      oldValue: corr.oldValue,
+      newValue: corr.newValue,
+      diffPercent: Math.round(corr.diffPercent * 100) / 100
+    })),
+    rotRutCalculation: {
+      deductionType: deductionType,
+      deductionPercentage: deductionPercentage * 100,
+      baseAmount: workCostInclVat,
+      potentialDeduction: potentialDeduction,
+      appliedDeduction: deductionAmount,
+      maxDeduction: maxDeduction
+    },
+    pipelineTrace: traceLog
+  };
+
+  log(`\n📊 Quote Diff generated with ${quoteDiff.mathGuardCorrections.length} corrections`);
+
   return {
     quote: mathGuardResult.correctedQuote,
     flags: { customerProvidesMaterial: flags.customerProvidesMaterial, noComplexity: false },
-    corrections: { totalCorrections: 0, workItemsCorrected: 0, totalsCorrected: false },
+    corrections: { 
+      totalCorrections: mathGuardResult.totalCorrections,
+      workItemsCorrected: mathGuardResult.summary.workItemsCorrected,
+      totalsCorrected: mathGuardResult.summary.totalsCorrected
+    },
     mergeResult,
     domainValidation,
     jobDefinition: jobDef,
     appliedFallbacks,
     summary: mathGuardResult.correctedQuote.summary,
-    traceLog
+    traceLog,
+    quoteDiff
   };
 }
 
