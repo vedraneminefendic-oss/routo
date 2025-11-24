@@ -121,7 +121,7 @@ serve(async (req) => {
       ...data.userSettings
     });
 
-    // 6. SKAPA SVAR
+    // 6. SKAPA SVAR MED QUOTE DIFF
     const responseData = {
       type: 'complete_quote',
       quote: {
@@ -132,6 +132,7 @@ serve(async (req) => {
         deductionAmount: pipelineResult.summary.rotRutDeduction
       },
       interpretation: interpretation,
+      quoteDiff: pipelineResult.quoteDiff,
       message: `Här är en offert för ${interpretation.jobType}. \n\n` +
                `Totalt pris: ${Math.round(pipelineResult.summary.customerPays).toLocaleString()} kr efter avdrag.`
     };
